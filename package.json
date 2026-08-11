@@ -1,0 +1,60 @@
+{
+  "name": "arthainvest-crm",
+  "version": "2.0.0",
+  "description": "ArthaInvest CRM - Enterprise Lead & Client Management",
+  "main": "main.js",
+  "homepage": "./",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win --publish never",
+    "build-mac": "electron-builder --mac --publish never",
+    "build-linux": "electron-builder --linux --publish never"
+  },
+  "build": {
+    "appId": "com.arthainvest.crm",
+    "productName": "ArthaInvest CRM",
+    "files": [
+      "index.html",
+      "app.js",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "arthainvest-crm-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ArthaInvest CRM"
+    },
+    "portable": {
+      "artifactName": "arthainvest-crm-portable.${ext}"
+    }
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "27.0.0",
+    "electron-builder": "^24.6.4"
+  }
+}

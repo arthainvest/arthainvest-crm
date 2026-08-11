@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArthaInvest CRM - Enterprise Edition</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font: 14px 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #333;
+    }
+
+    .login-screen {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .login-box {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .login-title {
+      font-size: 28px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #667eea;
+    }
+
+    .login-subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 13px;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+      color: #2c3e50;
+      font-size: 13px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 11px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .login-btn {
+      width: 100%;
+      padding: 12px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      margin-top: 10px;
+      transition: all 0.3s;
+    }
+
+    .login-btn:hover {
+      background: #5568d3;
+    }
+
+    .demo-users {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #eee;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .demo-users b {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    /* Main App Layout */
+    .app {
+      display: flex;
+      height: 100vh;
+      background: #f0f2f5;
+    }
+
+    .sidebar {
+      width: 260px;
+      background: #2c3e50;
+      color: white;
+      overflow-y: auto;
+      padding: 20px 0;
+    }
+
+    .logo-section {
+      padding: 0 20px 30px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .logo {
+      font-size: 20px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .user-info {
+      font-size: 12px;
+      color: #ecf0f1;
+    }
+
+    .nav-section {
+      padding: 20px 0;
+    }
+
+    .nav-title {
+      padding: 0 20px;
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #95a5a6;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .nav-item {
+      padding: 12px 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-left: 3px solid transparent;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+    }
+
+    .nav-item:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    .nav-item.active {
+      background: rgba(102, 126, 234, 0.2);
+      border-left-color: #667eea;
+      color: #667eea;
+    }
+
+    .nav-icon {
+      font-size: 16px;
+      min-width: 20px;
+    }
+
+    .logout-btn {
+      margin-top: auto;
+      padding: 12px 20px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      cursor: pointer;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #e74c3c;
+      transition: all 0.2s;
+    }
+
+    .logout-btn:hover {
+      background: rgba(231, 76, 60, 0.1);
+    }
+
+    .main-content {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 20px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .header-title {
+      font-size: 24px;
+      font-weight: bold;
+      color: #2c3e50;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+      font-size: 13px;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .btn-secondary {
+      background: #ecf0f1;
+      color: #2c3e50;
+    }
+
+    .btn-secondary:hover {
+      background: #d5dbdb;
+    }
+
+    .btn-danger {
+      background: #e74c3c;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #c0392b;
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 30px;
+    }
+
+    /* Dashboard - BIGIN Style KPI Cards */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+
+    .kpi-card {
+      background: white;
+      padding: 28px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border-left: 4px solid #667eea;
+      transition: all 0.3s ease;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .kpi-card:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+      transform: translateY(-2px);
+    }
+
+    .kpi-title {
+      font-size: 14px;
+      color: #2c3e50;
+      font-weight: 600;
+      margin-bottom: 16px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .kpi-main-value {
+      font-size: 42px;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 12px;
+      line-height: 1;
+    }
+
+    .kpi-trend {
+      margin-bottom: 12px;
+    }
+
+    .trend-indicator {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .trend-indicator.up {
+      color: #27ae60;
+      background: rgba(39, 174, 96, 0.1);
+    }
+
+    .trend-indicator.down {
+      color: #e74c3c;
+      background: rgba(231, 76, 60, 0.1);
+    }
+
+    .kpi-comparison {
+      font-size: 12px;
+      color: #95a5a6;
+    }
+
+    /* Backward compatibility for old stat-card */
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 6px;
+    }
+
+    .stat-label {
+      color: #666;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Tables */
+    .table-container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    th {
+      padding: 15px;
+      text-align: left;
+      font-weight: 600;
+      color: #2c3e50;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 15px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 14px;
+    }
+
+    tbody tr:hover {
+      background: #f8f9fa;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 5px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status-new { background: #fef5f3; color: #e74c3c; }
+    .status-contacted { background: #e8f8f5; color: #27ae60; }
+    .status-interested { background: #fef9e7; color: #f39c12; }
+    .status-meeting { background: #ebf5fb; color: #2980b9; }
+    .status-closed { background: #eafaf1; color: #27ae60; }
+
+    .role-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .role-admin { background: #f8d7da; color: #721c24; }
+    .role-employee { background: #d1ecf1; color: #0c5460; }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      width: 90%;
+      max-width: 500px;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .modal-header {
+      background: #2c3e50;
+      color: white;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      padding: 20px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .modal-footer {
+      padding: 15px 20px;
+      background: #f8f9fa;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .search-box {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .search-box input {
+      flex: 1;
+      padding: 10px 15px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #95a5a6;
+    }
+
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 15px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .admin-only {
+      display: none;
+    }
+
+    .admin-only.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-box">
+    <div class="login-title">ArthaInvest CRM</div>
+    <div class="login-subtitle">Enterprise Lead Management</div>
+
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="loginUsername" placeholder="Enter username">
+    </div>
+
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="Enter password">
+    </div>
+
+    <button class="login-btn" onclick="login()">Login</button>
+
+    <div class="demo-users">
+      <b>Demo Accounts:</b>
+      Admin: artha / artha123<br>
+      Employee: ravi / ravi123
+    </div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="appScreen" class="app hidden">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="logo-section">
+      <div class="logo">📊 ArthaInvest</div>
+      <div class="user-info" id="userDisplay">User</div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-title">Main</div>
+      <div class="nav-item active" onclick="navigateTo('dashboard')">
+        <span class="nav-icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" onclick="navigateTo('leads')">
+        <span class="nav-icon">📱</span> Leads
+      </div>
+      <div class="nav-item" onclick="navigateTo('team')">
+        <span class="nav-icon">👥</span> Team
+      </div>
+      <div class="nav-item" onclick="navigateTo('reports')">
+        <span class="nav-icon">📈</span> Reports
+      </div>
+      <div class="nav-item" onclick="navigateTo('documents')">
+        <span class="nav-icon">📁</span> Documents
+      </div>
+      <div class="nav-item" onclick="navigateTo('marketing')">
+        <span class="nav-icon">📢</span> Marketing
+      </div>
+      <div class="nav-item" onclick="navigateTo('deals')">
+        <span class="nav-icon">💰</span> Deals
+      </div>
+      <div class="nav-item" onclick="navigateTo('campaigns')">
+        <span class="nav-icon">📧</span> Campaigns
+      </div>
+      <div class="nav-item" onclick="navigateTo('tasks')">
+        <span class="nav-icon">✓</span> Tasks
+      </div>
+      <div class="nav-item" onclick="navigateTo('scores')">
+        <span class="nav-icon">⭐</span> Lead Scoring
+      </div>
+      <div class="nav-item" onclick="navigateTo('dialler')">
+        <span class="nav-icon">☎️</span> Dialler
+      </div>
+    </div>
+
+    <div class="nav-section admin-only">
+      <div class="nav-title">Admin</div>
+      <div class="nav-item" onclick="navigateTo('callMonitoring')">
+        <span class="nav-icon">📊</span> Call Monitoring
+      </div>
+      <div class="nav-item" onclick="navigateTo('users')">
+        <span class="nav-icon">⚙️</span> Manage Users
+      </div>
+      <div class="nav-item" onclick="navigateTo('settings')">
+        <span class="nav-icon">🔧</span> Settings
+      </div>
+    </div>
+
+    <div class="logout-btn" onclick="logout()">
+      <span class="nav-icon">🚪</span> Logout
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="header">
+      <div class="header-title" id="pageTitle">Dashboard</div>
+      <div class="header-actions">
+        <button class="btn btn-primary" id="addBtn" onclick="openAddModal()" style="display:none;">+ Add Lead</button>
+        <button class="btn btn-secondary" onclick="exportData()">⬇️ Export</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Dashboard Section -->
+      <div id="dashboardSection">
+        <!-- Company Info -->
+        <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px;">
+          <h3 style="color: #2c3e50; margin-bottom: 10px;">🏢 ArthaInvest Capital</h3>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; font-size: 12px; color: #7f8c8d;">
+            <div>📧 <strong>arthainvest.services@gmail.com</strong></div>
+            <div>☎️ <strong>+917021351181</strong></div>
+          </div>
+        </div>
+
+        <!-- CRM Statistics - BIGIN Style KPI Cards -->
+        <div style="padding: 10px; background: #e8f4f8; border-left: 4px solid #667eea; margin-bottom: 20px;">
+          <strong>✓ BIGIN-Style Dashboard v2 Loaded</strong> - Professional KPI Cards
+        </div>
+        <div class="dashboard-grid">
+          <div class="kpi-card">
+            <div class="kpi-title">Leads Created - This Month</div>
+            <div class="kpi-main-value" id="totalLeads">0</div>
+            <div class="kpi-trend" id="leadsTrend">
+              <span class="trend-indicator up">↑ 0%</span>
+            </div>
+            <div class="kpi-comparison" id="leadsComparison">Last Month: 0</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-title">Deals Won - This Month</div>
+            <div class="kpi-main-value" id="dealsWon">0</div>
+            <div class="kpi-comparison">No data available</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-title">Deals Lost - This Month</div>
+            <div class="kpi-main-value" id="dealsLost">0</div>
+            <div class="kpi-comparison">No data available</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-title">Active Conversations</div>
+            <div class="kpi-main-value" id="activeConversations">0</div>
+            <div class="kpi-comparison" id="activeComparison">Last Month: 0</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-title">Calls Completed - This Month</div>
+            <div class="kpi-main-value" id="totalCalls">0</div>
+            <div class="kpi-comparison" id="callsComparison">Last Month: 0</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-title">Campaigns Active</div>
+            <div class="kpi-main-value" id="totalCampaigns">0</div>
+            <div class="kpi-comparison" id="campaignsComparison">Total Running</div>
+          </div>
+        </div>
+
+
+        <!-- Recent Leads -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 30px; margin-bottom: 15px;">
+          <h3 style="color: #2c3e50; margin: 0;">Recent Leads</h3>
+          <button class="btn btn-primary" onclick="openAddModal()" style="display: inline-block;">+ Add Lead</button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Assigned To</th>
+                <th>Status</th>
+                <th>Reminder</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="recentLeadsBody">
+              <tr><td colspan="6" style="text-align:center; color: #999; padding: 20px;">Start adding leads to see them here</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Leads Section -->
+      <div id="leadsSection" class="hidden">
+        <div class="search-box">
+          <input type="text" id="leadSearch" placeholder="🔍 Search leads..." onkeyup="filterLeads()">
+          <button class="btn btn-primary" onclick="openAddModal()">+ Add Lead</button>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Assigned To</th>
+                <th>Status</th>
+                <th>Call Time</th>
+                <th>Reminder</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="leadsBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Team Section -->
+      <div id="teamSection" class="hidden">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Leads Assigned</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="teamBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Reports Section -->
+      <div id="reportsSection" class="hidden">
+        <div class="dashboard-grid">
+          <div class="stat-card">
+            <div class="stat-value" id="conversionRate">0%</div>
+            <div class="stat-label">Conversion Rate</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="topEmployee">-</div>
+            <div class="stat-label">Top Performer</div>
+          </div>
+        </div>
+
+        <div class="table-container" style="margin-top: 30px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Total Leads</th>
+                <th>New</th>
+                <th>Contacted</th>
+                <th>Closed</th>
+              </tr>
+            </thead>
+            <tbody id="reportBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Manage Users Section (Admin Only) -->
+      <div id="usersSection" class="hidden">
+        <div style="margin-bottom: 20px;">
+          <button class="btn btn-primary" onclick="openUserModal()">+ Add User</button>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Leads</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Settings Section (Admin Only) -->
+      <div id="settingsSection" class="hidden">
+        <div style="max-width: 700px;">
+          <h2 style="color: #2c3e50; margin-bottom: 20px;">⚙️ System Settings</h2>
+
+          <!-- Mobile Number Registration -->
+          <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px;">
+            <h3 style="color: #2c3e50; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">📱 Mobile Number Registration</h3>
+            <p style="color: #7f8c8d; font-size: 13px; margin-bottom: 15px;">Register your primary business phone number for call and WhatsApp tracking</p>
+
+            <div class="form-group">
+              <label style="font-weight: bold;">📞 Mobile Number *</label>
+              <input type="text" id="settingsMobileNumber" placeholder="+91 98765 43210" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+              <small style="color: #7f8c8d; margin-top: 5px; display: block;">Format: +91XXXXXXXXXX or 9876543210</small>
+            </div>
+
+            <div class="form-group">
+              <label style="font-weight: bold;">👤 Your Name</label>
+              <input type="text" id="settingsAgentName" placeholder="e.g., Artha Kumar" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px;">
+            </div>
+
+            <button class="btn btn-primary" onclick="saveMobileNumberSettings()" style="width: 100%; padding: 12px; margin-top: 15px;">💾 Save Mobile Number</button>
+            <div id="mobileNumberStatus" style="margin-top: 10px; color: #27ae60; font-size: 13px;"></div>
+          </div>
+
+          <!-- Company Settings -->
+          <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px;">
+            <h3 style="color: #2c3e50; margin-bottom: 15px;">🏢 Company Information</h3>
+
+            <div class="form-group">
+              <label style="font-weight: bold;">Company Name</label>
+              <input type="text" id="settingsCompanyName" placeholder="ArthaInvest Capital" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px;">
+            </div>
+
+            <div class="form-group">
+              <label style="font-weight: bold;">Company Phone</label>
+              <input type="text" id="settingsCompanyPhone" placeholder="+91 XXXXXXXXXX" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px;">
+            </div>
+
+            <div class="form-group">
+              <label style="font-weight: bold;">Company Email</label>
+              <input type="email" id="settingsCompanyEmail" placeholder="info@arthainvest.com" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px;">
+            </div>
+
+            <div class="form-group">
+              <label style="font-weight: bold;">License/Registration</label>
+              <input type="text" id="settingsLicense" value="ARN-267891 | POSP | DSA" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px;">
+            </div>
+
+            <button class="btn btn-primary" onclick="saveCompanySettings()" style="width: 100%; padding: 12px; margin-top: 15px;">💾 Save Company Settings</button>
+          </div>
+
+          <!-- Data Management -->
+          <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h3 style="color: #2c3e50; margin-bottom: 15px;">📊 Data Management</h3>
+
+            <button class="btn" style="background: #3498db; color: white; width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 6px; cursor: pointer; border: none; font-weight: bold;" onclick="exportAllData()">
+              ⬇️ Export All Data (JSON)
+            </button>
+
+            <button class="btn" style="background: #e74c3c; color: white; width: 100%; padding: 12px; border-radius: 6px; cursor: pointer; border: none; font-weight: bold;" onclick="clearAllData()">
+              🗑️ Clear All Data (Warning: Irreversible)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Documents Section (DigiLocker) -->
+      <div id="documentsSection" class="hidden">
+        <div style="margin-bottom: 20px;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">📁 Client Documents</h2>
+          <p style="color: #7f8c8d; font-size: 13px;">Organize and store client documents by category</p>
+        </div>
+        <div id="documentsContainer">
+          <div style="text-align: center; color: #7f8c8d; padding: 40px;">
+            No documents yet. Add documents to organize client files.
+          </div>
+        </div>
+      </div>
+
+      <!-- Marketing Materials Section -->
+      <div id="marketingSection" class="hidden">
+        <div style="margin-bottom: 20px;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">📢 Marketing Materials</h2>
+          <p style="color: #7f8c8d; font-size: 13px;">Share marketing materials with clients via WhatsApp and Email</p>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <button class="btn btn-primary" onclick="openMarketingModal()">+ Add Marketing Material</button>
+        </div>
+
+        <div id="marketingContainer">
+          <div style="text-align: center; color: #7f8c8d; padding: 40px;">
+            No marketing materials yet. Add materials to get started.
+          </div>
+        </div>
+      </div>
+
+      <!-- Deals Section -->
+      <div id="dealsSection" class="hidden">
+        <div style="margin-bottom: 20px;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">💰 Deals & Opportunities</h2>
+          <p style="color: #7f8c8d; font-size: 13px;">Track sales deals and forecast revenue</p>
+        </div>
+        <div style="margin-bottom: 20px;">
+          <button class="btn btn-primary" onclick="openDealModal()">+ Create Deal</button>
+        </div>
+        <div id="dealsContainer"></div>
+      </div>
+
+      <!-- Campaigns Section -->
+      <div id="campaignsSection" class="hidden">
+        <div style="margin-bottom: 20px;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">📧 Campaigns</h2>
+          <p style="color: #7f8c8d; font-size: 13px;">Create and send campaigns to clients and employees</p>
+        </div>
+        <div style="margin-bottom: 20px;">
+          <button class="btn btn-primary" onclick="openCampaignModal()">+ Create Campaign</button>
+        </div>
+        <div id="campaignsContainer"></div>
+      </div>
+
+      <!-- Tasks Section -->
+      <div id="tasksSection" class="hidden">
+        <div style="margin-bottom: 20px;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">✓ Tasks</h2>
+          <p style="color: #7f8c8d; font-size: 13px;">Manage your tasks and to-dos</p>
+        </div>
+        <div style="margin-bottom: 20px;">
+          <button class="btn btn-primary" onclick="openTaskModal()">+ Create Task</button>
+        </div>
+        <div id="tasksContainer"></div>
+      </div>
+
+      <!-- Lead Scoring Section -->
+      <div id="scoresSection" class="hidden">
+        <div style="margin-bottom: 20px;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">⭐ Lead Scoring</h2>
+          <p style="color: #7f8c8d; font-size: 13px;">Auto-scored leads to help prioritize your efforts</p>
+        </div>
+        <div id="scoresContainer"></div>
+      </div>
+
+      <!-- Call Monitoring Section (Admin Only) -->
+      <div id="callMonitoringSection" class="hidden">
+        <div style="margin-bottom: 20px;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">📊 Call Monitoring Dashboard</h2>
+          <p style="color: #7f8c8d; font-size: 13px;">Track all agent calls and performance metrics</p>
+        </div>
+
+        <!-- Filters -->
+        <div style="background: white; border-radius: 8px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+            <div>
+              <label style="font-size: 12px; color: #7f8c8d;">Filter by Agent</label>
+              <select id="callMonitoringAgentFilter" onchange="filterCallMonitoring()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-top: 5px;">
+                <option value="">All Agents</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 12px; color: #7f8c8d;">From Date</label>
+              <input type="date" id="callMonitoringFromDate" onchange="filterCallMonitoring()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-top: 5px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: #7f8c8d;">To Date</label>
+              <input type="date" id="callMonitoringToDate" onchange="filterCallMonitoring()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-top: 5px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: #7f8c8d;">Status</label>
+              <select id="callMonitoringStatusFilter" onchange="filterCallMonitoring()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-top: 5px;">
+                <option value="">All Status</option>
+                <option value="completed">Completed</option>
+                <option value="missed">Missed</option>
+                <option value="pending">Pending Follow-up</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
+          <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <div style="font-size: 24px; font-weight: bold; color: #2c3e50;" id="totalCallsAdmin">0</div>
+            <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">Total Calls</div>
+          </div>
+          <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <div style="font-size: 24px; font-weight: bold; color: #27ae60;" id="totalDurationAdmin">0h</div>
+            <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">Total Duration</div>
+          </div>
+          <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <div style="font-size: 24px; font-weight: bold; color: #3498db;" id="avgCallDurationAdmin">0m</div>
+            <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">Avg Call Duration</div>
+          </div>
+          <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <div style="font-size: 24px; font-weight: bold; color: #e74c3c;" id="agentCountAdmin">0</div>
+            <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">Active Agents</div>
+          </div>
+        </div>
+
+        <!-- Call History Table -->
+        <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <h3 style="color: #2c3e50; margin-bottom: 15px;">📞 Call History (+917021351181)</h3>
+
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="border-bottom: 2px solid #f0f0f0;">
+                  <th style="text-align: left; padding: 12px; font-weight: bold; color: #2c3e50;">Agent</th>
+                  <th style="text-align: left; padding: 12px; font-weight: bold; color: #2c3e50;">Phone Number</th>
+                  <th style="text-align: left; padding: 12px; font-weight: bold; color: #2c3e50;">Date & Time</th>
+                  <th style="text-align: left; padding: 12px; font-weight: bold; color: #2c3e50;">Duration</th>
+                  <th style="text-align: left; padding: 12px; font-weight: bold; color: #2c3e50;">Outcome</th>
+                  <th style="text-align: left; padding: 12px; font-weight: bold; color: #2c3e50;">Notes</th>
+                  <th style="text-align: left; padding: 12px; font-weight: bold; color: #2c3e50;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="callHistoryTableBody">
+                <tr><td colspan="7" style="text-align: center; padding: 30px; color: #7f8c8d;">No calls found</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Agent Performance -->
+        <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 20px;">
+          <h3 style="color: #2c3e50; margin-bottom: 15px;">👥 Agent Performance</h3>
+          <div id="agentPerformanceContainer"></div>
+        </div>
+      </div>
+
+      <!-- Dialler Section -->
+      <div id="diallerSection" class="hidden">
+        <div style="margin-bottom: 20px;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">☎️ Communication Hub</h2>
+          <p style="color: #7f8c8d; font-size: 13px;">Track calls, WhatsApp messages, and all communication</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <!-- Quick Buttons -->
+          <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); grid-column: 1 / -1; display: flex; gap: 10px; margin-bottom: 10px;">
+            <button class="btn" style="background: #27ae60; color: white; flex: 1;" onclick="startDiallerMode()">☎️ Make Call</button>
+            <button class="btn" style="background: #95a5a6; color: white; flex: 1; cursor: not-allowed;" title="Coming soon - WhatsApp integration">💬 WhatsApp (Coming Soon)</button>
+            <button class="btn" style="background: #3498db; color: white; flex: 1;" onclick="navigateTo('callMonitoring')">📊 View All Calls</button>
+          </div>
+          <!-- Dialler Panel -->
+          <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h3 style="color: #2c3e50; margin-bottom: 15px;">Make a Call</h3>
+
+            <div style="background: #f0f0f0; border-radius: 8px; padding: 15px; margin-bottom: 15px; text-align: center;">
+              <div id="dialDisplay" style="font-size: 28px; font-weight: bold; color: #2c3e50; letter-spacing: 2px; min-height: 40px;">0</div>
+              <div style="color: #7f8c8d; font-size: 12px; margin-top: 5px;">Dial Number</div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px;">
+              <button class="btn" onclick="dialPad('1')" style="padding: 15px; font-size: 18px; font-weight: bold;">1</button>
+              <button class="btn" onclick="dialPad('2')" style="padding: 15px; font-size: 18px; font-weight: bold;">2</button>
+              <button class="btn" onclick="dialPad('3')" style="padding: 15px; font-size: 18px; font-weight: bold;">3</button>
+              <button class="btn" onclick="dialPad('4')" style="padding: 15px; font-size: 18px; font-weight: bold;">4</button>
+              <button class="btn" onclick="dialPad('5')" style="padding: 15px; font-size: 18px; font-weight: bold;">5</button>
+              <button class="btn" onclick="dialPad('6')" style="padding: 15px; font-size: 18px; font-weight: bold;">6</button>
+              <button class="btn" onclick="dialPad('7')" style="padding: 15px; font-size: 18px; font-weight: bold;">7</button>
+              <button class="btn" onclick="dialPad('8')" style="padding: 15px; font-size: 18px; font-weight: bold;">8</button>
+              <button class="btn" onclick="dialPad('9')" style="padding: 15px; font-size: 18px; font-weight: bold;">9</button>
+              <button class="btn" onclick="dialPad('*')" style="padding: 15px; font-size: 18px; font-weight: bold;">*</button>
+              <button class="btn" onclick="dialPad('0')" style="padding: 15px; font-size: 18px; font-weight: bold;">0</button>
+              <button class="btn" onclick="dialPad('#')" style="padding: 15px; font-size: 18px; font-weight: bold;">#</button>
+            </div>
+
+            <button class="btn btn-secondary" onclick="clearDial()" style="width: 100%; margin-bottom: 10px;">🔙 Clear</button>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <button class="btn" style="background: #27ae60; color: white; padding: 15px; font-size: 16px; border-radius: 6px;" onclick="startCall()">📞 Call</button>
+              <button class="btn btn-secondary" onclick="endCall()" style="padding: 15px; font-size: 16px;">End Call</button>
+            </div>
+          </div>
+
+          <!-- Quick Contacts & History -->
+          <div>
+            <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px;">
+              <h3 style="color: #2c3e50; margin-bottom: 15px;">Quick Dial</h3>
+              <div id="quickContactsList" style="max-height: 150px; overflow-y: auto;">
+                <div style="color: #7f8c8d; text-align: center; padding: 20px;">No contacts available</div>
+              </div>
+            </div>
+
+            <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+              <h3 style="color: #2c3e50; margin-bottom: 15px;">Call Statistics</h3>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div style="background: #f0f0f0; padding: 12px; border-radius: 6px; text-align: center;">
+                  <div style="font-size: 20px; font-weight: bold; color: #2c3e50;" id="totalCallsCount">0</div>
+                  <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">Total Calls</div>
+                </div>
+                <div style="background: #f0f0f0; padding: 12px; border-radius: 6px; text-align: center;">
+                  <div style="font-size: 20px; font-weight: bold; color: #2c3e50;" id="totalDurationCount">0m</div>
+                  <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">Total Duration</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Call History -->
+        <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 20px;">
+          <h3 style="color: #2c3e50; margin-bottom: 15px;">📞 Call History</h3>
+          <div id="callHistoryContainer" style="max-height: 400px; overflow-y: auto;">
+            <div style="color: #7f8c8d; text-align: center; padding: 30px;">No calls yet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Marketing Material Modal -->
+<div id="marketingModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Add Marketing Material</div>
+      <button class="close-btn" onclick="closeMarketingModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div class="form-group">
+        <label>Material Name *</label>
+        <input type="text" id="materialName" placeholder="e.g., Investment Guide, Product Brochure">
+      </div>
+      <div class="form-group">
+        <label>Material Type</label>
+        <select id="materialType">
+          <option value="Brochure">Brochure</option>
+          <option value="Guide">Investment Guide</option>
+          <option value="WhitePaper">White Paper</option>
+          <option value="ProductInfo">Product Info</option>
+          <option value="Offer">Special Offer</option>
+          <option value="Newsletter">Newsletter</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Description / Message</label>
+        <textarea id="materialDescription" placeholder="Enter message to share with clients" style="height: 100px; border: 1px solid #ddd; padding: 10px; border-radius: 4px;"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Link / URL (optional)</label>
+        <input type="text" id="materialLink" placeholder="https://example.com/material">
+      </div>
+    </div>
+    <div style="padding: 15px 20px; background: #f5f5f5; display: flex; gap: 10px; justify-content: flex-end;">
+      <button class="btn btn-secondary" onclick="closeMarketingModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMaterial()">Save Material</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Marketing Material Modal -->
+<div id="shareMarketingModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Share Marketing Material</div>
+      <button class="close-btn" onclick="closeShareModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div id="materialPreview" style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 6px;"></div>
+
+      <div class="form-group">
+        <label>Select Clients to Share With *</label>
+        <div id="clientsList" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 4px;"></div>
+      </div>
+    </div>
+    <div style="padding: 15px 20px; background: #f5f5f5; display: flex; gap: 10px; justify-content: flex-end;">
+      <button class="btn btn-secondary" onclick="closeShareModal()">Cancel</button>
+      <button class="btn" style="background: #25D366; color: white;" onclick="shareViaWhatsApp()">📱 Share via WhatsApp</button>
+      <button class="btn" style="background: #1F4788; color: white;" onclick="shareViaEmail()">✉️ Share via Email</button>
+    </div>
+  </div>
+</div>
+
+<!-- Document Upload Modal -->
+<div id="documentModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="documentModalTitle">Add Document</div>
+      <button class="close-btn" onclick="closeDocumentModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div class="form-group">
+        <label>Document Name *</label>
+        <input type="text" id="documentName" placeholder="e.g., PAN Card, Aadhaar, Insurance Policy">
+      </div>
+      <div class="form-group">
+        <label>Document Type</label>
+        <select id="documentType">
+          <option value="PAN">PAN Card</option>
+          <option value="Aadhaar">Aadhaar</option>
+          <option value="Insurance">Insurance Policy</option>
+          <option value="Bank">Bank Statement</option>
+          <option value="Agreement">Agreement</option>
+          <option value="Invoice">Invoice</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div style="padding: 15px 20px; background: #f5f5f5; display: flex; gap: 10px; justify-content: flex-end;">
+      <button class="btn btn-secondary" onclick="closeDocumentModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="uploadDocument()">Upload Document</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Lead Modal -->
+<div id="leadModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Add New Lead</div>
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Lead Name *</label>
+        <input type="text" id="leadName" placeholder="Full name">
+      </div>
+
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="tel" id="leadPhone" placeholder="9XXXXXXXXX">
+      </div>
+
+      <div class="form-group">
+        <label>Assign To</label>
+        <select id="leadAssignee" onchange="updateAssignee()">
+          <option value="">Select Employee</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Status</label>
+        <select id="leadStatus">
+          <option value="new">New</option>
+          <option value="contacted">Contacted</option>
+          <option value="interested">Interested</option>
+          <option value="meeting">Meeting Scheduled</option>
+          <option value="closed">Closed/Won</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Call Time</label>
+        <input type="time" id="leadCallTime">
+      </div>
+
+      <div class="form-group">
+        <label>Reminder Date</label>
+        <input type="date" id="leadReminder">
+      </div>
+
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="leadNotes" placeholder="Any notes..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; min-height: 80px;"></textarea>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveLead()">💾 Save Lead</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit User Modal (Admin Only) -->
+<div id="userModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Add New User</div>
+      <button class="close-btn" onclick="closeUserModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="userName" placeholder="username">
+      </div>
+
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="userPassword" placeholder="password">
+      </div>
+
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="userFullName" placeholder="Full Name">
+      </div>
+
+      <div class="form-group">
+        <label>Role</label>
+        <select id="userRole">
+          <option value="employee">Employee</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">💾 Save User</button>
+    </div>
+  </div>
+</div>
+
+<!-- Campaign Modal -->
+<div id="campaignModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Create Campaign</div>
+      <button class="close-btn" onclick="closeCampaignModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div class="form-group">
+        <label>Campaign Name *</label>
+        <input type="text" id="campaignName" placeholder="e.g., Q3 Product Launch">
+      </div>
+      <div class="form-group">
+        <label>Campaign Type</label>
+        <select id="campaignType">
+          <option value="Email">Email</option>
+          <option value="WhatsApp">WhatsApp</option>
+          <option value="SMS">SMS</option>
+          <option value="Manual">Manual</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Description/Message *</label>
+        <textarea id="campaignDescription" placeholder="Campaign message..." style="height: 100px; border: 1px solid #ddd; padding: 10px; border-radius: 4px;"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Schedule Date (optional)</label>
+        <input type="datetime-local" id="campaignScheduleDate">
+      </div>
+    </div>
+    <div style="padding: 15px 20px; background: #f5f5f5; display: flex; gap: 10px; justify-content: flex-end;">
+      <button class="btn btn-secondary" onclick="closeCampaignModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCampaign()">Create Campaign</button>
+    </div>
+  </div>
+</div>
+
+<!-- Deal Modal -->
+<div id="dealModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Create Deal</div>
+      <button class="close-btn" onclick="closeDealModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div class="form-group">
+        <label>Deal Name *</label>
+        <input type="text" id="dealName" placeholder="e.g., Mutual Fund Investment">
+      </div>
+      <div class="form-group">
+        <label>Amount (₹) *</label>
+        <input type="number" id="dealAmount" placeholder="Investment amount">
+      </div>
+      <div class="form-group">
+        <label>Stage</label>
+        <select id="dealStage">
+          <option value="proposal">Proposal</option>
+          <option value="negotiation">Negotiation</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Probability (%)</label>
+        <input type="number" id="dealProbability" value="50" min="0" max="100">
+      </div>
+      <div class="form-group">
+        <label>Expected Close Date</label>
+        <input type="date" id="dealExpectedClose">
+      </div>
+      <div class="form-group">
+        <label>Lead ID *</label>
+        <input type="text" id="dealLeadId" placeholder="Lead identifier">
+      </div>
+    </div>
+    <div style="padding: 15px 20px; background: #f5f5f5; display: flex; gap: 10px; justify-content: flex-end;">
+      <button class="btn btn-secondary" onclick="closeDealModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDeal()">Create Deal</button>
+    </div>
+  </div>
+</div>
+
+<!-- Task Modal -->
+<div id="taskModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Create Task</div>
+      <button class="close-btn" onclick="closeTaskModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div class="form-group">
+        <label>Task Name *</label>
+        <input type="text" id="taskName" placeholder="What needs to be done?">
+      </div>
+      <div class="form-group">
+        <label>Due Date *</label>
+        <input type="date" id="taskDueDate">
+      </div>
+      <div class="form-group">
+        <label>Priority</label>
+        <select id="taskPriority">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+      </div>
+    </div>
+    <div style="padding: 15px 20px; background: #f5f5f5; display: flex; gap: 10px; justify-content: flex-end;">
+      <button class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTask()">Create Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- WhatsApp Logger Modal -->
+<div id="whatsappLoggerModal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-header">
+      <div class="modal-title">💬 Log WhatsApp Message</div>
+      <button class="close-btn" onclick="closeWhatsAppLogger()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div class="form-group">
+        <label>Contact Phone Number *</label>
+        <input type="text" id="whatsappPhone" placeholder="+91 98765 43210" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+      </div>
+
+      <div class="form-group">
+        <label>Contact Name</label>
+        <input type="text" id="whatsappContactName" placeholder="Enter contact name" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+      </div>
+
+      <div class="form-group">
+        <label>Message Type *</label>
+        <select id="whatsappMessageType" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+          <option value="">Select Type</option>
+          <option value="sent">📤 Sent Message</option>
+          <option value="received">📥 Received Message</option>
+          <option value="media">🎵 Sent Media (Image/Video/Document)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Message Preview *</label>
+        <textarea id="whatsappMessagePreview" placeholder="Paste the message text or description..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; min-height: 80px;"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Message Status</label>
+        <select id="whatsappStatus" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+          <option value="delivered">✅ Delivered</option>
+          <option value="read">👁️ Read</option>
+          <option value="pending">⏳ Pending</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Date & Time</label>
+        <input type="datetime-local" id="whatsappDateTime" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+      </div>
+
+      <div class="form-group">
+        <label>Notes/Action Needed</label>
+        <textarea id="whatsappNotes" placeholder="Any follow-up needed?..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; min-height: 60px;"></textarea>
+      </div>
+    </div>
+    <div style="padding: 15px 20px; background: #f5f5f5; display: flex; gap: 10px; justify-content: flex-end;">
+      <button class="btn btn-secondary" onclick="closeWhatsAppLogger()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveWhatsAppMessage()">💾 Save Message</button>
+    </div>
+  </div>
+</div>
+
+<!-- Call Notes Modal -->
+<div id="callNotesModal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 500px;">
+    <div class="modal-header">
+      <div class="modal-title">📞 Call Details & Notes</div>
+      <button class="close-btn" onclick="closeCallNotesModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+        <div style="margin-bottom: 10px;">
+          <span style="color: #7f8c8d; font-size: 12px;">Phone Number</span>
+          <div style="font-weight: bold; color: #2c3e50;" id="callNotesPhone">-</div>
+        </div>
+        <div style="margin-bottom: 10px;">
+          <span style="color: #7f8c8d; font-size: 12px;">Duration</span>
+          <div style="font-weight: bold; color: #27ae60;" id="callNotesDuration">-</div>
+        </div>
+        <div>
+          <span style="color: #7f8c8d; font-size: 12px;">Time</span>
+          <div style="font-weight: bold; color: #2c3e50;" id="callNotesTime">-</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Call Outcome *</label>
+        <select id="callOutcome" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+          <option value="">Select Outcome</option>
+          <option value="connected">✅ Connected & Talked</option>
+          <option value="voicemail">📧 Left Voicemail</option>
+          <option value="busy">📞 Line Busy</option>
+          <option value="noresponse">❌ No Response</option>
+          <option value="wrong_number">❓ Wrong Number</option>
+          <option value="callback">⏳ Will Call Back</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Priority for Follow-up</label>
+        <select id="callPriority" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+          <option value="none">No Follow-up</option>
+          <option value="low">Low Priority</option>
+          <option value="medium">Medium Priority</option>
+          <option value="high">High Priority</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="callNotesText" placeholder="Add any notes about the call..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; min-height: 100px;"></textarea>
+      </div>
+    </div>
+    <div style="padding: 15px 20px; background: #f5f5f5; display: flex; gap: 10px; justify-content: flex-end;">
+      <button class="btn btn-secondary" onclick="closeCallNotesModal()">Skip</button>
+      <button class="btn btn-primary" onclick="saveCallNotes()">💾 Save Notes</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
