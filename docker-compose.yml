@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  arthainvest-crm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: arthainvest-crm-enterprise
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=arthainvest-enterprise.db
+    volumes:
+      - ./arthainvest-enterprise.db:/app/arthainvest-enterprise.db
+      - ./arthainvest.db:/app/arthainvest.db
+      - ./arthainvest-10-10.db:/app/arthainvest-10-10.db
+      - ./uploads:/app/uploads
+      - ./exports:/app/exports
+    restart: unless-stopped
+    networks:
+      - crm-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+networks:
+  crm-network:
+    driver: bridge
+
+volumes:
+  crm-data:
+    driver: local
