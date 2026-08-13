@@ -50,8 +50,7 @@ let currentEditUserId = null;
 // Initialize
 window.addEventListener('DOMContentLoaded', () => {
   loadData();
-  loadSettingsUI();
-  showLoginScreen();
+  // showLoginScreen(); // Removed - using new BIGIN HTML interface
 });
 
 // ============ DATA MANAGEMENT ============

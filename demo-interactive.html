@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArthaInvest CRM - Interactive Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: #f5f7fa;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: linear-gradient(90deg, #0d5c7e 0%, #1a6b8a 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .header h1 { font-size: 28px; margin-bottom: 8px; }
+    .header p { font-size: 14px; opacity: 0.9; }
+
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .demo-section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0d5c7e;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #00d4aa;
+    }
+
+    /* MOBILE PREVIEW */
+    .mobile-preview {
+      background: white;
+      border: 12px solid #333;
+      border-radius: 20px;
+      width: 375px;
+      max-width: 100%;
+      height: 667px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      margin: 0 auto;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    .mobile-header {
+      background: linear-gradient(90deg, #0d5c7e 0%, #1a6b8a 100%);
+      color: white;
+      padding: 12px 16px 8px;
+      flex-shrink: 0;
+    }
+
+    .mobile-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .mobile-nav {
+      display: flex;
+      justify-content: space-around;
+      border-top: 1px solid #e0e0e0;
+      padding: 8px 0;
+      flex-shrink: 0;
+      background: white;
+    }
+
+    .nav-item {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      cursor: pointer;
+      font-size: 11px;
+      color: #666;
+      transition: all 0.2s;
+    }
+
+    .nav-item.active {
+      color: #00d4aa;
+      font-weight: 700;
+    }
+
+    .nav-icon { font-size: 18px; margin-bottom: 2px; }
+
+    /* PAGES */
+    .page {
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    .stat-card {
+      background: #f5f7fa;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #00d4aa;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #666;
+    }
+
+    .client-card {
+      background: #f5f7fa;
+      border-left: 4px solid #00d4aa;
+      padding: 12px;
+      margin-bottom: 12px;
+      border-radius: 4px;
+    }
+
+    .client-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0d5c7e;
+      margin-bottom: 4px;
+    }
+
+    .client-info {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .status-buttons {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    .status-btn {
+      padding: 6px;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+      background: white;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .status-btn:hover {
+      background: #f5f7fa;
+    }
+
+    .status-btn:active {
+      background: #00d4aa;
+      color: white;
+      border-color: #00d4aa;
+    }
+
+    .voice-button {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00d4aa 0%, #00a88a 100%);
+      border: none;
+      color: white;
+      font-size: 48px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,212,170,0.3);
+      margin: 20px auto;
+      transition: all 0.2s;
+    }
+
+    .voice-button:hover {
+      transform: scale(1.05);
+    }
+
+    .voice-button:active {
+      transform: scale(0.95);
+    }
+
+    .voice-status {
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 16px;
+    }
+
+    .notification {
+      background: #00d4aa;
+      color: white;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      animation: slideDown 0.3s ease;
+    }
+
+    @keyframes slideDown {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* DEMO CONTROLS */
+    .demo-controls {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-top: 20px;
+    }
+
+    .control-group {
+      margin-bottom: 16px;
+    }
+
+    .control-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0d5c7e;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .control-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+      background: white;
+      color: #0d5c7e;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      background: #f5f7fa;
+      border-color: #00d4aa;
+      color: #00d4aa;
+    }
+
+    .btn:active {
+      background: #00d4aa;
+      color: white;
+      border-color: #00d4aa;
+    }
+
+    .btn.primary {
+      background: #00d4aa;
+      color: white;
+      border-color: #00d4aa;
+    }
+
+    .btn.primary:hover {
+      background: #00a88a;
+    }
+
+    .info-box {
+      background: #f0f8ff;
+      border-left: 4px solid #00d4aa;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #0d5c7e;
+      margin-bottom: 12px;
+    }
+
+    .credentials {
+      background: #fffaf0;
+      border-left: 4px solid #ff9800;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 12px;
+      font-family: monospace;
+    }
+
+    .feature-list {
+      list-style: none;
+      font-size: 13px;
+    }
+
+    .feature-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .feature-list li:before {
+      content: "✓ ";
+      color: #00d4aa;
+      font-weight: 700;
+      margin-right: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- HEADER -->
+    <div class="header">
+      <h1>🎤 ArthaInvest CRM - Mobile App Interactive Demo</h1>
+      <p>Test the Voice Assistant & Employee Features Live</p>
+    </div>
+
+    <div class="demo-grid">
+      <!-- MOBILE APP PREVIEW -->
+      <div class="demo-section">
+        <div class="section-title">📱 Mobile App Preview</div>
+
+        <div class="mobile-preview">
+          <!-- HEADER -->
+          <div class="mobile-header">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <div style="font-size: 14px; font-weight: 700;">📊 ArthaInvest</div>
+              <div style="font-size: 11px; opacity: 0.8;" id="mobileTime">14:30</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.2); padding: 6px 8px; border-radius: 4px; font-size: 11px;">
+              Logged in as: Rajesh
+            </div>
+          </div>
+
+          <!-- CONTENT -->
+          <div class="mobile-content">
+            <!-- HOME PAGE -->
+            <div id="home" class="page active">
+              <div style="font-size: 13px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px;">📊 Today's Stats</div>
+              <div class="stat-card">
+                <div class="stat-value">5</div>
+                <div class="stat-label">Calls Made</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">3</div>
+                <div class="stat-label">Deals Progressed</div>
+              </div>
+
+              <div style="font-size: 13px; font-weight: 700; color: #0d5c7e; margin: 16px 0 12px 0;">👥 Quick Access</div>
+              <div class="client-card">
+                <div class="client-name">Rajesh Kumar</div>
+                <div class="client-info">Portfolio: ₹45,00,000</div>
+                <div class="status-buttons">
+                  <button class="status-btn" onclick="quickUpdate('Call')">📞</button>
+                  <button class="status-btn" onclick="quickUpdate('Proposal')">📄</button>
+                  <button class="status-btn" onclick="quickUpdate('Deal')">✅</button>
+                  <button class="status-btn" onclick="quickUpdate('Follow-up')">📅</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- VOICE PAGE -->
+            <div id="voice" class="page">
+              <div style="text-align: center; padding: 20px 0;">
+                <button class="voice-button" onclick="startVoiceDemo()" id="voiceBtn">🎤</button>
+                <div class="voice-status" id="voiceStatus">Ready to listen</div>
+              </div>
+
+              <div style="font-size: 13px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px;">Quick Buttons</div>
+              <div class="status-buttons">
+                <button class="status-btn" style="padding: 10px; grid-column: 1 / -1;" onclick="quickUpdate('Call Completed')">📞 Call Completed</button>
+                <button class="status-btn" style="padding: 10px; grid-column: 1 / -1;" onclick="quickUpdate('Proposal Sent')">📄 Proposal Sent</button>
+                <button class="status-btn" style="padding: 10px; grid-column: 1 / -1;" onclick="quickUpdate('Deal Closed')">✅ Deal Closed</button>
+              </div>
+            </div>
+
+            <!-- CLIENTS PAGE -->
+            <div id="clients" class="page">
+              <div style="font-size: 13px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px;">👥 My Clients (8)</div>
+
+              <div class="client-card">
+                <div class="client-name">Rajesh Kumar</div>
+                <div class="client-info">₹45,00,000 | Active</div>
+                <div class="status-buttons">
+                  <button class="status-btn" onclick="quickUpdate('Rajesh: Call')">📞</button>
+                  <button class="status-btn" onclick="quickUpdate('Rajesh: Proposal')">📄</button>
+                  <button class="status-btn" onclick="quickUpdate('Rajesh: Deal')">✅</button>
+                  <button class="status-btn" onclick="quickUpdate('Rajesh: Followup')">📅</button>
+                </div>
+              </div>
+
+              <div class="client-card">
+                <div class="client-name">Priya Sharma</div>
+                <div class="client-info">₹32,50,000 | Active</div>
+                <div class="status-buttons">
+                  <button class="status-btn" onclick="quickUpdate('Priya: Call')">📞</button>
+                  <button class="status-btn" onclick="quickUpdate('Priya: Proposal')">📄</button>
+                  <button class="status-btn" onclick="quickUpdate('Priya: Deal')">✅</button>
+                  <button class="status-btn" onclick="quickUpdate('Priya: Followup')">📅</button>
+                </div>
+              </div>
+
+              <div class="client-card">
+                <div class="client-name">Amit Patel</div>
+                <div class="client-info">₹28,75,000 | Follow-up</div>
+                <div class="status-buttons">
+                  <button class="status-btn" onclick="quickUpdate('Amit: Call')">📞</button>
+                  <button class="status-btn" onclick="quickUpdate('Amit: Proposal')">📄</button>
+                  <button class="status-btn" onclick="quickUpdate('Amit: Deal')">✅</button>
+                  <button class="status-btn" onclick="quickUpdate('Amit: Followup')">📅</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- DIGILOCKER PAGE -->
+            <div id="digilocker" class="page">
+              <div style="font-size: 13px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px;">🔐 DigiLocker</div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div class="stat-card">
+                  <div style="font-size: 18px; margin-bottom: 4px;">🆔</div>
+                  <div class="stat-label">KYC (2)</div>
+                </div>
+                <div class="stat-card">
+                  <div style="font-size: 18px; margin-bottom: 4px;">📄</div>
+                  <div class="stat-label">Statements (3)</div>
+                </div>
+                <div class="stat-card">
+                  <div style="font-size: 18px; margin-bottom: 4px;">📋</div>
+                  <div class="stat-label">Others (2)</div>
+                </div>
+                <div class="stat-card">
+                  <div style="font-size: 18px; margin-bottom: 4px;">📤</div>
+                  <div class="stat-label">Upload</div>
+                </div>
+              </div>
+
+              <button class="btn primary" style="width: 100%; margin-top: 12px;" onclick="quickUpdate('Uploaded Document')">📤 Upload Document</button>
+            </div>
+
+            <!-- INVOICES PAGE -->
+            <div id="invoices" class="page">
+              <div style="font-size: 13px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px;">📄 Invoices</div>
+
+              <div class="stat-card">
+                <div class="stat-value">₹5.3 L</div>
+                <div class="stat-label">Total Invoiced</div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-value">₹2.8 L</div>
+                <div class="stat-label">Pending Payment</div>
+              </div>
+
+              <div style="font-size: 12px; margin-top: 12px;">
+                <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                  <strong>ARTH-1001</strong>
+                  <span style="color: #00d4aa;">✓ Paid</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                  <strong>ARTH-1002</strong>
+                  <span style="color: #FF9800;">⏳ Pending</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- NAVIGATION -->
+          <div class="mobile-nav">
+            <div class="nav-item active" onclick="switchPage('home', this)">
+              <div class="nav-icon">🏠</div>
+              <div>Home</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('clients', this)">
+              <div class="nav-icon">👥</div>
+              <div>Clients</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('voice', this)">
+              <div class="nav-icon">🎤</div>
+              <div>Voice</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('digilocker', this)">
+              <div class="nav-icon">🔐</div>
+              <div>Locker</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('invoices', this)">
+              <div class="nav-icon">📄</div>
+              <div>Invoices</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FEATURES & CONTROLS -->
+      <div>
+        <!-- FEATURES -->
+        <div class="demo-section">
+          <div class="section-title">✨ Features Included</div>
+
+          <ul class="feature-list">
+            <li>Voice commands (8 status updates)</li>
+            <li>Quick status buttons</li>
+            <li>Client quick access</li>
+            <li>DigiLocker integration</li>
+            <li>Invoice viewing</li>
+            <li>Today's activity stats</li>
+            <li>Mobile optimized</li>
+            <li>Works on any phone</li>
+          </ul>
+        </div>
+
+        <!-- NOTIFICATIONS -->
+        <div class="demo-section">
+          <div class="section-title">🔔 Live Updates</div>
+          <div id="notificationArea"></div>
+        </div>
+
+        <!-- DEMO CONTROLS -->
+        <div class="demo-section">
+          <div class="section-title">🎮 Try Voice Commands</div>
+
+          <div class="control-group">
+            <label class="control-label">Sample Voice Commands:</label>
+            <div class="control-buttons">
+              <button class="btn" onclick="simulateVoice('Call completed')">📞 Call Completed</button>
+              <button class="btn" onclick="simulateVoice('Proposal sent')">📄 Proposal Sent</button>
+              <button class="btn" onclick="simulateVoice('Deal closed')">✅ Deal Closed</button>
+              <button class="btn" onclick="simulateVoice('Follow up scheduled')">📅 Follow-up</button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">Employee Logins:</label>
+            <div class="control-buttons">
+              <button class="btn" onclick="loginAs('Rajesh (Sales)', 'rajesh')">Rajesh</button>
+              <button class="btn" onclick="loginAs('Priya (Insurance)', 'priya')">Priya</button>
+              <button class="btn" onclick="loginAs('Amit (Loans)', 'amit')">Amit</button>
+              <button class="btn" onclick="loginAs('Sneha (Funds)', 'sneha')">Sneha</button>
+            </div>
+          </div>
+
+          <div class="info-box">
+            💡 <strong>Tip:</strong> Tap any status button or use voice commands to see real-time updates!
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOGIN & CREDENTIALS -->
+    <div class="demo-section">
+      <div class="section-title">🔐 Employee Login Credentials</div>
+
+      <div class="credentials">
+        <strong>Admin:</strong> admin / admin123<br><br>
+        <strong>Sales (Rajesh):</strong> rajesh / rajesh123<br>
+        <strong>Insurance (Priya):</strong> priya / priya123<br>
+        <strong>Loans (Amit):</strong> amit / amit123<br>
+        <strong>Funds (Sneha):</strong> sneha / sneha123<br>
+        <strong>Marketing (Vikram):</strong> vikram / vikram123
+      </div>
+
+      <div class="info-box">
+        ✓ All accounts ready to test<br>
+        ✓ Each has role-based access<br>
+        ✓ Same credentials for desktop & mobile
+      </div>
+    </div>
+
+    <!-- SYSTEM INFO -->
+    <div class="demo-section">
+      <div class="section-title">📊 System Information</div>
+
+      <div style="font-size: 13px; line-height: 1.8; color: #666;">
+        <div><strong>Version:</strong> 3.0 Enterprise Edition</div>
+        <div><strong>Build Date:</strong> 2026-08-11</div>
+        <div><strong>Status:</strong> ✅ Production Ready</div>
+        <div style="margin-top: 12px;"><strong>Integrated Data:</strong></div>
+        <div style="margin-left: 16px;">
+          • 320 Active Clients<br>
+          • 145 Sales Prospects<br>
+          • 95 Insurance Policies<br>
+          • 45 Active Loans (DSA)<br>
+          • 280 Mutual Fund Investments<br>
+          • ₹32.5 Cr Total AUM<br>
+          • ₹4.87 L Monthly Commission
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Update time
+    setInterval(() => {
+      const now = new Date();
+      document.getElementById('mobileTime').textContent = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    }, 1000);
+
+    // Switch pages
+    function switchPage(pageId, element) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+      document.getElementById(pageId).classList.add('active');
+      if (element) element.classList.add('active');
+    }
+
+    // Simulate voice
+    function simulateVoice(command) {
+      const voiceStatus = document.getElementById('voiceStatus');
+      voiceStatus.textContent = `Heard: "${command}"`;
+
+      setTimeout(() => {
+        voiceStatus.textContent = '✓ Status updated!';
+        showNotification(`Voice command recognized: "${command}"`);
+      }, 800);
+
+      setTimeout(() => {
+        voiceStatus.textContent = 'Ready to listen';
+      }, 3000);
+    }
+
+    // Voice demo
+    function startVoiceDemo() {
+      const btn = document.getElementById('voiceBtn');
+      const status = document.getElementById('voiceStatus');
+
+      if (btn.textContent === '🎙️') {
+        btn.textContent = '⏹️';
+        status.textContent = 'Listening... Speak now';
+
+        setTimeout(() => {
+          btn.textContent = '🎤';
+          status.textContent = '✓ Command received!';
+          showNotification('Voice command processed successfully');
+        }, 2000);
+      }
+    }
+
+    // Quick update
+    function quickUpdate(action) {
+      showNotification(`✓ ${action}`);
+    }
+
+    // Login as
+    function loginAs(name, username) {
+      showNotification(`✓ Logged in as ${name}`);
+    }
+
+    // Show notification
+    function showNotification(message) {
+      const area = document.getElementById('notificationArea');
+      const notif = document.createElement('div');
+      notif.className = 'notification';
+      notif.textContent = message;
+      area.insertBefore(notif, area.firstChild);
+
+      setTimeout(() => notif.remove(), 3000);
+    }
+  </script>
+</body>
+</html>
