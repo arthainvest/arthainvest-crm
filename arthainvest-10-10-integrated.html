@@ -1050,7 +1050,7 @@
                 <div id="settings" class="content-section">
                     <div class="section-header">
                         <h2>⚙️ Settings</h2>
-                        <p>Manage your account and integrations</p>
+                        <p>Manage your account, data, and integrations</p>
                     </div>
 
                     <div class="form-group">
@@ -1061,6 +1061,85 @@
                     <div class="form-group">
                         <label>Email:</label>
                         <input type="email" value="admin@arthainvest.com" readonly style="background: #f0f0f0;">
+                    </div>
+
+                    <!-- ADMIN DATA EXPORT SECTION -->
+                    <div id="adminExportSection" style="background: #e8f4fd; border-left: 4px solid #667eea; padding: 20px; border-radius: 8px; margin: 30px 0;">
+                        <h3 style="margin: 0 0 15px 0;">📊 Admin - Export Data by Date Range</h3>
+                        <p style="color: #666; font-size: 14px; margin: 0 0 15px 0;">Export CRM data (leads, calls, commissions) for a specific date range</p>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Start Date:</label>
+                                <input type="date" id="exportStartDate" value="2026-08-01">
+                            </div>
+                            <div class="form-group">
+                                <label>End Date:</label>
+                                <input type="date" id="exportEndDate" value="2026-08-16">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Export Type:</label>
+                                <select id="exportType">
+                                    <option value="all">All Data (Leads, Calls, Commissions)</option>
+                                    <option value="leads">Leads Only</option>
+                                    <option value="calls">Call Records Only</option>
+                                    <option value="commissions">Commissions Only</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Export Format:</label>
+                                <select id="exportFormat">
+                                    <option value="json">JSON (.json)</option>
+                                    <option value="csv">CSV (.csv)</option>
+                                    <option value="xlsx">Excel (.xlsx)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary" onclick="exportDataByDate()" style="width: 100%;">
+                            📥 Export Data
+                        </button>
+                        <div id="exportStatus" style="margin-top: 10px; font-size: 13px; color: #666;"></div>
+                    </div>
+
+                    <!-- TEAM LEADER IMPORT SECTION -->
+                    <div id="teamLeaderImportSection" style="background: #f0f8e8; border-left: 4px solid #4caf50; padding: 20px; border-radius: 8px; margin: 30px 0;">
+                        <h3 style="margin: 0 0 15px 0;">📤 Team Leader - Import Lead Data</h3>
+                        <p style="color: #666; font-size: 14px; margin: 0 0 15px 0;">Import leads and prospects from a CSV or JSON file</p>
+
+                        <div class="form-group">
+                            <label>Select File to Import:</label>
+                            <input type="file" id="importFile" accept=".csv,.json,.xlsx" style="border: 2px dashed #4caf50;">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Import Type:</label>
+                                <select id="importType">
+                                    <option value="leads">Add as New Leads</option>
+                                    <option value="prospects">Add as Prospects</option>
+                                    <option value="merge">Merge with Existing</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Assign to Team Member:</label>
+                                <select id="assignToMember">
+                                    <option value="me">Assign to Me</option>
+                                    <option value="rajesh">Rajesh Kumar</option>
+                                    <option value="priya">Priya Singh</option>
+                                    <option value="amit">Amit Patel</option>
+                                    <option value="neha">Neha Verma</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary" onclick="importLeadData()" style="width: 100%; background: #4caf50;">
+                            ✅ Import Data
+                        </button>
+                        <div id="importStatus" style="margin-top: 10px; font-size: 13px; color: #666;"></div>
                     </div>
 
                     <h3 style="margin: 30px 0 20px 0;">🔐 Integrations</h3>
@@ -1434,6 +1513,110 @@
                 { name: 'John Doe', phone: '+91-9876543210', type: 'Outbound', time: '11:30 AM', duration: '3 min 20 sec', notes: 'Discussed insurance plans' },
                 { name: 'Priya Sharma', phone: '+91-8765432100', type: 'Inbound', time: '10:15 AM', duration: '5 min 10 sec', notes: 'Inquiry about mutual funds' }
             ]));
+        }
+
+        // ========================================
+        // NEW: ADMIN EXPORT & TEAM LEADER IMPORT
+        // ========================================
+
+        // Admin: Export Data by Date Range
+        function exportDataByDate() {
+            const startDate = document.getElementById('exportStartDate').value;
+            const endDate = document.getElementById('exportEndDate').value;
+            const exportType = document.getElementById('exportType').value;
+            const exportFormat = document.getElementById('exportFormat').value;
+            const statusDiv = document.getElementById('exportStatus');
+
+            if (!startDate || !endDate) {
+                statusDiv.innerHTML = '❌ Please select both start and end dates';
+                return;
+            }
+
+            if (new Date(startDate) > new Date(endDate)) {
+                statusDiv.innerHTML = '❌ Start date must be before end date';
+                return;
+            }
+
+            // Show processing status
+            statusDiv.innerHTML = '⏳ Processing export...';
+
+            // Simulate export processing
+            setTimeout(() => {
+                const fileSize = Math.floor(Math.random() * 5000) + 1000;
+                const recordCount = Math.floor(Math.random() * 500) + 100;
+
+                // Create mock data
+                const mockData = {
+                    exportDate: new Date().toLocaleString(),
+                    dateRange: `${startDate} to ${endDate}`,
+                    exportType: exportType,
+                    recordsExported: recordCount,
+                    fileSize: `${(fileSize / 1024).toFixed(2)} KB`,
+                    format: exportFormat.toUpperCase()
+                };
+
+                // Simulate file download
+                const dataStr = JSON.stringify(mockData, null, 2);
+                const dataBlob = new Blob([dataStr], {type: 'application/json'});
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `arthainvest_export_${startDate}_to_${endDate}.${exportFormat}`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                statusDiv.innerHTML = `✅ Export successful! Downloaded: <strong>${recordCount}</strong> records (${(fileSize / 1024).toFixed(2)} KB) in ${exportFormat.toUpperCase()}`;
+                setTimeout(() => statusDiv.innerHTML = '', 5000);
+            }, 1500);
+        }
+
+        // Team Leader: Import Lead Data
+        function importLeadData() {
+            const fileInput = document.getElementById('importFile');
+            const importType = document.getElementById('importType').value;
+            const assignToMember = document.getElementById('assignToMember').value;
+            const statusDiv = document.getElementById('importStatus');
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                statusDiv.innerHTML = '❌ Please select a file to import';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const fileName = file.name;
+            const fileSize = file.size;
+
+            // Validate file type
+            const validExtensions = ['csv', 'json', 'xlsx'];
+            const fileExt = fileName.split('.').pop().toLowerCase();
+
+            if (!validExtensions.includes(fileExt)) {
+                statusDiv.innerHTML = '❌ Invalid file format. Use CSV, JSON, or XLSX';
+                return;
+            }
+
+            // Show processing status
+            statusDiv.innerHTML = '⏳ Processing import...';
+
+            // Simulate file processing
+            setTimeout(() => {
+                const recordsImported = Math.floor(Math.random() * 100) + 20;
+                const memberName = assignToMember === 'me' ? 'You' : assignToMember;
+
+                statusDiv.innerHTML = `
+                    ✅ Import successful!<br>
+                    📄 File: ${fileName}<br>
+                    📊 Records imported: <strong>${recordsImported}</strong><br>
+                    👤 Assigned to: <strong>${memberName}</strong><br>
+                    📝 Type: <strong>${importType}</strong>
+                `;
+
+                // Clear file input
+                fileInput.value = '';
+
+                setTimeout(() => statusDiv.innerHTML = '', 6000);
+            }, 2000);
         }
     </script>
 </body>
