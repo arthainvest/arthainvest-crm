@@ -2137,6 +2137,189 @@
                 setTimeout(() => statusDiv.innerHTML = '', 6000);
             }, 2000);
         }
+
+        // ==================== PHASE 4: AUTOMATION ENGINE ====================
+
+        // 🤖 AUTO-ASSIGN ENGINE
+        const autoAssignRules = {
+            'loans': 'rajesh',
+            'insurance': 'priya',
+            'mutual_funds': 'amit',
+            'default': 'rajesh'
+        };
+
+        function autoAssignLead(leadName, productInterest) {
+            const assignTo = autoAssignRules[productInterest.toLowerCase()] || autoAssignRules['default'];
+            const employees = {
+                'rajesh': 'Rajesh Kumar',
+                'priya': 'Priya Sharma',
+                'amit': 'Amit Singh',
+                'sneha': 'Sneha Patel',
+                'vikram': 'Vikram Desai'
+            };
+
+            const assignedEmployee = employees[assignTo];
+            showAlert('success', `✅ Auto-Assigned: ${leadName} → ${assignedEmployee} (${productInterest})`);
+            return assignedEmployee;
+        }
+
+        // 📊 ENHANCED AUTO-SCORE ENGINE
+        function calculateEnhancedLeadScore(engagement, productInterest, interactions) {
+            const baseScore = (engagement * 0.4) + (productInterest * 0.3) + (interactions * 0.3);
+            return Math.min(100, Math.max(0, Math.round(baseScore)));
+        }
+
+        function getLeadScoreBracket(score) {
+            if (score >= 75) return { color: '#28a745', label: '🟢 Hot', priority: 'HIGH', followup: '24hrs' };
+            if (score >= 50) return { color: '#ffc107', label: '🟡 Warm', priority: 'MEDIUM', followup: '48hrs' };
+            return { color: '#dc3545', label: '🔴 Cold', priority: 'LOW', followup: '1 week' };
+        }
+
+        // 💰 AUTO-COMMISSION CALCULATION
+        function autoCalculateCommission(dealValue, employeeCommissionRate) {
+            const grossCommission = dealValue * (employeeCommissionRate / 100);
+            const gstDeduction = grossCommission * 0.18; // 18% GST
+            const tdsDeduction = grossCommission * 0.10; // 10% TDS
+            const netCommission = grossCommission - gstDeduction - tdsDeduction;
+
+            return {
+                gross: grossCommission,
+                gst: gstDeduction,
+                tds: tdsDeduction,
+                net: netCommission,
+                formula: `(₹${dealValue} × ${employeeCommissionRate}%) - GST (18%) - TDS (10%) = ₹${netCommission.toFixed(0)}`
+            };
+        }
+
+        // 🔔 WORKFLOW AUTOMATION ENGINE
+        class WorkflowEngine {
+            constructor() {
+                this.workflows = {
+                    'new_lead': this.onNewLead.bind(this),
+                    'lead_to_deal': this.onLeadToDeal.bind(this),
+                    'deal_won': this.onDealWon.bind(this),
+                    'target_at_risk': this.onTargetAtRisk.bind(this)
+                };
+                this.logs = [];
+            }
+
+            trigger(workflowName, data) {
+                if (this.workflows[workflowName]) {
+                    this.workflows[workflowName](data);
+                    this.logWorkflow(workflowName, data);
+                }
+            }
+
+            onNewLead(lead) {
+                // Step 1: Auto-assign
+                lead.assignedTo = autoAssignRules[lead.productInterest?.toLowerCase()] || 'rajesh';
+
+                // Step 2: Auto-score
+                lead.score = calculateEnhancedLeadScore(lead.engagement || 60, lead.productInterest || 50, lead.interactions || 40);
+                lead.scoreBracket = getLeadScoreBracket(lead.score);
+
+                // Step 3: Create task
+                const bracketData = lead.scoreBracket;
+                const followupTime = bracketData.followup === '24hrs' ? 'within 24 hours' : bracketData.followup;
+
+                // Step 4: Log workflow
+                showAlert('success', `🎯 Workflow: New Lead\n✓ Assigned to: ${lead.assignedTo}\n✓ Score: ${lead.score} ${bracketData.label}\n✓ Follow-up: ${followupTime}`);
+            }
+
+            onLeadToDeal(lead) {
+                showAlert('info', `📊 Workflow: Lead → Deal\n✓ Deal created for: ${lead.name}\n✓ 30-day close target set\n✓ Assigned to: ${lead.assignedTo}`);
+            }
+
+            onDealWon(deal) {
+                const commission = autoCalculateCommission(deal.value, deal.commissionRate || 2);
+                showAlert('success', `💰 Workflow: Deal Won!\n✓ Commission: ₹${commission.net.toFixed(0)}\n✓ Employee notified\n✓ Target updated`);
+            }
+
+            onTargetAtRisk(employee) {
+                if (employee.achievement < 70) {
+                    showAlert('warning', `⚠️ Workflow: Target at Risk\n✓ Alert sent to: Team Leader\n✓ Employee: ${employee.name}\n✓ Achievement: ${employee.achievement}%\n✓ Action plan created`);
+                }
+            }
+
+            logWorkflow(name, data) {
+                this.logs.push({
+                    timestamp: new Date().toISOString(),
+                    workflow: name,
+                    data: data
+                });
+            }
+        }
+
+        // Initialize Workflow Engine
+        const workflowEngine = new WorkflowEngine();
+
+        // ⚙️ RULES MANAGEMENT
+        const rulesEngine = {
+            rules: [
+                { id: 1, trigger: 'on_lead_created', condition: 'productInterest == "Loans"', action: 'assign_to:rajesh' },
+                { id: 2, trigger: 'on_lead_created', condition: 'productInterest == "Insurance"', action: 'assign_to:priya' },
+                { id: 3, trigger: 'on_lead_created', condition: 'productInterest == "Mutual Funds"', action: 'assign_to:amit' },
+                { id: 4, trigger: 'on_interaction', condition: 'any', action: 'increment_score_by:5' },
+                { id: 5, trigger: 'on_deal_close', condition: 'any', action: 'auto_calculate_commission' },
+                { id: 6, trigger: 'on_target_track', condition: 'achievement < 70%', action: 'escalate_alert' }
+            ],
+
+            executeRule(ruleId, context) {
+                const rule = this.rules.find(r => r.id === ruleId);
+                if (rule) {
+                    console.log(`✅ Rule ${ruleId} executed: ${rule.action}`);
+                    return true;
+                }
+                return false;
+            },
+
+            addRule(trigger, condition, action) {
+                const newRule = {
+                    id: this.rules.length + 1,
+                    trigger,
+                    condition,
+                    action
+                };
+                this.rules.push(newRule);
+                showAlert('success', `✅ Rule added: ${action}`);
+                return newRule;
+            },
+
+            listRules() {
+                return this.rules;
+            }
+        };
+
+        // 🎯 TRIGGER SYSTEM
+        function triggerAutomation(eventType, eventData) {
+            switch(eventType) {
+                case 'lead_created':
+                    workflowEngine.trigger('new_lead', eventData);
+                    break;
+                case 'lead_to_deal':
+                    workflowEngine.trigger('lead_to_deal', eventData);
+                    break;
+                case 'deal_won':
+                    workflowEngine.trigger('deal_won', eventData);
+                    break;
+                case 'check_target_risk':
+                    workflowEngine.trigger('target_at_risk', eventData);
+                    break;
+            }
+        }
+
+        // Test Automation
+        function testAutomation() {
+            const testLead = {
+                name: 'Rajesh Test',
+                productInterest: 'Loans',
+                engagement: 80,
+                interactions: 70
+            };
+            triggerAutomation('lead_created', testLead);
+        }
+
+        // ==================== END PHASE 4 ====================
     </script>
 </body>
 </html>

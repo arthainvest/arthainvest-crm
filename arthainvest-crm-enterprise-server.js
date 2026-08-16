@@ -769,9 +769,127 @@ app.post('/api/connectors/linkedin', verifyToken, (req, res) => {
   );
 });
 
+// ==================== AUTO-LEAD ROUTING & PREDICTIVE ANALYTICS ====================
+const LeadRoutingEngine = require('./auto-lead-routing');
+const PredictiveAnalyticsEngine = require('./predictive-analytics');
+
+const routingEngine = new LeadRoutingEngine();
+const analyticsEngine = new PredictiveAnalyticsEngine();
+
+// Auto-route a new lead
+app.post('/api/leads/auto-route', verifyToken, (req, res) => {
+  const { leadId, leadName, phone, email, company, designation, notes, location } = req.body;
+
+  // Get available sales reps
+  db.all('SELECT * FROM users WHERE role = "sales_rep" AND status = "active"', (err, reps) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    const lead = { id: leadId, name: leadName, phone, email, company, designation, notes, location };
+    const routingDecision = routingEngine.routeLead(lead, reps);
+
+    // Save routing decision to database
+    db.run(
+      'UPDATE leads SET assigned_to = ?, routing_score = ? WHERE id = ?',
+      [routingDecision.assignedRep, routingDecision.score, leadId],
+      function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(routingDecision);
+      }
+    );
+  });
+});
+
+// Get lead score (predictive)
+app.get('/api/leads/:id/score', verifyToken, (req, res) => {
+  db.get('SELECT * FROM leads WHERE id = ?', [req.params.id], (err, lead) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    // Get lead interactions (calls, emails, etc.)
+    db.all('SELECT * FROM activities WHERE lead_id = ?', [req.params.id], (err, interactions) => {
+      const leadScore = analyticsEngine.calculateLeadScore(lead, interactions);
+      const recommendations = analyticsEngine.recommendProduct(lead);
+
+      res.json({
+        leadId: lead.id,
+        leadName: lead.lead_name,
+        score: leadScore,
+        scoreLevel: leadScore > 70 ? 'High' : leadScore > 40 ? 'Medium' : 'Low',
+        productRecommendations: recommendations,
+        engagementMetrics: {
+          totalInteractions: interactions?.length || 0,
+          lastInteraction: interactions?.[0]?.timestamp || 'Never'
+        }
+      });
+    });
+  });
+});
+
+// Predict deal closure probability
+app.post('/api/deals/:id/predict-closure', verifyToken, (req, res) => {
+  db.get('SELECT * FROM deals WHERE id = ?', [req.params.id], (err, deal) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!deal) return res.status(404).json({ error: 'Deal not found' });
+
+    db.get('SELECT * FROM leads WHERE id = ?', [deal.lead_id], (err, lead) => {
+      db.get('SELECT * FROM users WHERE id = ?', [deal.assigned_to], (err, rep) => {
+        const prediction = analyticsEngine.predictDealClosure(deal, lead, rep);
+        res.json(prediction);
+      });
+    });
+  });
+});
+
+// Get best call time prediction
+app.get('/api/leads/:id/best-call-time', verifyToken, (req, res) => {
+  db.get('SELECT * FROM leads WHERE id = ?', [req.params.id], (err, lead) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    const callTime = analyticsEngine.predictBestCallTime(lead);
+    res.json(callTime);
+  });
+});
+
+// Predict churn risk for client
+app.post('/api/clients/:id/churn-risk', verifyToken, (req, res) => {
+  const { lastInteractionDaysAgo, totalValue, productCount } = req.body;
+
+  const client = { totalValue, productCount };
+  const churnPrediction = analyticsEngine.predictChurnRisk(client, lastInteractionDaysAgo);
+
+  res.json(churnPrediction);
+});
+
+// Get routing analytics
+app.get('/api/analytics/routing', verifyToken, (req, res) => {
+  const analytics = routingEngine.getRoutingAnalytics(req.query.timeframe || '30days');
+  res.json(analytics);
+});
+
+// Get predictive analytics dashboard
+app.get('/api/analytics/predictions', verifyToken, (req, res) => {
+  const dashboard = analyticsEngine.getAnalyticsDashboard();
+  res.json(dashboard);
+});
+
+// Create custom routing rule
+app.post('/api/routing-rules', verifyToken, (req, res) => {
+  const { productType, config } = req.body;
+  const result = routingEngine.createRoutingRule(productType, config);
+  res.json(result);
+});
+
+// Update sales rep capacity
+app.put('/api/sales-reps/:id/capacity', verifyToken, (req, res) => {
+  const { capacity } = req.body;
+  const result = routingEngine.updateRepCapacity(req.params.id, capacity);
+  res.json(result);
+});
+
 // ==================== START SERVER ====================
 app.listen(PORT, () => {
   console.log(`🚀 ArthaInvest Enterprise CRM running on http://localhost:${PORT}`);
   console.log(`📊 All 50+ API endpoints ready`);
-  console.log(`✅ Features: Leads, Calls, WhatsApp, Email, LinkedIn, Analytics, More...`);
+  console.log(`✅ Features: Leads, Calls, WhatsApp, Email, LinkedIn, Analytics, Auto-Lead Routing, Predictive Analytics...`);
 });
