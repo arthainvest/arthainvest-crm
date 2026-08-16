@@ -321,7 +321,6 @@
         <div class="nav-section">
           <div class="nav-item active" onclick="switchPage('pipelines', this)"><span class="nav-icon">📈</span><span>Pipelines</span></div>
           <div class="nav-item" onclick="switchPage('contacts', this)"><span class="nav-icon">👥</span><span>Contacts</span></div>
-          <div class="nav-item" onclick="switchPage('companies', this)"><span class="nav-icon">🏢</span><span>Companies</span></div>
           <div class="nav-item" onclick="switchPage('products', this)"><span class="nav-icon">📦</span><span>Products</span></div>
           <div class="nav-item" onclick="switchPage('activities', this)"><span class="nav-icon">📝</span><span>Activities</span></div>
           <div class="nav-item" onclick="switchPage('dashboard', this)"><span class="nav-icon">📊</span><span>Dashboard</span></div>
@@ -331,14 +330,8 @@
         <!-- WORK MODULES -->
         <div class="nav-section-title">Work Modules</div>
         <div class="nav-section">
-          <div class="nav-item" onclick="switchPage('recruitment', this)"><span class="nav-icon">👔</span><span>Recruitment</span></div>
-          <div class="nav-item" onclick="switchPage('refund', this)"><span class="nav-icon">💰</span><span>Refund Processing</span></div>
-          <div class="nav-item" onclick="switchPage('order', this)"><span class="nav-icon">📦</span><span>Order Fulfillment</span></div>
           <div class="nav-item" onclick="switchPage('website', this)"><span class="nav-icon">🌐</span><span>Website Launch</span></div>
-          <div class="nav-item" onclick="switchPage('press', this)"><span class="nav-icon">📰</span><span>Press Release</span></div>
-          <div class="nav-item" onclick="switchPage('events', this)"><span class="nav-icon">🎉</span><span>Event Sponsorship</span></div>
           <div class="nav-item" onclick="switchPage('content', this)"><span class="nav-icon">✏️</span><span>Content Planner</span></div>
-          <div class="nav-item" onclick="switchPage('onboarding', this)"><span class="nav-icon">🎓</span><span>Employee Onboarding</span></div>
           <div class="nav-item" onclick="switchPage('issues', this)"><span class="nav-icon">🐛</span><span>Issue Tracker</span></div>
           <div class="nav-item" onclick="switchPage('it', this)"><span class="nav-icon">💻</span><span>IT Requests</span></div>
           <div class="nav-item" onclick="switchPage('marketing', this)"><span class="nav-icon">📢</span><span>Marketing Campaign</span></div>
@@ -477,47 +470,6 @@
           </table>
         </div>
 
-        <!-- COMPANIES PAGE -->
-        <div id="companies" class="page">
-          <table>
-            <thead>
-              <tr>
-                <th>Company Name</th>
-                <th>Industry</th>
-                <th>Location</th>
-                <th>Contacts</th>
-                <th>Deal Value</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Tech Innovations Ltd</td>
-                <td>IT Services</td>
-                <td>Bangalore</td>
-                <td>5</td>
-                <td>₹45,00,000</td>
-                <td><span class="badge badge-green">Active</span></td>
-              </tr>
-              <tr>
-                <td>Finance Solutions</td>
-                <td>Financial Services</td>
-                <td>Mumbai</td>
-                <td>8</td>
-                <td>₹78,00,000</td>
-                <td><span class="badge badge-green">Active</span></td>
-              </tr>
-              <tr>
-                <td>Real Estate Group</td>
-                <td>Real Estate</td>
-                <td>Delhi</td>
-                <td>3</td>
-                <td>₹65,00,000</td>
-                <td><span class="badge badge-orange">Prospect</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
 
         <!-- PRODUCTS PAGE -->
         <div id="products" class="page">
@@ -631,119 +583,8 @@
           </div>
         </div>
 
-        <!-- RECRUITMENT PAGE -->
-        <div id="recruitment" class="page">
-          <div class="kanban-board">
-            <div class="kanban-column">
-              <div class="column-title">Open Positions</div>
-              <div class="kanban-card">
-                <div class="card-title">Senior Developer</div>
-                <div class="card-value">5 Applications</div>
-              </div>
-              <div class="kanban-card">
-                <div class="card-title">Sales Manager</div>
-                <div class="card-value">12 Applications</div>
-              </div>
-            </div>
-            <div class="kanban-column">
-              <div class="column-title">In Progress</div>
-              <div class="kanban-card">
-                <div class="card-title">Candidate: Rahul Sharma</div>
-                <div class="card-value">Technical Interview Scheduled</div>
-              </div>
-              <div class="kanban-card">
-                <div class="card-title">Candidate: Sneha Desai</div>
-                <div class="card-value">HR Round Pending</div>
-              </div>
-            </div>
-            <div class="kanban-column">
-              <div class="column-title">Offers Extended</div>
-              <div class="kanban-card">
-                <div class="card-title">Candidate: Vikram Nair</div>
-                <div class="card-value">Offer Accepted - Start Date: Sept 1</div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- REFUND PROCESSING PAGE -->
-        <div id="refund" class="page">
-          <div class="card-grid">
-            <div class="info-card">
-              <div class="card-label">Total Refunds This Month</div>
-              <div class="card-amount">₹12,50,000</div>
-            </div>
-            <div class="info-card">
-              <div class="card-label">Pending</div>
-              <div class="card-amount">23</div>
-            </div>
-            <div class="info-card">
-              <div class="card-label">Processed</div>
-              <div class="card-amount">156</div>
-            </div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Customer</th>
-                <th>Amount</th>
-                <th>Reason</th>
-                <th>Requested Date</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Rajesh Kumar</td>
-                <td>₹2,50,000</td>
-                <td>Policy Cancellation</td>
-                <td>Aug 8, 2026</td>
-                <td><span class="badge badge-green">Processed</span></td>
-              </tr>
-              <tr>
-                <td>Amit Patel</td>
-                <td>₹50,000</td>
-                <td>Duplicate Charge</td>
-                <td>Aug 9, 2026</td>
-                <td><span class="badge badge-blue">Pending</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
 
-        <!-- ORDER FULFILLMENT PAGE -->
-        <div id="order" class="page">
-          <div class="kanban-board">
-            <div class="kanban-column">
-              <div class="column-title">New Orders</div>
-              <div class="kanban-card">
-                <div class="card-title">Order #1024</div>
-                <div class="card-value">₹3,50,000 - Premium SIP Package</div>
-              </div>
-            </div>
-            <div class="kanban-column">
-              <div class="column-title">Processing</div>
-              <div class="kanban-card">
-                <div class="card-title">Order #1023</div>
-                <div class="card-value">In Fulfillment</div>
-              </div>
-            </div>
-            <div class="kanban-column">
-              <div class="column-title">Shipped</div>
-              <div class="kanban-card">
-                <div class="card-title">Order #1021</div>
-                <div class="card-value">Tracking: DP987654</div>
-              </div>
-            </div>
-            <div class="kanban-column">
-              <div class="column-title">Delivered</div>
-              <div class="kanban-card">
-                <div class="card-title">Order #1020</div>
-                <div class="card-value">Confirmed - Aug 7</div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <!-- WEBSITE LAUNCH PAGE -->
         <div id="website" class="page">
@@ -787,77 +628,7 @@
           </div>
         </div>
 
-        <!-- PRESS RELEASE PAGE -->
-        <div id="press" class="page">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Release Date</th>
-                <th>Status</th>
-                <th>Distribution</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>ArthaInvest Launches New SIP Products</td>
-                <td>Aug 15, 2026</td>
-                <td><span class="badge badge-green">Published</span></td>
-                <td>5 Major News Outlets</td>
-              </tr>
-              <tr>
-                <td>Q2 Financial Results Announcement</td>
-                <td>Aug 10, 2026</td>
-                <td><span class="badge badge-green">Published</span></td>
-                <td>12 Outlets</td>
-              </tr>
-              <tr>
-                <td>New Partnership with TATA Insurance</td>
-                <td>Aug 20, 2026</td>
-                <td><span class="badge badge-blue">Pending</span></td>
-                <td>Scheduled</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
 
-        <!-- EVENT SPONSORSHIP PAGE -->
-        <div id="events" class="page">
-          <table>
-            <thead>
-              <tr>
-                <th>Event Name</th>
-                <th>Date</th>
-                <th>Location</th>
-                <th>Sponsorship Level</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>FinTech Summit 2026</td>
-                <td>Sep 15-16, 2026</td>
-                <td>Bangalore</td>
-                <td>Gold Sponsor - ₹50L</td>
-                <td><span class="badge badge-green">Confirmed</span></td>
-              </tr>
-              <tr>
-                <td>National Investment Conference</td>
-                <td>Oct 5-7, 2026</td>
-                <td>Mumbai</td>
-                <td>Platinum Sponsor - ₹1Cr</td>
-                <td><span class="badge badge-blue">Pending</span></td>
-              </tr>
-              <tr>
-                <td>Women in Finance Forum</td>
-                <td>Sep 20, 2026</td>
-                <td>Delhi</td>
-                <td>Silver Sponsor - ₹25L</td>
-                <td><span class="badge badge-green">Confirmed</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
 
         <!-- CONTENT PLANNER PAGE -->
         <div id="content" class="page">
@@ -897,43 +668,6 @@
           </div>
         </div>
 
-        <!-- EMPLOYEE ONBOARDING PAGE -->
-        <div id="onboarding" class="page">
-          <table>
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Department</th>
-                <th>Start Date</th>
-                <th>Progress</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Vikram Nair</td>
-                <td>Engineering</td>
-                <td>Sep 1, 2026</td>
-                <td>Setup Scheduled</td>
-                <td><span class="badge badge-blue">Pending</span></td>
-              </tr>
-              <tr>
-                <td>Priya Sharma</td>
-                <td>Sales</td>
-                <td>Aug 15, 2026</td>
-                <td>Training in Progress</td>
-                <td><span class="badge badge-green">Active</span></td>
-              </tr>
-              <tr>
-                <td>Rohan Desai</td>
-                <td>Operations</td>
-                <td>Aug 1, 2026</td>
-                <td>Fully Onboarded</td>
-                <td><span class="badge badge-green">Complete</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
 
         <!-- ISSUE TRACKER PAGE -->
         <div id="issues" class="page">
@@ -1337,19 +1071,12 @@
       const titles = {
         'pipelines': 'Pipelines',
         'contacts': 'Contacts',
-        'companies': 'Companies',
         'products': 'Products',
         'activities': 'Activities',
         'dashboard': 'Dashboard',
         'datahub': 'Data Hub',
-        'recruitment': 'Recruitment',
-        'refund': 'Refund Processing',
-        'order': 'Order Fulfillment',
         'website': 'Website Launch',
-        'press': 'Press Release',
-        'events': 'Event Sponsorship',
         'content': 'Content Planner',
-        'onboarding': 'Employee Onboarding',
         'issues': 'Issue Tracker',
         'it': 'IT Requests',
         'marketing': 'Marketing Campaign',
@@ -1361,19 +1088,12 @@
       const subtitles = {
         'pipelines': 'Manage your sales pipeline',
         'contacts': 'Manage customer relationships',
-        'companies': 'Organize company information',
         'products': 'Track your products and services',
         'activities': 'View all your activities',
         'dashboard': 'Your business overview',
         'datahub': 'Unified business intelligence from all data sources',
-        'recruitment': 'Hire and manage talent',
-        'refund': 'Process customer refunds',
-        'order': 'Manage order fulfillment',
         'website': 'Launch and manage website',
-        'press': 'Publish press releases',
-        'events': 'Manage event sponsorships',
         'content': 'Plan content strategy',
-        'onboarding': 'Onboard new employees',
         'issues': 'Track and resolve issues',
         'it': 'IT service requests',
         'marketing': 'Manage marketing campaigns',
