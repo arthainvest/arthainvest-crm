@@ -396,17 +396,239 @@
             background: #555;
         }
 
+        /* HAMBURGER MENU */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 10px;
+        }
+
+        .hamburger span {
+            width: 25px;
+            height: 3px;
+            background: #667eea;
+            border-radius: 2px;
+            transition: 0.3s;
+        }
+
+        .hamburger.active span:nth-child(1) {
+            transform: rotate(45deg) translate(10px, 10px);
+        }
+
+        .hamburger.active span:nth-child(2) {
+            opacity: 0;
+        }
+
+        .hamburger.active span:nth-child(3) {
+            transform: rotate(-45deg) translate(7px, -7px);
+        }
+
+        /* LOADING SPINNER */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(102, 126, 234, 0.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .spinner-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.3);
+            z-index: 999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .spinner-overlay.active {
+            display: flex;
+        }
+
+        .spinner-box {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+
+        .spinner-box .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border-width: 4px;
+        }
+
+        /* DATE FILTER */
+        .filter-bar {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .filter-bar label {
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+
+        .filter-bar input[type="date"],
+        .filter-bar select {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .filter-bar button {
+            padding: 8px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+
+        .filter-bar button:hover {
+            background: #764ba2;
+        }
+
+        /* TARGET PROGRESS */
+        .target-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border-left: 4px solid #667eea;
+        }
+
+        .target-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .target-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .target-percent {
+            font-size: 12px;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #f0f0f0;
+        }
+
+        .target-percent.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .target-percent.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .target-percent.danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
         @media (max-width: 768px) {
             .main-container {
                 grid-template-columns: 1fr;
             }
 
             .sidebar {
-                display: none;
+                position: fixed;
+                left: -280px;
+                top: 0;
+                height: 100vh;
+                width: 280px;
+                z-index: 500;
+                transition: left 0.3s;
+            }
+
+            .sidebar.active {
+                left: 0;
+            }
+
+            .hamburger {
+                display: flex;
             }
 
             .main-content {
                 padding: 20px;
+            }
+
+            .stat-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+
+            .stat-card .value {
+                font-size: 24px;
+            }
+
+            .filter-bar {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .filter-bar input[type="date"],
+            .filter-bar select,
+            .filter-bar button {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stat-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
             }
         }
     </style>
@@ -451,10 +673,25 @@
         <div class="content-area">
             <!-- HEADER -->
             <div class="header">
-                <h1 id="pageTitle">Dashboard</h1>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <button class="hamburger" id="hamburger" onclick="toggleSidebar()">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </button>
+                    <h1 id="pageTitle">Dashboard</h1>
+                </div>
                 <div class="user-info">
                     <span id="userName">Admin User</span>
                     <div class="status-badge"></div>
+                </div>
+            </div>
+
+            <!-- LOADING SPINNER -->
+            <div class="spinner-overlay" id="spinner">
+                <div class="spinner-box">
+                    <div class="loading-spinner"></div>
+                    <p style="margin-top: 15px; color: #666;">Loading data...</p>
                 </div>
             </div>
 
@@ -466,6 +703,23 @@
                     <div class="section-header">
                         <h2>📊 Dashboard</h2>
                         <p>Welcome to ArthaInvest Capital CRM 10/10</p>
+                    </div>
+
+                    <!-- DATE FILTER -->
+                    <div class="filter-bar">
+                        <label>Date Range:</label>
+                        <input type="date" id="startDate" onchange="updateDashboard()">
+                        <label>to</label>
+                        <input type="date" id="endDate" onchange="updateDashboard()">
+                        <select id="datePreset" onchange="applyDatePreset()">
+                            <option value="">Custom</option>
+                            <option value="today">Today</option>
+                            <option value="week">Last 7 days</option>
+                            <option value="month">Last 30 days</option>
+                            <option value="quarter">Last 90 days</option>
+                            <option value="ytd">Year to Date</option>
+                        </select>
+                        <button onclick="refreshDashboard()">🔄 Refresh</button>
                     </div>
 
                     <div class="stat-grid">
@@ -505,6 +759,47 @@
 
                     <div class="info-box">
                         ℹ️ <strong>Admin-Only Access:</strong> You can ONLY see commission reports. No access to other modules. All commissions auto-calculated from closed deals.
+                    </div>
+
+                    <!-- COMMISSION TRANSPARENCY -->
+                    <div class="highlight" style="border-left: 4px solid #667eea; margin-bottom: 20px;">
+                        <strong>💡 Commission Formula Breakdown:</strong>
+                        <div style="margin-top: 10px; background: rgba(0,0,0,0.05); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px;">
+                            Commission = (Deals Closed × Avg Deal Value) × Commission Rate<br>
+                            <br>
+                            <strong>Example for Rajesh (8 deals, ₹2.8Cr total):</strong><br>
+                            ₹2.8Cr ÷ 8 deals = ₹35L per deal (Avg)<br>
+                            8 × ₹35L = ₹2.8Cr (Total Value)<br>
+                            ₹2.8Cr × 2% = <strong>₹5.6L Commission</strong> ✓
+                        </div>
+                        <button class="btn btn-secondary" onclick="toggleCommissionBreakdown()" style="margin-top: 10px;">📊 Show Detailed Breakdown</button>
+                    </div>
+
+                    <!-- DETAILED BREAKDOWN MODAL -->
+                    <div id="commissionBreakdownModal" style="display: none; background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #667eea;">
+                        <h4 style="margin-bottom: 15px;">📋 Commission Breakdown by Employee</h4>
+                        <table style="width: 100%; font-size: 13px;">
+                            <thead>
+                                <tr style="background: #f5f5f5;">
+                                    <th style="padding: 10px; text-align: left;">Employee</th>
+                                    <th style="padding: 10px; text-align: right;">Deals</th>
+                                    <th style="padding: 10px; text-align: right;">Total Value</th>
+                                    <th style="padding: 10px; text-align: right;">Rate</th>
+                                    <th style="padding: 10px; text-align: right;">Commission</th>
+                                    <th style="padding: 10px; text-align: right;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td style="padding: 10px;">Rajesh Kumar</td><td style="padding: 10px; text-align: right;">8</td><td style="padding: 10px; text-align: right;">₹2.8Cr</td><td style="padding: 10px; text-align: right;">2.0%</td><td style="padding: 10px; text-align: right;"><strong>₹5.6L</strong></td><td style="padding: 10px;">Pending</td></tr>
+                                <tr style="background: #f9f9f9;"><td style="padding: 10px;">Priya Sharma</td><td style="padding: 10px; text-align: right;">6</td><td style="padding: 10px; text-align: right;">₹1.8Cr</td><td style="padding: 10px; text-align: right;">2.0%</td><td style="padding: 10px; text-align: right;"><strong>₹3.6L</strong></td><td style="padding: 10px;">✓ Paid</td></tr>
+                                <tr><td style="padding: 10px;">Amit Singh</td><td style="padding: 10px; text-align: right;">5</td><td style="padding: 10px; text-align: right;">₹1.5Cr</td><td style="padding: 10px; text-align: right;">2.0%</td><td style="padding: 10px; text-align: right;"><strong>₹3.0L</strong></td><td style="padding: 10px;">Processing</td></tr>
+                                <tr style="background: #f9f9f9;"><td style="padding: 10px;">Sneha Patel</td><td style="padding: 10px; text-align: right;">4</td><td style="padding: 10px; text-align: right;">₹1.2Cr</td><td style="padding: 10px; text-align: right;">2.0%</td><td style="padding: 10px; text-align: right;"><strong>₹2.4L</strong></td><td style="padding: 10px;">Pending</td></tr>
+                                <tr><td style="padding: 10px;">Vikram Desai</td><td style="padding: 10px; text-align: right;">3</td><td style="padding: 10px; text-align: right;">₹0.9Cr</td><td style="padding: 10px; text-align: right;">2.0%</td><td style="padding: 10px; text-align: right;"><strong>₹1.8L</strong></td><td style="padding: 10px;">✓ Paid</td></tr>
+                                <tr style="background: #e8f4fd; font-weight: bold;"><td style="padding: 10px;">TOTAL</td><td style="padding: 10px; text-align: right;">26</td><td style="padding: 10px; text-align: right;">₹8.2Cr</td><td style="padding: 10px; text-align: right;">2.0%</td><td style="padding: 10px; text-align: right;">₹16.4L</td><td style="padding: 10px;">-</td></tr>
+                            </tbody>
+                        </table>
+                        <p style="font-size: 12px; color: #666; margin-top: 10px;">* Commission rates can vary by employee. Contact admin for custom rates.</p>
+                        <button class="btn btn-secondary" onclick="toggleCommissionBreakdown()" style="margin-top: 10px;">↑ Hide Breakdown</button>
                     </div>
 
                     <div class="form-row" style="margin-bottom: 20px;">
@@ -671,6 +966,10 @@
                         </div>
                     </div>
 
+                    <!-- ALERTS FOR AT-RISK TARGETS -->
+                    <div id="riskAlerts" style="margin-bottom: 20px;"></div>
+
+                    <h3 style="margin: 20px 0;">📊 Target Achievement Tracking</h3>
                     <div class="table-wrapper">
                         <table>
                             <thead>
@@ -679,6 +978,7 @@
                                     <th>Call Target</th>
                                     <th>Logged</th>
                                     <th>Achievement</th>
+                                    <th>Forecast*</th>
                                     <th>Client Target</th>
                                     <th>Acquired</th>
                                     <th>Status</th>
@@ -693,6 +993,7 @@
                                         <div class="progress-bar"><div class="progress-fill" style="width: 84%"></div></div>
                                         <strong>84%</strong>
                                     </td>
+                                    <td><span style="color: #28a745; font-weight: bold;">49/50</span></td>
                                     <td>10</td>
                                     <td>8</td>
                                     <td><span class="badge badge-success">✓ On Track</span></td>
@@ -705,6 +1006,7 @@
                                         <div class="progress-bar"><div class="progress-fill" style="width: 100%"></div></div>
                                         <strong>100%</strong>
                                     </td>
+                                    <td><span style="color: #28a745; font-weight: bold;">52/45</span></td>
                                     <td>9</td>
                                     <td>9</td>
                                     <td><span class="badge badge-info">🚀 Exceeded</span></td>
@@ -717,6 +1019,7 @@
                                         <div class="progress-bar"><div class="progress-fill" style="width: 87%"></div></div>
                                         <strong>87%</strong>
                                     </td>
+                                    <td><span style="color: #28a745; font-weight: bold;">41/40</span></td>
                                     <td>8</td>
                                     <td>6</td>
                                     <td><span class="badge badge-success">✓ On Track</span></td>
@@ -729,6 +1032,7 @@
                                         <div class="progress-bar"><div class="progress-fill" style="width: 108%"></div></div>
                                         <strong>108%</strong>
                                     </td>
+                                    <td><span style="color: #28a745; font-weight: bold;">58/48</span></td>
                                     <td>10</td>
                                     <td>11</td>
                                     <td><span class="badge badge-info">🚀 Exceeded</span></td>
@@ -741,13 +1045,15 @@
                                         <div class="progress-bar"><div class="progress-fill" style="width: 84%"></div></div>
                                         <strong>84%</strong>
                                     </td>
+                                    <td><span style="color: #dc3545; font-weight: bold;">44/45 ⚠️</span></td>
                                     <td>9</td>
                                     <td>7</td>
-                                    <td><span class="badge badge-success">✓ On Track</span></td>
+                                    <td><span class="badge badge-warning">⚠️ At Risk</span></td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
+                    <p style="font-size: 12px; color: #666; margin-top: 10px;">* Forecast based on current pace to end of month</p>
                 </div>
 
                 <!-- CALLS & LINKING -->
@@ -846,7 +1152,16 @@
                     </div>
                     <button class="btn btn-primary" onclick="addLead()">✅ Add Lead</button>
 
-                    <h3 style="margin: 30px 0 20px 0;">📊 Recent Leads</h3>
+                    <!-- LEAD SCORING LEGEND -->
+                    <div class="highlight" style="border-left: 4px solid #667eea; margin-bottom: 20px;">
+                        <strong>🎯 Lead Scoring System:</strong> Leads are automatically scored (0-100) based on engagement,
+                        product interest, and interaction frequency.
+                        <span style="color: #28a745; font-weight: bold;">🟢 75+</span> = Hot Lead,
+                        <span style="color: #ffc107; font-weight: bold;">🟡 50-74</span> = Warm Lead,
+                        <span style="color: #dc3545; font-weight: bold;">🔴 <50</span> = Cold Lead
+                    </div>
+
+                    <h3 style="margin: 30px 0 20px 0;">📊 Recent Leads (Sorted by Score)</h3>
                     <div class="table-wrapper">
                         <table id="leadsTable">
                             <thead>
@@ -854,6 +1169,7 @@
                                     <th>Name</th>
                                     <th>Phone</th>
                                     <th>Product</th>
+                                    <th>Lead Score</th>
                                     <th>Status</th>
                                     <th>Quick Actions</th>
                                     <th>Date</th>
@@ -864,6 +1180,15 @@
                                     <td style="font-weight: 600; color: #333;">John Doe</td>
                                     <td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">+91-9876543210</code></td>
                                     <td>Insurance</td>
+                                    <td>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span style="font-weight: bold; color: #28a745; font-size: 16px;">85</span>
+                                            <div style="height: 6px; width: 60px; background: #e0e0e0; border-radius: 3px; overflow: hidden;">
+                                                <div style="height: 100%; width: 85%; background: linear-gradient(90deg, #28a745, #20c997); border-radius: 3px;"></div>
+                                            </div>
+                                            <span style="font-size: 12px; color: #28a745; font-weight: bold;">🟢 Hot</span>
+                                        </div>
+                                    </td>
                                     <td><span class="badge badge-warning">New</span></td>
                                     <td>
                                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -879,6 +1204,15 @@
                                     <td style="font-weight: 600; color: #333;">Priya Sharma</td>
                                     <td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">+91-8765432100</code></td>
                                     <td>Mutual Funds</td>
+                                    <td>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span style="font-weight: bold; color: #ffc107; font-size: 16px;">68</span>
+                                            <div style="height: 6px; width: 60px; background: #e0e0e0; border-radius: 3px; overflow: hidden;">
+                                                <div style="height: 100%; width: 68%; background: linear-gradient(90deg, #ffc107, #ffb300); border-radius: 3px;"></div>
+                                            </div>
+                                            <span style="font-size: 12px; color: #ffc107; font-weight: bold;">🟡 Warm</span>
+                                        </div>
+                                    </td>
                                     <td><span class="badge badge-info">Contacted</span></td>
                                     <td>
                                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -894,6 +1228,15 @@
                                     <td style="font-weight: 600; color: #333;">Amit Singh</td>
                                     <td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">+91-7654321098</code></td>
                                     <td>Loans</td>
+                                    <td>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span style="font-weight: bold; color: #28a745; font-size: 16px;">92</span>
+                                            <div style="height: 6px; width: 60px; background: #e0e0e0; border-radius: 3px; overflow: hidden;">
+                                                <div style="height: 100%; width: 92%; background: linear-gradient(90deg, #28a745, #20c997); border-radius: 3px;"></div>
+                                            </div>
+                                            <span style="font-size: 12px; color: #28a745; font-weight: bold;">🟢 Hot</span>
+                                        </div>
+                                    </td>
                                     <td><span class="badge badge-success">Interested</span></td>
                                     <td>
                                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -1258,6 +1601,182 @@
     </div>
 
     <script>
+        // ========== PHASE 1: QUICK WINS ==========
+
+        // 1. HAMBURGER MENU FOR MOBILE
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const hamburger = document.getElementById('hamburger');
+            sidebar.classList.toggle('active');
+            hamburger.classList.toggle('active');
+        }
+
+        // Close sidebar when clicking on a nav item (mobile)
+        document.addEventListener('DOMContentLoaded', function() {
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    if (window.innerWidth <= 768) {
+                        document.querySelector('.sidebar').classList.remove('active');
+                        document.getElementById('hamburger').classList.remove('active');
+                    }
+                });
+            });
+        });
+
+        // 2. LOADING SPINNER FUNCTIONS
+        function showSpinner() {
+            document.getElementById('spinner').classList.add('active');
+        }
+
+        function hideSpinner() {
+            document.getElementById('spinner').classList.remove('active');
+        }
+
+        // 3. DATE FILTER FUNCTIONS
+        function applyDatePreset() {
+            const preset = document.getElementById('datePreset').value;
+            const today = new Date();
+            let startDate = new Date();
+
+            switch(preset) {
+                case 'today':
+                    startDate = today;
+                    break;
+                case 'week':
+                    startDate.setDate(today.getDate() - 7);
+                    break;
+                case 'month':
+                    startDate.setDate(today.getDate() - 30);
+                    break;
+                case 'quarter':
+                    startDate.setDate(today.getDate() - 90);
+                    break;
+                case 'ytd':
+                    startDate = new Date(today.getFullYear(), 0, 1);
+                    break;
+                default:
+                    return;
+            }
+
+            const formatDate = (d) => d.toISOString().split('T')[0];
+            document.getElementById('startDate').value = formatDate(startDate);
+            document.getElementById('endDate').value = formatDate(today);
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+            showSpinner();
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            // Simulate API call with delay
+            setTimeout(() => {
+                console.log('Dashboard updated for range:', startDate, 'to', endDate);
+                hideSpinner();
+                showAlert('✅ Dashboard updated for ' + startDate + ' to ' + endDate, 'success');
+            }, 1000);
+        }
+
+        function refreshDashboard() {
+            showSpinner();
+            // Simulate data refresh
+            setTimeout(() => {
+                hideSpinner();
+                showAlert('✅ Dashboard data refreshed!', 'success');
+                generateRiskAlerts();
+            }, 1500);
+        }
+
+        // 4. TARGET TRACKING WITH ALERTS
+        function generateRiskAlerts() {
+            const alertsDiv = document.getElementById('riskAlerts');
+            alertsDiv.innerHTML = '';
+
+            // Check for at-risk targets (< 70% achievement)
+            const atRisk = [
+                { name: 'Vikram Desai', achievement: 84, target: 'On track to hit 44/45 calls' }
+            ];
+
+            if (atRisk.length > 0) {
+                let alertHTML = '<div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 6px; margin-bottom: 15px;">';
+                alertHTML += '<strong style="color: #856404;">⚠️ Target Alerts:</strong><br>';
+                atRisk.forEach(item => {
+                    alertHTML += `• <strong>${item.name}</strong>: ${item.target}<br>`;
+                });
+                alertHTML += '</div>';
+                alertsDiv.innerHTML = alertHTML;
+            }
+        }
+
+        // 5. UTILITY FUNCTION FOR ALERTS
+        function showAlert(message, type = 'info') {
+            const colors = {
+                success: '#d4edda',
+                warning: '#fff3cd',
+                error: '#f8d7da'
+            };
+            const textColors = {
+                success: '#155724',
+                warning: '#856404',
+                error: '#721c24'
+            };
+
+            const alertDiv = document.createElement('div');
+            alertDiv.style.cssText = `
+                background: ${colors[type]};
+                color: ${textColors[type]};
+                padding: 12px 15px;
+                border-radius: 6px;
+                margin-bottom: 15px;
+                border-left: 4px solid ${type === 'success' ? '#28a745' : type === 'warning' ? '#ffc107' : '#dc3545'};
+                animation: slideIn 0.3s ease-in-out;
+            `;
+            alertDiv.textContent = message;
+
+            const mainContent = document.querySelector('.main-content');
+            mainContent.insertBefore(alertDiv, mainContent.firstChild);
+
+            setTimeout(() => alertDiv.remove(), 4000);
+        }
+
+        // Initialize date filters with today's date
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            const lastMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            document.getElementById('startDate').value = lastMonth;
+            document.getElementById('endDate').value = today;
+            generateRiskAlerts();
+        });
+
+        // ========== PHASE 2: COMMISSION & LEAD SCORING ==========
+
+        // 1. COMMISSION TRANSPARENCY
+        function toggleCommissionBreakdown() {
+            const modal = document.getElementById('commissionBreakdownModal');
+            if (modal.style.display === 'none') {
+                modal.style.display = 'block';
+                showAlert('📊 Detailed commission breakdown loaded', 'success');
+            } else {
+                modal.style.display = 'none';
+            }
+        }
+
+        // 2. LEAD SCORING HELPER
+        function calculateLeadScore(engagement, productInterest, interactions) {
+            // Score formula: (engagement * 40) + (productInterest * 30) + (interactions * 30)
+            let score = (engagement * 0.4) + (productInterest * 0.3) + (interactions * 0.3);
+            return Math.min(100, Math.max(0, Math.round(score)));
+        }
+
+        function getLeadScoreColor(score) {
+            if (score >= 75) return { color: '#28a745', label: '🟢 Hot' };
+            if (score >= 50) return { color: '#ffc107', label: '🟡 Warm' };
+            return { color: '#dc3545', label: '🔴 Cold' };
+        }
+
+        // ========== ORIGINAL FUNCTIONS ==========
+
         // Navigation
         function switchSection(sectionId) {
             // Hide all sections
