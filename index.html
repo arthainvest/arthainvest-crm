@@ -331,18 +331,13 @@
         <div class="nav-section-title">Work Modules</div>
         <div class="nav-section">
           <div class="nav-item" onclick="switchPage('website', this)"><span class="nav-icon">🌐</span><span>Website Launch</span></div>
-          <div class="nav-item" onclick="switchPage('content', this)"><span class="nav-icon">✏️</span><span>Content Planner</span></div>
-          <div class="nav-item" onclick="switchPage('issues', this)"><span class="nav-icon">🐛</span><span>Issue Tracker</span></div>
+          <div class="nav-item" onclick="switchPage('blogs', this)"><span class="nav-icon">📝</span><span>Blogs</span></div>
           <div class="nav-item" onclick="switchPage('it', this)"><span class="nav-icon">💻</span><span>IT Requests</span></div>
-          <div class="nav-item" onclick="switchPage('marketing', this)"><span class="nav-icon">📢</span><span>Marketing Campaign</span></div>
+          <div class="nav-item" onclick="switchPage('marketing', this)"><span class="nav-icon">📢</span><span>Marketing</span></div>
           <div class="nav-item" onclick="switchPage('roadmap', this)"><span class="nav-icon">🗺️</span><span>Product Roadmap</span></div>
-          <div class="nav-item" onclick="switchPage('reimbursement', this)"><span class="nav-icon">📋</span><span>Reimbursement Claims</span></div>
-        </div>
-
-        <!-- INDUSTRIES -->
-        <div class="nav-section-title">Industry Templates</div>
-        <div class="nav-section">
-          <div class="nav-item" onclick="switchPage('industries', this)"><span class="nav-icon">🏭</span><span>For Industries</span></div>
+          <div class="nav-item" onclick="switchPage('insurance', this)"><span class="nav-icon">🛡️</span><span>Insurance</span></div>
+          <div class="nav-item" onclick="switchPage('loans', this)"><span class="nav-icon">💳</span><span>Loans</span></div>
+          <div class="nav-item" onclick="switchPage('mutualfunds', this)"><span class="nav-icon">📊</span><span>Mutual Funds</span></div>
         </div>
       </div>
     </div>
@@ -630,38 +625,42 @@
 
 
 
-        <!-- CONTENT PLANNER PAGE -->
-        <div id="content" class="page">
+        <!-- BLOGS PAGE -->
+        <div id="blogs" class="page">
           <div class="kanban-board">
             <div class="kanban-column">
               <div class="column-title">Ideas</div>
               <div class="kanban-card">
-                <div class="card-title">Blog: SIP Benefits Guide</div>
+                <div class="card-title">SIP Benefits Guide</div>
                 <div class="card-value">Target Date: Aug 25</div>
+              </div>
+              <div class="kanban-card">
+                <div class="card-title">Insurance 101: Basics</div>
+                <div class="card-value">Planned</div>
               </div>
             </div>
             <div class="kanban-column">
-              <div class="column-title">In Progress</div>
+              <div class="column-title">Writing</div>
               <div class="kanban-card">
-                <div class="card-title">Video: Investment Basics</div>
-                <div class="card-value">60% Complete</div>
+                <div class="card-title">Mutual Fund SIP Strategy</div>
+                <div class="card-value">50% Complete</div>
               </div>
               <div class="kanban-card">
-                <div class="card-title">Whitepaper: Market Analysis</div>
+                <div class="card-title">Loan EMI Calculator Guide</div>
                 <div class="card-value">Draft Review</div>
               </div>
             </div>
             <div class="kanban-column">
               <div class="column-title">Review</div>
               <div class="kanban-card">
-                <div class="card-title">Email Campaign Template</div>
+                <div class="card-title">Investment Returns Analysis</div>
                 <div class="card-value">Awaiting Approval</div>
               </div>
             </div>
             <div class="kanban-column">
               <div class="column-title">Published</div>
               <div class="kanban-card">
-                <div class="card-title">Newsletter - August</div>
+                <div class="card-title">Top 10 Insurance Tips</div>
                 <div class="card-value">Published Aug 1</div>
               </div>
             </div>
@@ -669,43 +668,6 @@
         </div>
 
 
-        <!-- ISSUE TRACKER PAGE -->
-        <div id="issues" class="page">
-          <div class="kanban-board">
-            <div class="kanban-column">
-              <div class="column-title">Open Issues</div>
-              <div class="kanban-card">
-                <div class="card-title">Bug: Login timeout</div>
-                <div class="card-value">Priority: High - Assigned to Dev Team</div>
-              </div>
-              <div class="kanban-card">
-                <div class="card-title">Feature: Mobile App</div>
-                <div class="card-value">Priority: Medium - In Discussion</div>
-              </div>
-            </div>
-            <div class="kanban-column">
-              <div class="column-title">In Progress</div>
-              <div class="kanban-card">
-                <div class="card-title">Security: HTTPS Update</div>
-                <div class="card-value">70% Complete</div>
-              </div>
-            </div>
-            <div class="kanban-column">
-              <div class="column-title">Review</div>
-              <div class="kanban-card">
-                <div class="card-title">Performance: Cache Optimization</div>
-                <div class="card-value">Awaiting QA</div>
-              </div>
-            </div>
-            <div class="kanban-column">
-              <div class="column-title">Resolved</div>
-              <div class="kanban-card">
-                <div class="card-title">Database: Connection Pool</div>
-                <div class="card-value">Resolved Aug 8</div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <!-- IT REQUESTS PAGE -->
         <div id="it" class="page">
@@ -745,150 +707,462 @@
           </table>
         </div>
 
-        <!-- MARKETING CAMPAIGN PAGE -->
+        <!-- MARKETING PAGE -->
         <div id="marketing" class="page">
-          <div class="kanban-board">
-            <div class="kanban-column">
-              <div class="column-title">Planning</div>
-              <div class="kanban-card">
-                <div class="card-title">Q4 Holiday Campaign</div>
-                <div class="card-value">Budget: ₹50L - Strategy Phase</div>
-              </div>
+          <div class="card-grid">
+            <div class="info-card" style="cursor: pointer; border-left: 4px solid #00d4aa;">
+              <div class="card-label">🎨 Creative Assets</div>
+              <div style="margin-top: 8px; color: #718096; font-size: 12px;">Design templates, graphics, and visual content</div>
             </div>
-            <div class="kanban-column">
-              <div class="column-title">In Progress</div>
-              <div class="kanban-card">
-                <div class="card-title">Back-to-School Campaign</div>
-                <div class="card-value">50% Complete - Running till Aug 31</div>
-              </div>
-              <div class="kanban-card">
-                <div class="card-title">Student Loan Promotion</div>
-                <div class="card-value">Email Blast Scheduled</div>
-              </div>
+            <div class="info-card" style="cursor: pointer; border-left: 4px solid #00d4aa;">
+              <div class="card-label">🤖 Claude AI</div>
+              <div style="margin-top: 8px; color: #718096; font-size: 12px;">AI-powered content generation and analysis</div>
             </div>
-            <div class="kanban-column">
-              <div class="column-title">Review</div>
-              <div class="kanban-card">
-                <div class="card-title">Summer Sale Wrap-up</div>
-                <div class="card-value">Awaiting Final Metrics</div>
-              </div>
+            <div class="info-card" style="cursor: pointer; border-left: 4px solid #00d4aa;">
+              <div class="card-label">🎯 Canva</div>
+              <div style="margin-top: 8px; color: #718096; font-size: 12px;">Create stunning social media and marketing graphics</div>
             </div>
-            <div class="kanban-column">
-              <div class="column-title">Completed</div>
-              <div class="kanban-card">
-                <div class="card-title">Independence Day Sale</div>
-                <div class="card-value">ROI: 250% - Closed Aug 15</div>
-              </div>
+            <div class="info-card" style="cursor: pointer; border-left: 4px solid #00d4aa;">
+              <div class="card-label">💬 ChatGPT</div>
+              <div style="margin-top: 8px; color: #718096; font-size: 12px;">Generate copy, emails, and social media content</div>
             </div>
+            <div class="info-card" style="cursor: pointer; border-left: 4px solid #00d4aa;">
+              <div class="card-label">📁 Files & Resources</div>
+              <div style="margin-top: 8px; color: #718096; font-size: 12px;">Marketing collateral and campaign documents</div>
+            </div>
+          </div>
+          <div style="margin-top: 24px;">
+            <h3 style="font-size: 14px; font-weight: 600; color: #1a202c; margin-bottom: 12px;">Active Campaigns</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Campaign</th>
+                  <th>Status</th>
+                  <th>Budget</th>
+                  <th>ROI</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Q4 Holiday Campaign</td>
+                  <td><span class="badge badge-green">In Progress</span></td>
+                  <td>₹50L</td>
+                  <td>+180%</td>
+                </tr>
+                <tr>
+                  <td>SIP Investment Promotion</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                  <td>₹25L</td>
+                  <td>+240%</td>
+                </tr>
+                <tr>
+                  <td>Insurance Awareness</td>
+                  <td><span class="badge badge-blue">Planned</span></td>
+                  <td>₹30L</td>
+                  <td>-</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
         <!-- PRODUCT ROADMAP PAGE -->
         <div id="roadmap" class="page">
-          <table>
-            <thead>
-              <tr>
-                <th>Feature</th>
-                <th>Target Release</th>
-                <th>Status</th>
-                <th>Team</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>AI-Powered Recommendations</td>
-                <td>Q3 2026</td>
-                <td><span class="badge badge-green">In Development</span></td>
-                <td>AI/ML Team</td>
-              </tr>
-              <tr>
-                <td>Mobile App Launch</td>
-                <td>Q4 2026</td>
-                <td><span class="badge badge-blue">Planned</span></td>
-                <td>Mobile Team</td>
-              </tr>
-              <tr>
-                <td>Advanced Analytics Dashboard</td>
-                <td>Q2 2026</td>
-                <td><span class="badge badge-green">Complete</span></td>
-                <td>Data Team</td>
-              </tr>
-              <tr>
-                <td>API Integration Suite</td>
-                <td>Q4 2026</td>
-                <td><span class="badge badge-blue">Planned</span></td>
-                <td>Backend Team</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- REIMBURSEMENT CLAIMS PAGE -->
-        <div id="reimbursement" class="page">
-          <table>
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Amount</th>
-                <th>Category</th>
-                <th>Date Submitted</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Rajesh Kumar</td>
-                <td>₹15,000</td>
-                <td>Travel - Client Meeting</td>
-                <td>Aug 8, 2026</td>
-                <td><span class="badge badge-green">Approved</span></td>
-              </tr>
-              <tr>
-                <td>Priya Singh</td>
-                <td>₹8,500</td>
-                <td>Conference - FinTech Summit</td>
-                <td>Aug 9, 2026</td>
-                <td><span class="badge badge-blue">Pending Review</span></td>
-              </tr>
-              <tr>
-                <td>Amit Patel</td>
-                <td>₹5,000</td>
-                <td>Training Materials</td>
-                <td>Aug 7, 2026</td>
-                <td><span class="badge badge-green">Approved</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- INDUSTRIES PAGE -->
-        <div id="industries" class="page">
-          <div class="card-grid">
-            <div class="info-card" style="cursor: pointer;">
-              <div class="card-label">📋 Professional Services</div>
-              <div style="margin-top: 8px; color: #718096;">Consulting, Legal, Accounting</div>
-            </div>
-            <div class="info-card" style="cursor: pointer;">
-              <div class="card-label">🏢 Real Estate</div>
-              <div style="margin-top: 8px; color: #718096;">Property Management, Sales</div>
-            </div>
-            <div class="info-card" style="cursor: pointer;">
-              <div class="card-label">🏭 Manufacturing</div>
-              <div style="margin-top: 8px; color: #718096;">Production, Supply Chain</div>
-            </div>
-            <div class="info-card" style="cursor: pointer;">
-              <div class="card-label">🛍️ Retail</div>
-              <div style="margin-top: 8px; color: #718096;">E-commerce, Point of Sale</div>
-            </div>
-            <div class="info-card" style="cursor: pointer;">
-              <div class="card-label">🏥 Healthcare</div>
-              <div style="margin-top: 8px; color: #718096;">Patient Management, Billing</div>
-            </div>
-            <div class="info-card" style="cursor: pointer;">
-              <div class="card-label">🏦 Financial Services</div>
-              <div style="margin-top: 8px; color: #718096;">Banking, Investment Management</div>
-            </div>
+          <div style="margin-bottom: 24px;">
+            <h3 style="font-size: 14px; font-weight: 600; color: #1a202c; margin-bottom: 12px;">💳 Loans Products</h3>
+            <table style="font-size: 13px;">
+              <thead>
+                <tr>
+                  <th>Loan Type</th>
+                  <th>Min Amount</th>
+                  <th>Max Amount</th>
+                  <th>Interest Rate</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Personal Loans</td>
+                  <td>₹50,000</td>
+                  <td>₹25,00,000</td>
+                  <td>9.5% - 15%</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Home Loans</td>
+                  <td>₹5,00,000</td>
+                  <td>₹1 Cr+</td>
+                  <td>6.5% - 8%</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Auto Loans</td>
+                  <td>₹1,00,000</td>
+                  <td>₹50,00,000</td>
+                  <td>7% - 12%</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Education Loans</td>
+                  <td>₹2,00,000</td>
+                  <td>₹20,00,000</td>
+                  <td>6% - 10%</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Business Loans</td>
+                  <td>₹1,00,000</td>
+                  <td>₹1 Cr</td>
+                  <td>8% - 14%</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+
+          <div style="margin-bottom: 24px;">
+            <h3 style="font-size: 14px; font-weight: 600; color: #1a202c; margin-bottom: 12px;">📊 Mutual Funds Products</h3>
+            <table style="font-size: 13px;">
+              <thead>
+                <tr>
+                  <th>Fund Type</th>
+                  <th>Min Investment</th>
+                  <th>Avg Return</th>
+                  <th>SIP/SWP/STP</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Equity Funds</td>
+                  <td>₹500</td>
+                  <td>12-18%</td>
+                  <td><span class="badge badge-green">SIP/SWP/STP</span></td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Debt Funds</td>
+                  <td>₹500</td>
+                  <td>5-8%</td>
+                  <td><span class="badge badge-green">SIP/SWP/STP</span></td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Balanced Funds</td>
+                  <td>₹500</td>
+                  <td>8-12%</td>
+                  <td><span class="badge badge-green">SIP/SWP/STP</span></td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Tax-Saving Funds</td>
+                  <td>₹500</td>
+                  <td>10-15%</td>
+                  <td><span class="badge badge-green">SIP/SWP/STP</span></td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Liquid Funds</td>
+                  <td>₹1,000</td>
+                  <td>3-5%</td>
+                  <td><span class="badge badge-green">SWP</span></td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <h3 style="font-size: 14px; font-weight: 600; color: #1a202c; margin-bottom: 12px;">🛡️ Insurance Products</h3>
+            <table style="font-size: 13px;">
+              <thead>
+                <tr>
+                  <th>Insurance Type</th>
+                  <th>Coverage</th>
+                  <th>Premium Range</th>
+                  <th>Claim Period</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Term Insurance</td>
+                  <td>₹25L - ₹1Cr+</td>
+                  <td>₹500 - ₹2000/mo</td>
+                  <td>5-40 years</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Health Insurance</td>
+                  <td>₹3L - ₹50L</td>
+                  <td>₹1000 - ₹5000/mo</td>
+                  <td>1 year</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Whole Life Insurance</td>
+                  <td>₹10L - ₹1Cr</td>
+                  <td>₹2000 - ₹8000/mo</td>
+                  <td>Lifetime</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Endowment Plans</td>
+                  <td>₹1L - ₹50L</td>
+                  <td>₹1000 - ₹5000/mo</td>
+                  <td>10-20 years</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+                <tr>
+                  <td>ULIP Plans</td>
+                  <td>₹50K - ₹50L</td>
+                  <td>₹500 - ₹10000/mo</td>
+                  <td>5-15 years</td>
+                  <td><span class="badge badge-green">Active</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+
+
+        <!-- INSURANCE PAGE -->
+        <div id="insurance" class="page">
+          <table>
+            <thead>
+              <tr>
+                <th>Insurance Type</th>
+                <th>Coverage Amount</th>
+                <th>Premium</th>
+                <th>Term</th>
+                <th>Providers</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Term Insurance</strong></td>
+                <td>₹25L - ₹1Cr+</td>
+                <td>₹500 - ₹2,000/mo</td>
+                <td>5-40 years</td>
+                <td>TATA, ICICI, HDFC, LIC</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Health Insurance</strong></td>
+                <td>₹3L - ₹50L</td>
+                <td>₹1,000 - ₹5,000/mo</td>
+                <td>1 year</td>
+                <td>TATA, Star, Niva Bupa, HDFC</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Whole Life Insurance</strong></td>
+                <td>₹10L - ₹1Cr</td>
+                <td>₹2,000 - ₹8,000/mo</td>
+                <td>Lifetime</td>
+                <td>LIC, ICICI, HDFC Life</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Endowment Plans</strong></td>
+                <td>₹1L - ₹50L</td>
+                <td>₹1,000 - ₹5,000/mo</td>
+                <td>10-20 years</td>
+                <td>LIC, ICICI, HDFC Life</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>ULIP Plans</strong></td>
+                <td>₹50K - ₹50L</td>
+                <td>₹500 - ₹10,000/mo</td>
+                <td>5-15 years</td>
+                <td>ICICI, HDFC Life, Kotak</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Child Insurance</strong></td>
+                <td>₹5L - ₹25L</td>
+                <td>₹500 - ₹3,000/mo</td>
+                <td>10-18 years</td>
+                <td>LIC, HDFC Life, ICICI</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Senior Citizen Plans</strong></td>
+                <td>₹2L - ₹10L</td>
+                <td>₹1,000 - ₹4,000/mo</td>
+                <td>5-10 years</td>
+                <td>LIC, ICICI, HDFC Life</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Travel Insurance</strong></td>
+                <td>₹10L - ₹50L</td>
+                <td>₹100 - ₹500/trip</td>
+                <td>Trip based</td>
+                <td>ICICI, HDFC, Star, Bajaj</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- LOANS PAGE -->
+        <div id="loans" class="page">
+          <table>
+            <thead>
+              <tr>
+                <th>Loan Type</th>
+                <th>Min Amount</th>
+                <th>Max Amount</th>
+                <th>Interest Rate</th>
+                <th>Tenure</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Personal Loans</strong></td>
+                <td>₹50,000</td>
+                <td>₹25,00,000</td>
+                <td>9.5% - 15%</td>
+                <td>3-5 years</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Home Loans</strong></td>
+                <td>₹5,00,000</td>
+                <td>₹1 Cr+</td>
+                <td>6.5% - 8%</td>
+                <td>10-20 years</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Auto Loans</strong></td>
+                <td>₹1,00,000</td>
+                <td>₹50,00,000</td>
+                <td>7% - 12%</td>
+                <td>3-7 years</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Education Loans</strong></td>
+                <td>₹2,00,000</td>
+                <td>₹20,00,000</td>
+                <td>6% - 10%</td>
+                <td>5-15 years</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Business Loans</strong></td>
+                <td>₹1,00,000</td>
+                <td>₹1 Cr</td>
+                <td>8% - 14%</td>
+                <td>3-10 years</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Gold Loans</strong></td>
+                <td>₹10,000</td>
+                <td>₹50,00,000</td>
+                <td>7% - 10%</td>
+                <td>6-36 months</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>LAP (Loan Against Property)</strong></td>
+                <td>₹1,00,000</td>
+                <td>₹1 Cr+</td>
+                <td>7% - 12%</td>
+                <td>5-15 years</td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- MUTUAL FUNDS PAGE -->
+        <div id="mutualfunds" class="page">
+          <table>
+            <thead>
+              <tr>
+                <th>Fund Type</th>
+                <th>Min Investment</th>
+                <th>Avg Return</th>
+                <th>SIP</th>
+                <th>SWP</th>
+                <th>STP</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Equity Funds</strong></td>
+                <td>₹500</td>
+                <td>12-18%</td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Debt Funds</strong></td>
+                <td>₹500</td>
+                <td>5-8%</td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Balanced Funds</strong></td>
+                <td>₹500</td>
+                <td>8-12%</td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Tax-Saving Funds (ELSS)</strong></td>
+                <td>₹500</td>
+                <td>10-15%</td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-orange">Post 3yr</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Liquid Funds</strong></td>
+                <td>₹1,000</td>
+                <td>3-5%</td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-orange">No</span></td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Index Funds</strong></td>
+                <td>₹500</td>
+                <td>8-14%</td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+              <tr>
+                <td><strong>Sector-Specific Funds</strong></td>
+                <td>₹500</td>
+                <td>10-25%</td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Yes</span></td>
+                <td><span class="badge badge-green">Active</span></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <!-- DATA HUB PAGE -->
@@ -1076,13 +1350,13 @@
         'dashboard': 'Dashboard',
         'datahub': 'Data Hub',
         'website': 'Website Launch',
-        'content': 'Content Planner',
-        'issues': 'Issue Tracker',
+        'blogs': 'Blogs',
         'it': 'IT Requests',
-        'marketing': 'Marketing Campaign',
+        'marketing': 'Marketing',
         'roadmap': 'Product Roadmap',
-        'reimbursement': 'Reimbursement Claims',
-        'industries': 'Industry Templates'
+        'insurance': 'Insurance Products',
+        'loans': 'Loans Products',
+        'mutualfunds': 'Mutual Funds'
       };
 
       const subtitles = {
@@ -1093,13 +1367,13 @@
         'dashboard': 'Your business overview',
         'datahub': 'Unified business intelligence from all data sources',
         'website': 'Launch and manage website',
-        'content': 'Plan content strategy',
-        'issues': 'Track and resolve issues',
+        'blogs': 'Create and manage business blogs',
         'it': 'IT service requests',
-        'marketing': 'Manage marketing campaigns',
-        'roadmap': 'Product development roadmap',
-        'reimbursement': 'Process reimbursement claims',
-        'industries': 'Industry-specific templates'
+        'marketing': 'Creative assets, AI tools & campaigns',
+        'roadmap': 'Loans, Mutual Funds & Insurance details',
+        'insurance': 'All insurance products and coverage',
+        'loans': 'All types of loans available',
+        'mutualfunds': 'SIP, SWP, STP mutual fund options'
       };
 
       document.getElementById('pageTitle').textContent = titles[pageId] || 'Page';
