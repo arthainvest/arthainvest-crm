@@ -3,34 +3,6 @@ import { getDashboardAnalytics, getLeads, getDeals } from '../services/api';
 import '../styles/Dashboard.css';
 
 export default function Dashboard() {
-  const [analytics, setAnalytics] = useState(null);
-  const [recentLeads, setRecentLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const token = localStorage.getItem('token');
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
-    try {
-      const [analyticsData, leadsData] = await Promise.all([
-        getDashboardAnalytics(token),
-        getLeads(token),
-      ]);
-
-      setAnalytics(analyticsData);
-      setRecentLeads(leadsData.slice(0, 5));
-    } catch (err) {
-      console.error('Failed to fetch dashboard data:', err);
-      // Use mock data as fallback
-      setAnalytics(mockAnalytics);
-      setRecentLeads(mockLeads.slice(0, 5));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const mockAnalytics = {
     total_leads: 5,
     qualified_leads: 0,
@@ -44,8 +16,43 @@ export default function Dashboard() {
 
   const mockLeads = [
     { id: 1, name: 'Neha Singh', company: 'Startup Fund', status: 'New', lead_tier: 'Premium', ai_score: 85 },
-    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', status: 'Contacted', lead_tier: 'Gold', ai_score: 72 }
+    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', status: 'Contacted', lead_tier: 'Gold', ai_score: 72 },
+    { id: 3, name: 'Anjali Desai', company: 'Retail Chain', status: 'Interested', lead_tier: 'Silver', ai_score: 65 },
+    { id: 4, name: 'Amit Patel', company: 'Manufacturing', status: 'Qualified', lead_tier: 'Silver', ai_score: 58 },
+    { id: 5, name: 'Priya Kapoor', company: 'Digital Ventures', status: 'New', lead_tier: 'Premium', ai_score: 80 }
   ];
+
+  const [analytics, setAnalytics] = useState(mockAnalytics);
+  const [recentLeads, setRecentLeads] = useState(mockLeads);
+  const [loading, setLoading] = useState(false);
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      const [analyticsData, leadsData] = await Promise.all([
+        getDashboardAnalytics(token),
+        getLeads(token),
+      ]);
+
+      if (analyticsData && leadsData) {
+        setAnalytics(analyticsData);
+        setRecentLeads(leadsData.slice(0, 5));
+      } else {
+        setAnalytics(mockAnalytics);
+        setRecentLeads(mockLeads.slice(0, 5));
+      }
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err);
+      setAnalytics(mockAnalytics);
+      setRecentLeads(mockLeads.slice(0, 5));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return <div className="dashboard-container"><p>Loading...</p></div>;

@@ -2,7 +2,50 @@ import React, { useState, useEffect } from 'react';
 import '../styles/Pipeline.css';
 
 export default function Pipeline() {
-  const [deals, setDeals] = useState([]);
+  const mockDeals = [
+    {
+      id: 1,
+      name: 'Neha Singh',
+      company: 'Startup Fund',
+      value: 5,
+      phone: '+91-9876543210',
+      loanProduct: 'LAP',
+      stage: 'New',
+      probability: 30
+    },
+    {
+      id: 2,
+      name: 'Vikram Reddy',
+      company: 'Tech Park',
+      value: 10,
+      phone: '+91-9876543211',
+      loanProduct: 'Business',
+      stage: 'Qualified',
+      probability: 50
+    },
+    {
+      id: 3,
+      name: 'Anjali Desai',
+      company: 'Retail Chain',
+      value: 8,
+      phone: '+91-9876543212',
+      loanProduct: 'Home',
+      stage: 'Proposal',
+      probability: 70
+    },
+    {
+      id: 4,
+      name: 'Amit Patel',
+      company: 'Manufacturing',
+      value: 15,
+      phone: '+91-9876543213',
+      loanProduct: 'Project',
+      stage: 'Negotiation',
+      probability: 60
+    }
+  ];
+
+  const [deals, setDeals] = useState(mockDeals);
   const [showForm, setShowForm] = useState(false);
   const [showDigi, setShowDigi] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(null);
@@ -47,10 +90,13 @@ export default function Pipeline() {
       const response = await fetch('/api/pipeline');
       if (!response.ok) throw new Error('API error');
       const data = await response.json();
-      setDeals(data);
+      if (Array.isArray(data) && data.length > 0) {
+        setDeals(data);
+      } else {
+        setDeals(mockDeals);
+      }
     } catch (error) {
       console.error('Error fetching deals:', error);
-      // Use mock data as fallback
       setDeals(mockDeals);
     }
   };

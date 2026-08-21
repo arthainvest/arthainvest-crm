@@ -2,12 +2,51 @@ import React, { useState, useEffect } from 'react';
 import '../styles/Calls.css';
 
 export default function Calls() {
-  const [calls, setCalls] = useState([]);
+  const mockCalls = [
+    {
+      id: 1,
+      name: 'Neha Singh',
+      phone: '+91-9876543210',
+      duration: '5m 20s',
+      type: 'Outbound',
+      outcome: 'Interested',
+      date: '2026-08-21'
+    },
+    {
+      id: 2,
+      name: 'Vikram Reddy',
+      phone: '+91-9876543211',
+      duration: '3m 45s',
+      type: 'Inbound',
+      outcome: 'Not Interested',
+      date: '2026-08-21'
+    },
+    {
+      id: 3,
+      name: 'Anjali Desai',
+      phone: '+91-9876543212',
+      duration: '8m 10s',
+      type: 'Outbound',
+      outcome: 'Meeting Scheduled',
+      date: '2026-08-20'
+    },
+    {
+      id: 4,
+      name: 'Amit Patel',
+      phone: '+91-9876543213',
+      duration: '6m 50s',
+      type: 'Outbound',
+      outcome: 'Follow-up Needed',
+      date: '2026-08-20'
+    }
+  ];
+
+  const [calls, setCalls] = useState(mockCalls);
   const [stats, setStats] = useState({
-    totalCalls: 0,
-    inbound: 0,
-    outbound: 0,
-    avgDuration: '0m'
+    totalCalls: 4,
+    inbound: 1,
+    outbound: 3,
+    avgDuration: '6m 8s'
   });
 
   useEffect(() => {
@@ -19,11 +58,15 @@ export default function Calls() {
       const response = await fetch('/api/calls');
       if (!response.ok) throw new Error('API error');
       const data = await response.json();
-      setCalls(data);
-      calculateStats(data);
+      if (Array.isArray(data) && data.length > 0) {
+        setCalls(data);
+        calculateStats(data);
+      } else {
+        setCalls(mockCalls);
+        calculateStats(mockCalls);
+      }
     } catch (error) {
       console.error('Error fetching calls:', error);
-      // Use mock data as fallback
       setCalls(mockCalls);
       calculateStats(mockCalls);
     }

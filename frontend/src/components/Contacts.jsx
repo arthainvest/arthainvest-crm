@@ -31,10 +31,13 @@ export default function Contacts() {
       const response = await fetch('/api/contacts');
       if (!response.ok) throw new Error('API error');
       const data = await response.json();
-      setContacts(data);
+      if (Array.isArray(data) && data.length > 0) {
+        setContacts(data);
+      } else {
+        setContacts(mockContactsData);
+      }
     } catch (error) {
       console.error('Error fetching contacts:', error);
-      // Use mock data as fallback
       setContacts(mockContactsData);
     }
   };
