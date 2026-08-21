@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArthaInvest CRM - Team Quick Start Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 40px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 3px solid #1F4788;
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            color: #1F4788;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: #888;
+        }
+
+        .toc {
+            background-color: #f9f9f9;
+            border-left: 4px solid #1F4788;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 5px;
+        }
+
+        .toc h2 {
+            color: #1F4788;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .toc ol {
+            margin-left: 20px;
+        }
+
+        .toc li {
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        .toc a {
+            color: #1F4788;
+            text-decoration: none;
+        }
+
+        .toc a:hover {
+            text-decoration: underline;
+        }
+
+        section {
+            margin: 40px 0;
+            page-break-inside: avoid;
+        }
+
+        h2 {
+            color: #1F4788;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #1F4788;
+            padding-bottom: 10px;
+        }
+
+        h3 {
+            color: #2E75B6;
+            font-size: 1.3em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .card {
+            background-color: #f0f7ff;
+            border-left: 4px solid #2E75B6;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .card-title {
+            font-weight: bold;
+            color: #1F4788;
+            margin-bottom: 8px;
+        }
+
+        .workflow-box {
+            background-color: #fffbf0;
+            border-left: 4px solid #F79646;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .workflow-box h4 {
+            color: #F79646;
+            margin-bottom: 8px;
+        }
+
+        .feature-box {
+            background-color: #f0fff0;
+            border-left: 4px solid #70AD47;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .feature-box h4 {
+            color: #70AD47;
+            margin-bottom: 8px;
+        }
+
+        .tier-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin: 3px;
+            font-size: 0.9em;
+        }
+
+        .tier-hot { background-color: #FF0000; color: white; }
+        .tier-warm { background-color: #FFA500; color: white; }
+        .tier-cool { background-color: #FFFF00; color: black; }
+        .tier-cold { background-color: #0000FF; color: white; }
+        .tier-very-cold { background-color: #808080; color: white; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.9em;
+        }
+
+        th {
+            background-color: #1F4788;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .checklist {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+
+        .checklist ul {
+            list-style-type: none;
+            margin-left: 0;
+        }
+
+        .checklist li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .checklist li:before {
+            content: "☐ ";
+            margin-right: 10px;
+            color: #1F4788;
+            font-weight: bold;
+        }
+
+        .step {
+            background-color: #f0f7ff;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #2E75B6;
+        }
+
+        .step-title {
+            color: #1F4788;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .step ol {
+            margin-left: 20px;
+        }
+
+        .step li {
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        .highlight {
+            background-color: #FFFF00;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .key-point {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .key-point strong {
+            color: #856404;
+        }
+
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ddd;
+            text-align: center;
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .emoji {
+            margin-right: 5px;
+        }
+
+        ul, ol {
+            margin-left: 20px;
+            margin-bottom: 15px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        code {
+            background-color: #f4f4f4;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .success {
+            color: #70AD47;
+            font-weight: bold;
+        }
+
+        .warning {
+            color: #C5504E;
+            font-weight: bold;
+        }
+
+        @media print {
+            body {
+                background-color: white;
+            }
+            .container {
+                box-shadow: none;
+                max-width: 100%;
+            }
+            section {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <div class="header">
+            <h1><span class="emoji">🚀</span>ArthaInvest CRM</h1>
+            <p>Team Quick Start Guide</p>
+            <div class="meta">
+                <span>Version 1.0</span>
+                <span>Last Updated: 2026-08-20</span>
+                <span>Complete Kylas-Level CRM</span>
+            </div>
+        </div>
+
+        <!-- TABLE OF CONTENTS -->
+        <div class="toc">
+            <h2><span class="emoji">📋</span>Table of Contents</h2>
+            <ol>
+                <li><a href="#getting-started">Getting Started</a></li>
+                <li><a href="#daily-workflow">Daily Workflow</a></li>
+                <li><a href="#sheet-guide">Sheet Guide</a></li>
+                <li><a href="#key-features">Key Features</a></li>
+                <li><a href="#common-tasks">Common Tasks</a></li>
+                <li><a href="#tips-tricks">Tips & Tricks</a></li>
+                <li><a href="#checklist">Daily Checklist</a></li>
+            </ol>
+        </div>
+
+        <!-- SECTION 1: GETTING STARTED -->
+        <section id="getting-started">
+            <h2><span class="emoji">🎯</span>Getting Started</h2>
+
+            <h3>Access Your CRM</h3>
+            <ol>
+                <li>Open Google Sheets</li>
+                <li>Search for: "ArthaInvest CRM ADVANCED"</li>
+                <li>Bookmark it (you'll use it daily)</li>
+                <li>Share the link with team members</li>
+            </ol>
+
+            <h3>What You'll See</h3>
+            <ul>
+                <li><strong>15 sheets</strong> at the bottom (tabs)</li>
+                <li><strong>Menus</strong> at top right: Notifications | Workflows | Lead Scoring | Email Sequences | Communication Hub</li>
+                <li><strong>Color-coded sheets</strong> for easy navigation</li>
+            </ul>
+
+            <h3>Your Role</h3>
+            <div class="card">
+                <div class="card-title">✅ What You Do</div>
+                <ul>
+                    <li>Add data to Leads, Clients, Deals, Tasks</li>
+                    <li>Monitor dashboards and notifications</li>
+                    <li>Act on tasks and follow-ups</li>
+                    <li>Track all communications</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🤖 What System Does</div>
+                <ul>
+                    <li>Auto-calculates lead scores</li>
+                    <li>Auto-sends WhatsApp notifications</li>
+                    <li>Auto-creates tasks</li>
+                    <li>Auto-sends email sequences</li>
+                    <li>Auto-updates communication hub</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- SECTION 2: DAILY WORKFLOW -->
+        <section id="daily-workflow">
+            <h2><span class="emoji">📅</span>Daily Workflow</h2>
+
+            <h3>Morning (5 minutes)</h3>
+            <div class="workflow-box">
+                <h4>1. Open Dashboard Sheet</h4>
+                <p>✓ Check KPIs: Total clients, active prospects, open deals<br>
+                ✓ Review pending tasks<br>
+                ✓ Check upcoming renewals</p>
+            </div>
+
+            <div class="workflow-box">
+                <h4>2. Check Notification Log</h4>
+                <p>✓ See what happened overnight<br>
+                ✓ Alerts about hot leads, renewals, dormant clients</p>
+            </div>
+
+            <div class="workflow-box">
+                <h4>3. Review Lead Scoring</h4>
+                <p>✓ Filter by "HOT" (score 80-100)<br>
+                ✓ These need immediate calls</p>
+            </div>
+
+            <h3>During Day (ongoing)</h3>
+            <div class="workflow-box">
+                <h4>Add New Leads</h4>
+                <p>Go to <strong>Leads sheet</strong><br>
+                Add: Name, Phone, Email, Company, Source, Product Interest<br>
+                ✓ System auto-calculates score<br>
+                ✓ Auto-creates notification (if high priority)</p>
+            </div>
+
+            <div class="workflow-box">
+                <h4>Log Communications</h4>
+                <p>Go to <strong>Communications sheet</strong><br>
+                Record: Who, when, channel (Email/WhatsApp/Call), outcome<br>
+                ✓ Auto-updates timeline</p>
+            </div>
+
+            <div class="workflow-box">
+                <h4>Track Deals</h4>
+                <p>Go to <strong>Deals sheet</strong><br>
+                Update stage as you move forward<br>
+                ✓ System auto-sends notifications</p>
+            </div>
+
+            <div class="workflow-box">
+                <h4>Manage Tasks</h4>
+                <p>Go to <strong>Tasks sheet</strong><br>
+                Add: Description, priority, due date, related lead<br>
+                ✓ System sends reminders</p>
+            </div>
+
+            <h3>End of Day (5 minutes)</h3>
+            <div class="workflow-box">
+                <h4>1. Update Last Contact</h4>
+                <p>Mark in Leads/Clients: Today's date in "Last Contact" column<br>
+                ✓ System updates Communication Hub</p>
+            </div>
+
+            <div class="workflow-box">
+                <h4>2. Check Tomorrow's Tasks</h4>
+                <p>Filter Tasks sheet by tomorrow's date<br>
+                ✓ Prepare for next day</p>
+            </div>
+        </section>
+
+        <!-- SECTION 3: SHEET GUIDE -->
+        <section id="sheet-guide">
+            <h2><span class="emoji">📊</span>Sheet Guide - 15 Modules</h2>
+
+            <h3>READ & WRITE SHEETS (Your Daily Work)</h3>
+
+            <table>
+                <tr>
+                    <th>Sheet</th>
+                    <th>Purpose</th>
+                    <th>Action</th>
+                </tr>
+                <tr>
+                    <td><strong>Dashboard</strong></td>
+                    <td>Executive overview</td>
+                    <td>View KPIs daily</td>
+                </tr>
+                <tr>
+                    <td><strong>Leads</strong></td>
+                    <td>Prospects & opportunities</td>
+                    <td>Add new leads, track scores</td>
+                </tr>
+                <tr>
+                    <td><strong>Contacts</strong></td>
+                    <td>All people directory</td>
+                    <td>Manage relationships</td>
+                </tr>
+                <tr>
+                    <td><strong>Clients</strong></td>
+                    <td>Active customers</td>
+                    <td>Track renewals & commission</td>
+                </tr>
+                <tr>
+                    <td><strong>Deals</strong></td>
+                    <td>Sales pipeline</td>
+                    <td>Update stages, track value</td>
+                </tr>
+                <tr>
+                    <td><strong>Tasks</strong></td>
+                    <td>Follow-ups & actions</td>
+                    <td>Create & complete tasks</td>
+                </tr>
+                <tr>
+                    <td><strong>Communications</strong></td>
+                    <td>Interaction log</td>
+                    <td>Log calls, messages, meetings</td>
+                </tr>
+                <tr>
+                    <td><strong>Products</strong></td>
+                    <td>Product reference</td>
+                    <td>View only (pre-configured)</td>
+                </tr>
+            </table>
+
+            <h3>AUTOMATION SHEETS (Monitor Only)</h3>
+            <ul>
+                <li><strong>Lead Scoring</strong> - Auto-calculated scores (don't edit)</li>
+                <li><strong>Workflows</strong> - Automation rules (view status)</li>
+                <li><strong>Email Sequences</strong> - Drip campaigns (view enrollment)</li>
+                <li><strong>Communication Hub</strong> - Unified view of all interactions</li>
+                <li><strong>Notification Log</strong> - History of all alerts</li>
+                <li><strong>Workflow Logs</strong> - Record of auto-actions executed</li>
+                <li><strong>Sequence Logs</strong> - Email send history & engagement</li>
+            </ul>
+        </section>
+
+        <!-- SECTION 4: KEY FEATURES -->
+        <section id="key-features">
+            <h2><span class="emoji">🔥</span>Key Features</h2>
+
+            <h3>Feature 1: Auto Lead Scoring</h3>
+            <div class="feature-box">
+                <h4>✅ What it does</h4>
+                <p>Every lead gets a score (0-100) automatically based on:</p>
+                <ul>
+                    <li>Engagement (email, calls, meetings)</li>
+                    <li>Company fit & size</li>
+                    <li>Budget & timeline</li>
+                    <li>Recent activity</li>
+                </ul>
+                <h4>✅ How to use</h4>
+                <p>Add a lead → System scores it → Check tier in Lead Tier column</p>
+                <h4>✅ Action</h4>
+                <p>Focus on <span class="tier-badge tier-hot">HOT</span> leads first (80-100)</p>
+            </div>
+
+            <h3>Feature 2: WhatsApp Notifications</h3>
+            <div class="feature-box">
+                <h4>✅ What you'll get</h4>
+                <p>Instant WhatsApp alerts for:</p>
+                <ul>
+                    <li>🔔 New lead assigned</li>
+                    <li>🔔 Lead score changed to HOT</li>
+                    <li>🔔 Deal created</li>
+                    <li>🔔 Renewal due (7 days before)</li>
+                    <li>🔔 Commission earned</li>
+                    <li>🔔 Client dormant (30+ days)</li>
+                </ul>
+                <h4>✅ Action</h4>
+                <p>Check Notification Log sheet to see all alerts</p>
+            </div>
+
+            <h3>Feature 3: Automatic Task Creation</h3>
+            <div class="feature-box">
+                <h4>✅ What system creates</h4>
+                <ul>
+                    <li>New lead assigned → Welcome task</li>
+                    <li>Lead score HOT → Call task</li>
+                    <li>Deal won → Onboarding task</li>
+                    <li>Client dormant → Re-engagement task</li>
+                </ul>
+                <h4>✅ Action</h4>
+                <p>Complete tasks as they appear in Tasks sheet</p>
+            </div>
+
+            <h3>Feature 4: Email Sequences</h3>
+            <div class="feature-box">
+                <h4>✅ 4 Campaigns Running</h4>
+                <ul>
+                    <li><span class="tier-badge tier-cold">Nurture</span> Cold leads: 7 emails over 14 days</li>
+                    <li><span class="tier-badge tier-warm">Sales</span> Warm leads: 7 emails over 21 days</li>
+                    <li><span class="tier-badge tier-cool">Onboarding</span> New clients: 8 emails over 30 days</li>
+                    <li><span class="tier-badge tier-very-cold">Re-engagement</span> Inactive: 6 emails over 21 days</li>
+                </ul>
+                <h4>✅ Result</h4>
+                <p>24/7 automated email outreach - no manual work needed</p>
+            </div>
+
+            <h3>Feature 5: Communication Hub</h3>
+            <div class="feature-box">
+                <h4>✅ See for each contact</h4>
+                <ul>
+                    <li>Email opens/clicks count</li>
+                    <li>WhatsApp sent/delivered/read count</li>
+                    <li>Call history & duration</li>
+                    <li>Meeting history</li>
+                    <li>Last activity date</li>
+                    <li>Next touchpoint date</li>
+                </ul>
+                <h4>✅ Use</h4>
+                <p>Know exactly where you stand with each person at a glance</p>
+            </div>
+        </section>
+
+        <!-- SECTION 5: COMMON TASKS -->
+        <section id="common-tasks">
+            <h2><span class="emoji">✅</span>Common Tasks - Step by Step</h2>
+
+            <h3>Task 1: Add a New Lead</h3>
+            <div class="step">
+                <div class="step-title">Steps:</div>
+                <ol>
+                    <li>Open <strong>Leads sheet</strong></li>
+                    <li>Add new row with basic info:
+                        <ul>
+                            <li>Name: "Rajesh Patel"</li>
+                            <li>Phone: "98765-43210"</li>
+                            <li>Email: "rajesh@company.com"</li>
+                            <li>Source: "LinkedIn"</li>
+                            <li>Product Interest: "Term Insurance"</li>
+                            <li>Budget: "50,00,000"</li>
+                            <li>Timeline: "2" months</li>
+                        </ul>
+                    </li>
+                </ol>
+                <div class="success">✓ System automatically: Scores lead, assigns tier, sends notification</div>
+            </div>
+
+            <h3>Task 2: Log a Phone Call</h3>
+            <div class="step">
+                <div class="step-title">Steps:</div>
+                <ol>
+                    <li>Open <strong>Communications sheet</strong></li>
+                    <li>Add new row:
+                        <ul>
+                            <li>Date: Today</li>
+                            <li>Contact: "Rajesh Patel"</li>
+                            <li>Channel: "Phone Call"</li>
+                            <li>Subject: "Discussed budget & timeline"</li>
+                            <li>Duration: "15" minutes</li>
+                            <li>Outcome: "Very interested"</li>
+                        </ul>
+                    </li>
+                </ol>
+                <div class="success">✓ System updates: Communication Hub, last contact date, lead score</div>
+            </div>
+
+            <h3>Task 3: Update Deal Stage</h3>
+            <div class="step">
+                <div class="step-title">Steps:</div>
+                <ol>
+                    <li>Open <strong>Deals sheet</strong></li>
+                    <li>Find the deal</li>
+                    <li>Change "Stage" column from "Proposal" to "Negotiation"</li>
+                </ol>
+                <div class="success">✓ System creates: Notification, updates pipeline value</div>
+                <div class="key-point"><strong>💡 Tip:</strong> When you move to "Closed Won", system auto-creates renewal task</div>
+            </div>
+
+            <h3>Task 4: Create Follow-up Task</h3>
+            <div class="step">
+                <div class="step-title">Steps:</div>
+                <ol>
+                    <li>Open <strong>Tasks sheet</strong></li>
+                    <li>Add new row:
+                        <ul>
+                            <li>Description: "Call Rajesh Patel to discuss quotation"</li>
+                            <li>Related To: "Rajesh Patel"</li>
+                            <li>Priority: "High"</li>
+                            <li>Due Date: "2026-08-25"</li>
+                            <li>Status: "Pending"</li>
+                        </ul>
+                    </li>
+                </ol>
+                <div class="success">✓ System: Sends reminder on due date, links to lead profile</div>
+            </div>
+
+            <h3>Task 5: Check Your Priorities</h3>
+            <div class="step">
+                <div class="step-title">Steps:</div>
+                <ol>
+                    <li>Open <strong>Leads sheet</strong></li>
+                    <li>Click filter icon on "Lead Tier" column</li>
+                    <li>Select "HOT" only</li>
+                    <li>Now see only high priority leads to call today</li>
+                </ol>
+                <div class="success">✓ Focus on: Leads with score > 80 first</div>
+            </div>
+
+            <h3>Task 6: Monitor Client Renewals</h3>
+            <div class="step">
+                <div class="step-title">Steps:</div>
+                <ol>
+                    <li>Open <strong>Clients sheet</strong></li>
+                    <li>Look at "Renewal Date" column</li>
+                    <li>Any date in next 7 days = URGENT</li>
+                </ol>
+                <div class="success">✓ System alerts: Notification 7 days before, creates task</div>
+            </div>
+
+            <h3>Task 7: Track Commission</h3>
+            <div class="step">
+                <div class="step-title">Steps:</div>
+                <ol>
+                    <li>Open <strong>Commissions sheet</strong></li>
+                    <li>See all commissions earned (auto-logged)</li>
+                    <li>Check status: Earned / Pending / Paid</li>
+                </ol>
+                <div class="success">✓ Know exactly how much you've earned</div>
+            </div>
+        </section>
+
+        <!-- SECTION 6: TIPS & TRICKS -->
+        <section id="tips-tricks">
+            <h2><span class="emoji">💡</span>Tips & Tricks</h2>
+
+            <div class="key-point">
+                <strong>💡 Tip 1:</strong> Use Filters - Click column header → Filter icon → Filter by Tier (HOT), Status (Pending), Priority (High)
+            </div>
+
+            <div class="key-point">
+                <strong>💡 Tip 2:</strong> Use Search (Ctrl+F) - Search for lead name across all sheets - Find all interactions with one person
+            </div>
+
+            <div class="key-point">
+                <strong>💡 Tip 3:</strong> Sort by Last Contact - Oldest contacts first = who needs re-engagement
+            </div>
+
+            <div class="key-point">
+                <strong>💡 Tip 4:</strong> Check Dashboards Daily - Dashboard sheet (KPIs) + Communication Hub (health) + Notification Log (events)
+            </div>
+
+            <div class="key-point">
+                <strong>💡 Tip 5:</strong> Respect Preferences - Check Communication Preferences sheet - Some prefer WhatsApp, some email
+            </div>
+
+            <div class="key-point">
+                <strong>💡 Tip 6:</strong> Batch Similar Tasks - Group calls by location + Group emails by sequence = More efficient
+            </div>
+
+            <div class="key-point">
+                <strong>💡 Tip 7:</strong> Update "Last Contact" Column - System uses this for scoring & alerts - Keep dormant detection accurate
+            </div>
+
+            <div class="key-point">
+                <strong>💡 Tip 8:</strong> Set Realistic Follow-ups - Don't create too many tasks - Focus on HIGH priority only
+            </div>
+
+            <div class="key-point">
+                <strong>💡 Tip 9:</strong> Review Performance Weekly - Open Sequence Logs - Check open rates (target 25%+) & click rates (target 5%+)
+            </div>
+
+            <div class="key-point">
+                <strong>💡 Tip 10:</strong> Trust the Automation - Workflows run 24/7 + Sequences send automatically + Scores update automatically
+            </div>
+        </section>
+
+        <!-- SECTION 7: DAILY CHECKLIST -->
+        <section id="checklist">
+            <h2><span class="emoji">🎯</span>Your Daily Checklist</h2>
+
+            <div class="checklist">
+                <h3>Every Morning</h3>
+                <ul>
+                    <li>Open Dashboard → Check KPIs</li>
+                    <li>Check Notification Log → See overnight alerts</li>
+                    <li>Filter Leads by "HOT" tier → Call these today</li>
+                    <li>Review today's Tasks → Prioritize</li>
+                </ul>
+            </div>
+
+            <div class="checklist">
+                <h3>Throughout Day</h3>
+                <ul>
+                    <li>Add new leads → System scores them</li>
+                    <li>Log communications → Keep history updated</li>
+                    <li>Update deal stages → System auto-acts</li>
+                    <li>Create follow-up tasks → Don't forget</li>
+                </ul>
+            </div>
+
+            <div class="checklist">
+                <h3>End of Day</h3>
+                <ul>
+                    <li>Check tomorrow's tasks → Prepare</li>
+                    <li>Update last contact dates → Keep scoring accurate</li>
+                    <li>Review communication hub → See relationship status</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- FINAL SECTION -->
+        <section>
+            <h2><span class="emoji">🚀</span>You're Ready!</h2>
+
+            <div class="card">
+                <div class="card-title">✅ You Now Have:</div>
+                <ul>
+                    <li>Complete CRM with 15 sheets</li>
+                    <li>5 automation phases working</li>
+                    <li>27 clients pre-loaded</li>
+                    <li>12 prospects ready to score</li>
+                    <li>Automatic notifications</li>
+                    <li>Automatic tasks</li>
+                    <li>Email sequences running 24/7</li>
+                    <li>Complete communication tracking</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🎯 Start Using Today:</div>
+                <p><strong>Success comes from:</strong></p>
+                <ol>
+                    <li>Consistent data entry</li>
+                    <li>Acting on alerts immediately</li>
+                    <li>Trusting the automation</li>
+                    <li>Following the daily workflow</li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <p><strong>ArthaInvest CRM - Team Quick Start Guide</strong></p>
+            <p>Version 1.0 | Last Updated: August 20, 2026</p>
+            <p>Print this guide and keep it at your desk for quick reference!</p>
+        </div>
+    </div>
+</body>
+</html>

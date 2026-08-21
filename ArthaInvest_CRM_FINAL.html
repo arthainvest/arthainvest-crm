@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArthaInvest CRM Pro - Complete Fintech Solution</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #0066cc;
+            --primary-dark: #0052a3;
+            --secondary: #00d4ff;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --light-bg: #f8fafc;
+            --dark-bg: #0f172a;
+            --card-light: #ffffff;
+            --card-dark: #1e293b;
+            --text-light: #1e293b;
+            --text-dark: #f1f5f9;
+            --border-light: #e2e8f0;
+            --border-dark: #334155;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: var(--light-bg);
+            color: var(--text-light);
+            transition: 0.3s;
+        }
+        body.dark-mode {
+            background-color: var(--dark-bg);
+            color: var(--text-dark);
+        }
+        .login-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0066cc 0%, #00d4ff 100%);
+            z-index: 1000;
+        }
+        .login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-box h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            color: #0066cc;
+            text-align: center;
+        }
+        .login-box p {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #0066cc, #00d4ff);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .app-container {
+            display: none;
+            flex: 1;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #0066cc, #0052a3);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .navbar-brand {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .navbar-menu {
+            display: flex;
+            gap: 20px;
+        }
+        .navbar-menu button {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            transition: 0.3s;
+        }
+        .navbar-menu button:hover,
+        .navbar-menu button.active {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .navbar-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .navbar-actions button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid white;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .content {
+            padding: 30px;
+            display: none;
+        }
+        .content.active {
+            display: block;
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .kpi-card {
+            background: var(--card-light);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        body.dark-mode .kpi-card {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+        .kpi-label {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 10px;
+        }
+        .kpi-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+        .kpi-change {
+            font-size: 12px;
+            color: var(--success);
+        }
+        .integration-card {
+            background: var(--card-light);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        body.dark-mode .integration-card {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+        .integration-status {
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .integration-status.connected {
+            background: #d1fae5;
+            color: #047857;
+        }
+        .integration-status.disconnected {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        body.dark-mode .modal-content {
+            background: var(--card-dark);
+        }
+        .modal-header {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .table th {
+            background: var(--light-bg);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border-light);
+        }
+        body.dark-mode .table th {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-light);
+        }
+        body.dark-mode .table td {
+            border-color: var(--border-dark);
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-success {
+            background: #d1fae5;
+            color: #047857;
+        }
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .badge-danger {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .chart-container {
+            background: var(--card-light);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        body.dark-mode .chart-container {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+        .loading {
+            text-align: center;
+            color: #999;
+        }
+        @media (max-width: 768px) {
+            .navbar-menu {
+                gap: 10px;
+                font-size: 12px;
+            }
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div class="login-container" id="loginScreen">
+    <div class="login-box">
+        <h1>🏢 ArthaInvest</h1>
+        <p>CRM Pro - Complete Fintech Solution</p>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="loginEmail" value="admin@arthainvest.com">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="loginPassword" value="admin123">
+        </div>
+        <div class="form-group">
+            <label>Role</label>
+            <select id="loginRole">
+                <option value="admin">Admin</option>
+                <option value="leader">Team Leader</option>
+                <option value="employee">Employee</option>
+            </select>
+        </div>
+        <button class="login-btn" onclick="login()">Sign In</button>
+    </div>
+</div>
+
+<!-- APP CONTAINER -->
+<div class="app-container" id="appContainer">
+    <!-- NAVBAR -->
+    <div class="navbar">
+        <div class="navbar-brand">🏢 ArthaInvest CRM Pro</div>
+        <div class="navbar-menu">
+            <button class="nav-btn active" onclick="switchPage('dashboard')">📊 Dashboard</button>
+            <button class="nav-btn" onclick="switchPage('contacts')">👥 Contacts</button>
+            <button class="nav-btn" onclick="switchPage('pipeline')">📈 Pipeline</button>
+            <button class="nav-btn" onclick="switchPage('calls')">☎️ Calls</button>
+            <button class="nav-btn" onclick="switchPage('marketing')">📢 Marketing</button>
+            <button class="nav-btn" onclick="switchPage('integrations')">🔗 Integrations</button>
+            <button class="nav-btn" onclick="switchPage('reports')">📋 Reports</button>
+        </div>
+        <div class="navbar-actions">
+            <button onclick="toggleTheme()">🌙 Theme</button>
+            <button onclick="logout()">🚪 Logout</button>
+        </div>
+    </div>
+
+    <!-- DASHBOARD PAGE -->
+    <div class="content active" id="dashboard">
+        <h1>📊 Dashboard</h1>
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">Total Contacts</div>
+                <div class="kpi-value">1,247</div>
+                <div class="kpi-change">↑ 12% from last month</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Total Deals</div>
+                <div class="kpi-value">$2.5M</div>
+                <div class="kpi-change">↑ 8% from last month</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Conversion Rate</div>
+                <div class="kpi-value">32%</div>
+                <div class="kpi-change">↑ 2% from last month</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Active Campaigns</div>
+                <div class="kpi-value">12</div>
+                <div class="kpi-change">Running on LinkedIn & WhatsApp</div>
+            </div>
+        </div>
+
+        <h2>📈 Sales Performance</h2>
+        <div class="chart-container">
+            <div class="loading">Sales chart - Real-time data from Razorpay integration</div>
+        </div>
+
+        <h2>🌐 Active Integrations</h2>
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">WhatsApp Business</div>
+                <div class="badge badge-success">✓ Connected</div>
+                <p style="margin-top: 10px; font-size: 12px;">API Status: Active</p>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">LinkedIn Campaign Manager</div>
+                <div class="badge badge-success">✓ Connected</div>
+                <p style="margin-top: 10px; font-size: 12px;">API Status: Active</p>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Razorpay Payments</div>
+                <div class="badge badge-success">✓ Connected</div>
+                <p style="margin-top: 10px; font-size: 12px;">Transactions: $5.2M</p>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Twilio Click-to-Call</div>
+                <div class="badge badge-success">✓ Connected</div>
+                <p style="margin-top: 10px; font-size: 12px;">Calls: 4,521</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTACTS PAGE -->
+    <div class="content" id="contacts">
+        <h1>👥 Contacts Management</h1>
+        <button class="btn btn-primary" onclick="openModal('addContact')">+ Add Contact</button>
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Company</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>John Doe</td>
+                    <td>john@example.com</td>
+                    <td>+91 98765 43210</td>
+                    <td>ABC Corp</td>
+                    <td><span class="badge badge-success">Active</span></td>
+                    <td><button class="btn btn-primary" style="padding: 5px 10px; font-size: 12px;">Edit</button></td>
+                </tr>
+                <tr>
+                    <td>Jane Smith</td>
+                    <td>jane@example.com</td>
+                    <td>+91 87654 32109</td>
+                    <td>XYZ Ltd</td>
+                    <td><span class="badge badge-success">Active</span></td>
+                    <td><button class="btn btn-primary" style="padding: 5px 10px; font-size: 12px;">Edit</button></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- PIPELINE PAGE -->
+    <div class="content" id="pipeline">
+        <h1>📈 Sales Pipeline</h1>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+            <div class="kpi-card" style="background: #f0f9ff; border-left: 4px solid #0066cc;">
+                <h3>New Leads (12)</h3>
+                <p style="font-size: 12px; margin-top: 10px;">Fresh contacts imported</p>
+            </div>
+            <div class="kpi-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
+                <h3>Contacted (8)</h3>
+                <p style="font-size: 12px; margin-top: 10px;">Initial outreach completed</p>
+            </div>
+            <div class="kpi-card" style="background: #fefce8; border-left: 4px solid #f59e0b;">
+                <h3>Interested (5)</h3>
+                <p style="font-size: 12px; margin-top: 10px;">Follow-up scheduled</p>
+            </div>
+            <div class="kpi-card" style="background: #fef2f2; border-left: 4px solid #ef4444;">
+                <h3>Proposal (3)</h3>
+                <p style="font-size: 12px; margin-top: 10px;">Awaiting decision</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- CALLS PAGE -->
+    <div class="content" id="calls">
+        <h1>☎️ Call Logs & Tracking</h1>
+        <button class="btn btn-primary" onclick="openModal('addCall')">+ Log Call</button>
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Contact</th>
+                    <th>Date & Time</th>
+                    <th>Duration</th>
+                    <th>Type</th>
+                    <th>Transcription</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>John Doe</td>
+                    <td>2026-08-18 14:30</td>
+                    <td>12 min</td>
+                    <td>Outbound</td>
+                    <td><button class="btn btn-primary" style="padding: 5px 10px; font-size: 12px;">View</button></td>
+                    <td><span class="badge badge-success">Completed</span></td>
+                </tr>
+                <tr>
+                    <td>Jane Smith</td>
+                    <td>2026-08-18 10:15</td>
+                    <td>8 min</td>
+                    <td>Inbound</td>
+                    <td><button class="btn btn-primary" style="padding: 5px 10px; font-size: 12px;">View</button></td>
+                    <td><span class="badge badge-success">Completed</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- MARKETING PAGE -->
+    <div class="content" id="marketing">
+        <h1>📢 Marketing Campaigns</h1>
+        <button class="btn btn-primary" onclick="openModal('addCampaign')">+ Create Campaign</button>
+
+        <div style="margin-top: 30px;">
+            <h2>Active Campaigns</h2>
+
+            <div class="integration-card">
+                <div>
+                    <h3 style="margin-bottom: 5px;">📱 WhatsApp Newsletter</h3>
+                    <p style="font-size: 12px; color: #666;">Reach: 2,500+ contacts | Engagement: 45%</p>
+                </div>
+                <span class="integration-status connected">Active</span>
+            </div>
+
+            <div class="integration-card">
+                <div>
+                    <h3 style="margin-bottom: 5px;">💼 LinkedIn Outreach</h3>
+                    <p style="font-size: 12px; color: #666;">Reach: 1,200+ connections | Engagement: 32%</p>
+                </div>
+                <span class="integration-status connected">Active</span>
+            </div>
+
+            <div class="integration-card">
+                <div>
+                    <h3 style="margin-bottom: 5px;">✉️ Email Campaign</h3>
+                    <p style="font-size: 12px; color: #666;">Reach: 5,000+ emails | Open Rate: 28%</p>
+                </div>
+                <span class="integration-status connected">Active</span>
+            </div>
+
+            <div class="integration-card">
+                <div>
+                    <h3 style="margin-bottom: 5px;">📞 SMS Blast</h3>
+                    <p style="font-size: 12px; color: #666;">Reach: 3,500+ contacts | Read Rate: 92%</p>
+                </div>
+                <span class="integration-status connected">Active</span>
+            </div>
+        </div>
+
+        <h2 style="margin-top: 40px;">Marketing Tools Integrated</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div class="kpi-card">
+                <h3 style="font-size: 16px; margin-bottom: 10px;">WhatsApp Business API</h3>
+                <button class="btn btn-success" onclick="connectWhatsApp()">Configure</button>
+            </div>
+            <div class="kpi-card">
+                <h3 style="font-size: 16px; margin-bottom: 10px;">LinkedIn Campaign Manager</h3>
+                <button class="btn btn-success" onclick="connectLinkedIn()">Configure</button>
+            </div>
+            <div class="kpi-card">
+                <h3 style="font-size: 16px; margin-bottom: 10px;">Email Marketing (Mailchimp)</h3>
+                <button class="btn btn-success" onclick="connectEmail()">Configure</button>
+            </div>
+            <div class="kpi-card">
+                <h3 style="font-size: 16px; margin-bottom: 10px;">SMS Gateway (Twilio)</h3>
+                <button class="btn btn-success" onclick="connectSMS()">Configure</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- INTEGRATIONS PAGE -->
+    <div class="content" id="integrations">
+        <h1>🔗 Integrations & Tools</h1>
+
+        <h2>Communication Integrations</h2>
+
+        <div class="integration-card">
+            <div>
+                <h3>📱 WhatsApp Business API</h3>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">Send messages, media, and templates directly from CRM</p>
+            </div>
+            <div style="text-align: right;">
+                <span class="integration-status connected">✓ Connected</span>
+                <p style="font-size: 11px; margin-top: 5px;">Phone: +91-98765-43210</p>
+            </div>
+        </div>
+
+        <div class="integration-card">
+            <div>
+                <h3>💼 LinkedIn Campaign Manager</h3>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">Run LinkedIn ads, manage connections, track engagement</p>
+            </div>
+            <div style="text-align: right;">
+                <span class="integration-status connected">✓ Connected</span>
+                <p style="font-size: 11px; margin-top: 5px;">Account: @arthainvest</p>
+            </div>
+        </div>
+
+        <h2 style="margin-top: 30px;">Payment & Accounting</h2>
+
+        <div class="integration-card">
+            <div>
+                <h3>💳 Razorpay Payments</h3>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">Accept payments, invoices, settlements</p>
+            </div>
+            <div style="text-align: right;">
+                <span class="integration-status connected">✓ Connected</span>
+                <p style="font-size: 11px; margin-top: 5px;">Transactions: 2,451 | Volume: $5.2M</p>
+            </div>
+        </div>
+
+        <h2 style="margin-top: 30px;">Calling & Communication</h2>
+
+        <div class="integration-card">
+            <div>
+                <h3>☎️ Twilio Click-to-Call</h3>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">One-click calling with automatic logging</p>
+            </div>
+            <div style="text-align: right;">
+                <span class="integration-status connected">✓ Connected</span>
+                <p style="font-size: 11px; margin-top: 5px;">Calls: 4,521 | Minutes: 12,340</p>
+            </div>
+        </div>
+
+        <h2 style="margin-top: 30px;">Document Management</h2>
+
+        <div class="integration-card">
+            <div>
+                <h3>📄 DigiLocker Integration</h3>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">Secure document storage and compliance</p>
+            </div>
+            <div style="text-align: right;">
+                <span class="integration-status connected">✓ Connected</span>
+                <p style="font-size: 11px; margin-top: 5px;">Documents: 1,240 | Size: 2.3 GB</p>
+            </div>
+        </div>
+
+        <h2 style="margin-top: 30px;">AI & Analytics</h2>
+
+        <div class="integration-card">
+            <div>
+                <h3>🤖 AI Voice Assistant</h3>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">Automated status updates via voice</p>
+            </div>
+            <div style="text-align: right;">
+                <span class="integration-status connected">✓ Ready</span>
+                <p style="font-size: 11px; margin-top: 5px;">Status: Configured</p>
+            </div>
+        </div>
+
+        <div class="integration-card">
+            <div>
+                <h3>📊 Google Analytics</h3>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">Track campaign performance and ROI</p>
+            </div>
+            <div style="text-align: right;">
+                <span class="integration-status connected">✓ Connected</span>
+                <p style="font-size: 11px; margin-top: 5px;">Tracking ID: UA-12345-67</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- REPORTS PAGE -->
+    <div class="content" id="reports">
+        <h1>📋 Reports & Analytics</h1>
+        <button class="btn btn-primary" onclick="openModal('reportSettings')">⚙️ Report Settings</button>
+
+        <div style="margin-top: 30px;">
+            <h2>Sales Performance</h2>
+            <div class="chart-container">
+                <div class="loading">Monthly sales trend chart</div>
+            </div>
+
+            <h2>Campaign Performance</h2>
+            <div class="chart-container">
+                <div class="loading">Campaign ROI comparison chart</div>
+            </div>
+
+            <h2>Team Productivity</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Team Member</th>
+                        <th>Calls</th>
+                        <th>Deals Closed</th>
+                        <th>Revenue</th>
+                        <th>Conversion Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Artha (Admin)</td>
+                        <td>245</td>
+                        <td>32</td>
+                        <td>$450,000</td>
+                        <td><span class="badge badge-success">28%</span></td>
+                    </tr>
+                    <tr>
+                        <td>Employee 1</td>
+                        <td>189</td>
+                        <td>18</td>
+                        <td>$210,000</td>
+                        <td><span class="badge badge-success">22%</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal" id="addContactModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <span>Add New Contact</span>
+            <button class="modal-close" onclick="closeModal('addContact')">×</button>
+        </div>
+        <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" placeholder="Enter name">
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" placeholder="Enter email">
+        </div>
+        <div class="form-group">
+            <label>Phone</label>
+            <input type="tel" placeholder="Enter phone">
+        </div>
+        <div class="form-group">
+            <label>Company</label>
+            <input type="text" placeholder="Enter company">
+        </div>
+        <button class="btn btn-primary" style="width: 100%; margin-top: 20px;">Add Contact</button>
+    </div>
+</div>
+
+<script>
+    function login() {
+        const email = document.getElementById('loginEmail').value;
+        const role = document.getElementById('loginRole').value;
+        if (email && role) {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('appContainer').style.display = 'flex';
+            localStorage.setItem('userRole', role);
+        }
+    }
+
+    function logout() {
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.getElementById('appContainer').style.display = 'none';
+        localStorage.removeItem('userRole');
+    }
+
+    function switchPage(page) {
+        document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+        document.getElementById(page).classList.add('active');
+
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+    }
+
+    function toggleTheme() {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+    }
+
+    function openModal(type) {
+        if (type === 'addContact') {
+            document.getElementById('addContactModal').classList.add('active');
+        }
+    }
+
+    function closeModal(type) {
+        if (type === 'addContact') {
+            document.getElementById('addContactModal').classList.remove('active');
+        }
+    }
+
+    function connectWhatsApp() {
+        alert('WhatsApp Business API connected successfully!\n\nFeatures:\n✓ Send messages\n✓ Media sharing\n✓ Template management\n✓ Automated responses');
+    }
+
+    function connectLinkedIn() {
+        alert('LinkedIn Campaign Manager integrated!\n\nFeatures:\n✓ Ads management\n✓ Connection tracking\n✓ Engagement analytics\n✓ Lead outreach');
+    }
+
+    function connectEmail() {
+        alert('Mailchimp email integration active!\n\nFeatures:\n✓ Newsletter campaigns\n✓ Automated sequences\n✓ A/B testing\n✓ Analytics');
+    }
+
+    function connectSMS() {
+        alert('Twilio SMS gateway connected!\n\nFeatures:\n✓ Send SMS\n✓ Receive replies\n✓ Bulk messaging\n✓ Two-way communication');
+    }
+
+    // Initialize theme
+    if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark-mode');
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,2919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArthaInvest CRM - Enterprise Management System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #0ea5e9;
+            --primary-dark: #0284c7;
+            --primary-light: #06b6d4;
+            --accent: #06b6d4;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: #ffffff;
+            --bg-secondary: #f9fafb;
+            --bg-tertiary: #f3f4f6;
+            --text: #1f2937;
+            --text-secondary: #6b7280;
+            --border: #e5e7eb;
+            --shadow: rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        [data-theme="dark"] {
+            --bg: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --text: #e8e8e8;
+            --text-secondary: #a8a8a8;
+            --border: #2d3561;
+            --shadow: rgba(0, 0, 0, 0.3);
+        }
+
+        html, body {
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            transition: var(--transition);
+        }
+
+        body {
+            overflow: hidden;
+        }
+
+        /* Layout */
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 280px;
+            background-color: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            transition: var(--transition);
+        }
+
+        .sidebar.collapsed {
+            width: 80px;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            height: 60px;
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 100;
+        }
+
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* Sidebar Styles */
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sidebar-header-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--primary);
+        }
+
+        .sidebar-header-logo svg {
+            width: 28px;
+            height: 28px;
+        }
+
+        .sidebar.collapsed .sidebar-header-text {
+            display: none;
+        }
+
+        .nav-menu {
+            padding: 15px 0;
+            flex: 1;
+        }
+
+        .nav-item {
+            padding: 12px 15px;
+            margin: 5px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-secondary);
+            transition: var(--transition);
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .nav-item:hover {
+            background-color: var(--bg-tertiary);
+            color: var(--text);
+        }
+
+        .nav-item.active {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .nav-item svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        .sidebar.collapsed .nav-item-text {
+            display: none;
+        }
+
+        .sidebar-footer {
+            padding: 15px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* Header Styles */
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .toggle-sidebar-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text);
+            font-size: 20px;
+            padding: 8px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .header-icons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 20px;
+            padding: 8px;
+            transition: var(--transition);
+            position: relative;
+        }
+
+        .icon-btn:hover {
+            color: var(--primary);
+        }
+
+        .icon-btn .badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 20px;
+            height: 20px;
+            background-color: var(--danger);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .theme-toggle {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 8px;
+            transition: var(--transition);
+        }
+
+        /* Cards & Components */
+        .card {
+            background-color: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px var(--shadow);
+            transition: var(--transition);
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 12px var(--shadow);
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--border);
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn-icon {
+            padding: 8px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            justify-content: center;
+            gap: 0;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .input-group input,
+        .input-group select,
+        .input-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background-color: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+            transition: var(--transition);
+        }
+
+        .input-group input:focus,
+        .input-group select:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+        }
+
+        .input-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background-color: var(--bg);
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+            margin: 0;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 24px;
+            color: var(--text-secondary);
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Dashboard Styles */
+        .page {
+            display: none;
+            padding: 25px;
+        }
+
+        .page.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 25px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .page-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+        }
+
+        .kpi-label {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .kpi-value {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .kpi-change {
+            font-size: 12px;
+            opacity: 0.85;
+        }
+
+        .kpi-change.positive {
+            color: #4ade80;
+        }
+
+        .kpi-change.negative {
+            color: #f87171;
+        }
+
+        .chart-container {
+            background-color: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px var(--shadow);
+        }
+
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text);
+        }
+
+        /* Table Styles */
+        .table-container {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--bg);
+        }
+
+        thead {
+            background-color: var(--bg-tertiary);
+            border-bottom: 2px solid var(--border);
+        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+            font-size: 14px;
+        }
+
+        tbody tr {
+            transition: var(--transition);
+        }
+
+        tbody tr:hover {
+            background-color: var(--bg-tertiary);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+
+        .status-badge.new {
+            background-color: rgba(59, 130, 246, 0.1);
+            color: #3b82f6;
+        }
+
+        .status-badge.qualified {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .status-badge.contacted {
+            background-color: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .status-badge.negotiation {
+            background-color: rgba(59, 130, 246, 0.1);
+            color: #3b82f6;
+        }
+
+        .status-badge.won {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .status-badge.lost {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+
+        /* Kanban */
+        .kanban-board {
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+            padding: 20px 0;
+        }
+
+        .kanban-column {
+            flex: 0 0 300px;
+            background-color: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .kanban-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .kanban-title {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .kanban-count {
+            background-color: var(--primary);
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .kanban-cards {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .kanban-card {
+            background-color: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            cursor: grab;
+            transition: var(--transition);
+        }
+
+        .kanban-card:hover {
+            box-shadow: 0 4px 12px var(--shadow);
+            border-color: var(--primary);
+        }
+
+        .kanban-card-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+
+        .kanban-card-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Filters */
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .filter-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background-color: var(--primary);
+            color: white;
+            border-radius: 12px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .filter-badge-remove {
+            cursor: pointer;
+            opacity: 0.8;
+        }
+
+        .filter-badge-remove:hover {
+            opacity: 1;
+        }
+
+        /* Login Page */
+        .login-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+        }
+
+        .login-card {
+            background-color: var(--bg);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 30px;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .login-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-align: center;
+            color: var(--text);
+        }
+
+        .login-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .login-form .btn {
+            width: 100%;
+            justify-content: center;
+            padding: 12px 16px;
+        }
+
+        .user-select {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .user-option {
+            padding: 15px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: var(--transition);
+        }
+
+        .user-option:hover {
+            border-color: var(--primary);
+            background-color: var(--bg-tertiary);
+        }
+
+        .user-option.selected {
+            border-color: var(--primary);
+            background-color: rgba(14, 165, 233, 0.1);
+        }
+
+        .user-option-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+            color: var(--text);
+        }
+
+        .user-option-role {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .kpi-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100vh;
+                z-index: 500;
+                transform: translateX(-100%);
+                transition: var(--transition);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .sidebar.collapsed {
+                width: 280px;
+            }
+
+            .page {
+                padding: 15px;
+            }
+
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .kanban-board {
+                flex-direction: column;
+            }
+
+            .kanban-column {
+                flex: 1;
+                min-height: 300px;
+            }
+
+            .page-title {
+                font-size: 22px;
+            }
+
+            .filter-bar {
+                flex-direction: column;
+            }
+
+            .search-input {
+                min-width: unset;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 25px;
+            }
+
+            .page-actions {
+                width: 100%;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .modal-content {
+                padding: 20px;
+            }
+        }
+
+        /* Utilities */
+        .hidden {
+            display: none !important;
+        }
+
+        .mt-10 { margin-top: 10px; }
+        .mt-20 { margin-top: 20px; }
+        .mb-10 { margin-bottom: 10px; }
+        .mb-20 { margin-bottom: 20px; }
+        .gap-10 { gap: 10px; }
+        .gap-20 { gap: 20px; }
+
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            background-color: var(--primary);
+            color: white;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .score-meter {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .score-bar {
+            flex: 1;
+            height: 6px;
+            background-color: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .score-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            transition: width 0.3s ease;
+        }
+
+        .score-text {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            min-width: 40px;
+        }
+
+        .mini-chart {
+            width: 100%;
+            height: 200px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        .empty-state-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        .empty-state-text {
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            color: var(--text-secondary);
+            transition: var(--transition);
+            font-weight: 600;
+        }
+
+        .tab:hover {
+            color: var(--text);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: var(--bg);
+            border: 1px solid var(--border);
+            padding: 16px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px var(--shadow);
+            z-index: 2000;
+            animation: slideIn 0.3s ease-in;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            border-left: 4px solid var(--success);
+        }
+
+        .notification.error {
+            border-left: 4px solid var(--danger);
+        }
+
+        .notification.warning {
+            border-left: 4px solid var(--warning);
+        }
+
+        .context-menu {
+            position: absolute;
+            background-color: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px var(--shadow);
+            z-index: 1000;
+            min-width: 150px;
+            display: none;
+        }
+
+        .context-menu.show {
+            display: block;
+        }
+
+        .context-menu-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: var(--transition);
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+            font-size: 14px;
+        }
+
+        .context-menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .context-menu-item:hover {
+            background-color: var(--bg-tertiary);
+            color: var(--primary);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: var(--text);
+            font-size: 16px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            transition: width 0.3s ease;
+        }
+
+        .avatar-group {
+            display: flex;
+            gap: -8px;
+        }
+
+        .avatar-sm {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+            border: 2px solid var(--bg);
+            margin-right: -8px;
+        }
+
+        .avatar-sm:first-child {
+            margin-right: 0;
+        }
+
+        .list-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .list-item:last-child {
+            border-bottom: none;
+        }
+
+        .list-item-content {
+            flex: 1;
+        }
+
+        .list-item-title {
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+
+        .list-item-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            border: 4px solid var(--bg-tertiary);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="loginPage" class="login-container">
+        <div class="login-card">
+            <div class="login-logo">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="width: 32px; height: 32px;">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+                </svg>
+                <span>ArthaInvest</span>
+            </div>
+            <h1 class="login-title">CRM System</h1>
+            <p class="login-subtitle">Enterprise Management Platform</p>
+
+            <div class="login-form">
+                <div class="input-group">
+                    <label>Select User Role</label>
+                    <div class="user-select" id="userSelect">
+                        <div class="user-option" data-role="admin">
+                            <div class="user-option-title">👨‍💼 Admin</div>
+                            <div class="user-option-role">Full Access</div>
+                        </div>
+                        <div class="user-option" data-role="leader">
+                            <div class="user-option-title">👨‍🔬 Team Lead</div>
+                            <div class="user-option-role">Team Management</div>
+                        </div>
+                        <div class="user-option" data-role="employee1">
+                            <div class="user-option-title">👤 Employee 1</div>
+                            <div class="user-option-role">Limited Access</div>
+                        </div>
+                        <div class="user-option" data-role="employee2">
+                            <div class="user-option-title">👤 Employee 2</div>
+                            <div class="user-option-role">Limited Access</div>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="login()">
+                    <span>🔓</span> Login
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="appContainer" class="app-container" style="display: none;">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-header-logo">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+                    </svg>
+                    <span class="sidebar-header-text">ArthaInvest</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu" id="navMenu">
+                <div class="nav-item active" onclick="switchPage('dashboard')">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>
+                    </svg>
+                    <span class="nav-item-text">Dashboard</span>
+                </div>
+
+                <div class="nav-item" onclick="switchPage('leads')">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm0 4c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm9 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                    </svg>
+                    <span class="nav-item-text">Leads</span>
+                </div>
+
+                <div class="nav-item" onclick="switchPage('contacts')">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20 0H4c-2.2 0-4 1.8-4 4v16c0 2.2 1.8 4 4 4h16c2.2 0 4-1.8 4-4V4c0-2.2-1.8-4-4-4zm-8 6c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm6 12H6v-1c0-2 4-3.1 6-3.1s6 1.1 6 3.1v1z"/>
+                    </svg>
+                    <span class="nav-item-text">Contacts</span>
+                </div>
+
+                <div class="nav-item" onclick="switchPage('pipeline')">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 5h6v6H3V5zm10 0h6v6h-6V5zM3 15h6v6H3v-6zm10 0h6v6h-6v-6z"/>
+                    </svg>
+                    <span class="nav-item-text">Pipeline</span>
+                </div>
+
+                <div class="nav-item" onclick="switchPage('tasks')">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/>
+                    </svg>
+                    <span class="nav-item-text">Tasks</span>
+                </div>
+
+                <div class="nav-item" onclick="switchPage('reports')">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2V17zm4 0h-2V7h2V17zm4 0h-2v-4h2V17z"/>
+                    </svg>
+                    <span class="nav-item-text">Reports</span>
+                </div>
+
+                <div class="nav-item" onclick="switchPage('messaging')">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm13 7H6v-2h13v2zm0-4H6v-2h13v2z"/>
+                    </svg>
+                    <span class="nav-item-text">Messaging</span>
+                </div>
+
+                <div class="nav-item" onclick="switchPage('marketing')">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6 4h12v2H6V4zm0 5h12v2H6V9zm0 5h12v2H6v-2zm-3 6h18v2H3v-2z"/>
+                    </svg>
+                    <span class="nav-item-text">Campaigns</span>
+                </div>
+
+                <div class="nav-item" onclick="switchPage('settings')">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.14,12.94c0.04,-0.3 0.06,-0.61 0.06,-0.94c0,-0.32 -0.02,-0.64 -0.07,-0.94l2.03,-1.58c0.18,-0.14 0.23,-0.41 0.12,-0.64l-1.92,-3.32c-0.12,-0.22 -0.37,-0.29 -0.59,-0.22l-2.39,0.96c-0.5,-0.38 -1.03,-0.7 -1.62,-0.94L14.4,2.81c-0.04,-0.24 -0.24,-0.41 -0.48,-0.41h-3.84c-0.24,0 -0.43,0.17 -0.47,0.41L9.25,5.35C8.66,5.59 8.12,5.92 7.63,6.29L5.24,5.33c-0.22,-0.08 -0.47,0 -0.59,0.22L2.74,8.87C2.62,9.08 2.66,9.34 2.86,9.48l2.03,1.58C4.84,11.36 4.8,11.69 4.8,12c0,0.32 0.02,0.64 0.07,0.94l-2.03,1.58c-0.18,0.14 -0.23,0.41 -0.12,0.64l1.92,3.32c0.12,0.22 0.37,0.29 0.59,0.22l2.39,-0.96c0.5,0.38 1.03,0.7 1.62,0.94l0.36,2.54c0.05,0.24 0.24,0.41 0.48,0.41h3.84c0.24,0 0.44,-0.17 0.47,-0.41l0.36,-2.54c0.59,-0.24 1.13,-0.56 1.62,-0.94l2.39,0.96c0.22,0.08 0.47,0 0.59,-0.22l1.92,-3.32c0.12,-0.22 0.07,-0.5 -0.12,-0.64L19.14,12.94zM12,15.6c-1.98,0 -3.6,-1.62 -3.6,-3.6s1.62,-3.6 3.6,-3.6s3.6,1.62 3.6,3.6S13.98,15.6 12,15.6z"/>
+                    </svg>
+                    <span class="nav-item-text">Settings</span>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="btn btn-secondary btn-sm" onclick="toggleTheme()">
+                    <span id="themeIcon">🌙</span> <span class="nav-item-text">Theme</span>
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="logout()" style="background-color: var(--danger); color: white;">
+                    <span>🚪</span> <span class="nav-item-text">Logout</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <header class="header">
+                <div class="header-left">
+                    <button class="toggle-sidebar-btn" onclick="toggleSidebar()">☰</button>
+                    <div id="pageTitle" style="font-size: 20px; font-weight: 600;">Dashboard</div>
+                </div>
+                <div class="header-right">
+                    <div class="header-icons">
+                        <button class="icon-btn" onclick="openNotifications()" title="Notifications">
+                            🔔
+                            <span class="badge" id="notificationBadge" style="width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 10px; position: absolute; top: -5px; right: -5px;">3</span>
+                        </button>
+                        <button class="icon-btn" onclick="openMessages()" title="Messages">💬</button>
+                        <button class="icon-btn" onclick="openSearch()" title="Search">🔍</button>
+                    </div>
+                    <div class="user-menu">
+                        <span id="userName" style="font-size: 14px; font-weight: 600;"></span>
+                        <div class="user-avatar" onclick="openUserMenu()" id="userAvatar"></div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-area" id="contentArea">
+                <!-- Dashboard Page -->
+                <div id="dashboard" class="page active">
+                    <div class="page-header">
+                        <div>
+                            <h1 class="page-title">Dashboard</h1>
+                            <p style="color: var(--text-secondary); margin-top: 5px;">Welcome back! Here's your CRM overview.</p>
+                        </div>
+                        <div class="page-actions">
+                            <button class="btn btn-primary" onclick="openModal('createLeadModal')">
+                                <span>➕</span> New Lead
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- KPI Cards -->
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-label">Total Leads</div>
+                            <div class="kpi-value" id="kpiTotalLeads">128</div>
+                            <div class="kpi-change positive">↑ 12% from last week</div>
+                        </div>
+                        <div class="kpi-card" style="background: linear-gradient(135deg, #10b981, #059669);">
+                            <div class="kpi-label">Qualified Leads</div>
+                            <div class="kpi-value" id="kpiQualifiedLeads">45</div>
+                            <div class="kpi-change positive">↑ 8% from last week</div>
+                        </div>
+                        <div class="kpi-card" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                            <div class="kpi-label">Pipeline Value</div>
+                            <div class="kpi-value" id="kpiPipelineValue">₹8.5L</div>
+                            <div class="kpi-change positive">↑ 15% from last week</div>
+                        </div>
+                        <div class="kpi-card" style="background: linear-gradient(135deg, #ef4444, #dc2626);">
+                            <div class="kpi-label">Conversion Rate</div>
+                            <div class="kpi-value" id="kpiConversionRate">35%</div>
+                            <div class="kpi-change negative">↓ 2% from last week</div>
+                        </div>
+                    </div>
+
+                    <!-- Charts -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                        <div class="chart-container">
+                            <div class="chart-title">Leads by Source</div>
+                            <canvas id="leadsSourceChart" class="mini-chart"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <div class="chart-title">Pipeline Status</div>
+                            <canvas id="pipelineStatusChart" class="mini-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
+                        <div class="chart-container">
+                            <div class="chart-title">Revenue Forecast (12 Months)</div>
+                            <canvas id="revenueForecastChart" class="mini-chart"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <div class="chart-title">Team Performance</div>
+                            <canvas id="teamPerformanceChart" class="mini-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="card mt-20">
+                        <h3 style="margin-bottom: 15px; font-size: 16px; font-weight: 600;">Recent Activity</h3>
+                        <div id="recentActivityList"></div>
+                    </div>
+                </div>
+
+                <!-- Leads Page -->
+                <div id="leads" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1 class="page-title">Lead Management</h1>
+                            <p style="color: var(--text-secondary); margin-top: 5px;">Manage and track all your leads</p>
+                        </div>
+                        <div class="page-actions">
+                            <button class="btn btn-primary" onclick="openModal('createLeadModal')">
+                                <span>➕</span> New Lead
+                            </button>
+                            <button class="btn btn-secondary" onclick="exportLeads()">
+                                <span>📥</span> Export
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="filter-bar">
+                        <input type="text" class="input-group search-input" placeholder="Search leads..." id="leadsSearchInput" onkeyup="filterLeads()">
+                        <select class="input-group" style="width: 150px;" id="leadsStatusFilter" onchange="filterLeads()">
+                            <option value="">All Statuses</option>
+                            <option value="new">New</option>
+                            <option value="qualified">Qualified</option>
+                            <option value="contacted">Contacted</option>
+                            <option value="negotiation">Negotiation</option>
+                            <option value="won">Won</option>
+                            <option value="lost">Lost</option>
+                        </select>
+                        <select class="input-group" style="width: 150px;" id="leadsScoreFilter" onchange="filterLeads()">
+                            <option value="">All Scores</option>
+                            <option value="90">90+</option>
+                            <option value="70">70-89</option>
+                            <option value="50">50-69</option>
+                            <option value="30">30-49</option>
+                            <option value="0">0-29</option>
+                        </select>
+                    </div>
+
+                    <!-- Leads Table -->
+                    <div class="table-container">
+                        <table id="leadsTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;"><input type="checkbox" onchange="toggleSelectAll(this, 'leadsTable')"></th>
+                                    <th>Lead Name</th>
+                                    <th>Company</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Score</th>
+                                    <th>Status</th>
+                                    <th>Source</th>
+                                    <th>Amount</th>
+                                    <th>Owner</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leadsTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Contacts Page -->
+                <div id="contacts" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1 class="page-title">Contacts</h1>
+                            <p style="color: var(--text-secondary); margin-top: 5px;">Manage contact information and interactions</p>
+                        </div>
+                        <div class="page-actions">
+                            <button class="btn btn-primary" onclick="openModal('createContactModal')">
+                                <span>➕</span> New Contact
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="filter-bar">
+                        <input type="text" class="input-group search-input" placeholder="Search contacts..." id="contactsSearchInput" onkeyup="filterContacts()">
+                    </div>
+
+                    <div class="grid-3" id="contactsGrid">
+                    </div>
+                </div>
+
+                <!-- Pipeline Page -->
+                <div id="pipeline" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1 class="page-title">Sales Pipeline</h1>
+                            <p style="color: var(--text-secondary); margin-top: 5px;">Drag and drop to manage deal progression</p>
+                        </div>
+                    </div>
+
+                    <div class="kanban-board" id="kanbanBoard">
+                    </div>
+                </div>
+
+                <!-- Tasks Page -->
+                <div id="tasks" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1 class="page-title">Tasks & Activities</h1>
+                            <p style="color: var(--text-secondary); margin-top: 5px;">Manage your daily activities and tasks</p>
+                        </div>
+                        <div class="page-actions">
+                            <button class="btn btn-primary" onclick="openModal('createTaskModal')">
+                                <span>➕</span> New Task
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('all')">All Tasks</div>
+                        <div class="tab" onclick="switchTab('upcoming')">Upcoming</div>
+                        <div class="tab" onclick="switchTab('completed')">Completed</div>
+                    </div>
+
+                    <div class="table-container">
+                        <table id="tasksTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;"><input type="checkbox" onchange="toggleSelectAll(this, 'tasksTable')"></th>
+                                    <th>Task</th>
+                                    <th>Assigned To</th>
+                                    <th>Due Date</th>
+                                    <th>Priority</th>
+                                    <th>Status</th>
+                                    <th>Related To</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tasksTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Reports Page -->
+                <div id="reports" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1 class="page-title">Reports & Analytics</h1>
+                            <p style="color: var(--text-secondary); margin-top: 5px;">Comprehensive CRM analytics and reporting</p>
+                        </div>
+                        <div class="page-actions">
+                            <button class="btn btn-secondary" onclick="exportReport()">📥 Export Report</button>
+                        </div>
+                    </div>
+
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('sales')">Sales Performance</div>
+                        <div class="tab" onclick="switchTab('leads')">Lead Analytics</div>
+                        <div class="tab" onclick="switchTab('team')">Team Performance</div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
+                        <div class="chart-container">
+                            <div class="chart-title">Sales by Month</div>
+                            <canvas id="salesByMonthChart" class="mini-chart"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <div class="chart-title">Lead Conversion Funnel</div>
+                            <canvas id="conversionFunnelChart" class="mini-chart"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <div class="chart-title">Deal Size Distribution</div>
+                            <canvas id="dealSizeChart" class="mini-chart"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <div class="chart-title">Average Deal Cycle</div>
+                            <canvas id="dealCycleChart" class="mini-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card mt-20">
+                        <h3 style="margin-bottom: 15px; font-size: 16px; font-weight: 600;">Key Metrics Summary</h3>
+                        <div class="grid-2">
+                            <div class="stat-row">
+                                <div class="stat-label">Total Deals</div>
+                                <div class="stat-value">156</div>
+                            </div>
+                            <div class="stat-row">
+                                <div class="stat-label">Total Revenue</div>
+                                <div class="stat-value">₹45.2L</div>
+                            </div>
+                            <div class="stat-row">
+                                <div class="stat-label">Avg Deal Size</div>
+                                <div class="stat-value">₹2.9L</div>
+                            </div>
+                            <div class="stat-row">
+                                <div class="stat-label">Win Rate</div>
+                                <div class="stat-value">42%</div>
+                            </div>
+                            <div class="stat-row">
+                                <div class="stat-label">Sales Cycle (Days)</div>
+                                <div class="stat-value">35</div>
+                            </div>
+                            <div class="stat-row">
+                                <div class="stat-label">Pipeline Health</div>
+                                <div class="stat-value">Excellent</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Messaging Page -->
+                <div id="messaging" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1 class="page-title">Messaging & Communication</h1>
+                            <p style="color: var(--text-secondary); margin-top: 5px;">WhatsApp, Email & SMS Templates</p>
+                        </div>
+                    </div>
+
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('whatsapp')">WhatsApp</div>
+                        <div class="tab" onclick="switchTab('email')">Email</div>
+                        <div class="tab" onclick="switchTab('sms')">SMS</div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <h3 style="margin-bottom: 15px;">Quick Send</h3>
+                            <div class="input-group">
+                                <label>Recipient</label>
+                                <input type="text" placeholder="Phone or Email">
+                            </div>
+                            <div class="input-group">
+                                <label>Template</label>
+                                <select>
+                                    <option>Select a template...</option>
+                                    <option>Welcome Message</option>
+                                    <option>Follow-up</option>
+                                    <option>Proposal</option>
+                                    <option>Invoice</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-primary" style="width: 100%;">Send Message</button>
+                        </div>
+
+                        <div class="card">
+                            <h3 style="margin-bottom: 15px;">Message Templates</h3>
+                            <div class="list-item">
+                                <div class="list-item-content">
+                                    <div class="list-item-title">Welcome Message</div>
+                                    <div class="list-item-subtitle">New lead greeting</div>
+                                </div>
+                                <button class="btn btn-sm" onclick="editTemplate('welcome')">Edit</button>
+                            </div>
+                            <div class="list-item">
+                                <div class="list-item-content">
+                                    <div class="list-item-title">Follow-up</div>
+                                    <div class="list-item-subtitle">48-hour follow-up</div>
+                                </div>
+                                <button class="btn btn-sm" onclick="editTemplate('followup')">Edit</button>
+                            </div>
+                            <div class="list-item">
+                                <div class="list-item-content">
+                                    <div class="list-item-title">Proposal</div>
+                                    <div class="list-item-subtitle">Share proposal link</div>
+                                </div>
+                                <button class="btn btn-sm" onclick="editTemplate('proposal')">Edit</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Marketing Page -->
+                <div id="marketing" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1 class="page-title">Marketing Campaigns</h1>
+                            <p style="color: var(--text-secondary); margin-top: 5px;">Create and manage marketing campaigns</p>
+                        </div>
+                        <div class="page-actions">
+                            <button class="btn btn-primary" onclick="openModal('createCampaignModal')">
+                                <span>➕</span> New Campaign
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid-2" id="campaignsGrid">
+                    </div>
+                </div>
+
+                <!-- Settings Page -->
+                <div id="settings" class="page">
+                    <div class="page-header">
+                        <h1 class="page-title">Settings</h1>
+                    </div>
+
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('general')">General</div>
+                        <div class="tab" onclick="switchTab('users')">Users & Permissions</div>
+                        <div class="tab" onclick="switchTab('integrations')">Integrations</div>
+                        <div class="tab" onclick="switchTab('notifications')">Notifications</div>
+                    </div>
+
+                    <!-- General Settings -->
+                    <div class="card">
+                        <h3 style="margin-bottom: 20px; font-size: 18px; font-weight: 600;">General Settings</h3>
+                        <div class="grid-2">
+                            <div class="input-group">
+                                <label>Company Name</label>
+                                <input type="text" value="ArthaInvest" id="companyName">
+                            </div>
+                            <div class="input-group">
+                                <label>Email</label>
+                                <input type="email" value="neemailbox555@gmail.com" id="companyEmail">
+                            </div>
+                            <div class="input-group">
+                                <label>Phone</label>
+                                <input type="tel" value="+91 9876543210" id="companyPhone">
+                            </div>
+                            <div class="input-group">
+                                <label>Currency</label>
+                                <select>
+                                    <option>INR (₹)</option>
+                                    <option>USD ($)</option>
+                                    <option>EUR (€)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary mt-20">💾 Save Changes</button>
+                    </div>
+
+                    <!-- User Management -->
+                    <div class="card mt-20">
+                        <h3 style="margin-bottom: 20px; font-size: 18px; font-weight: 600;">Team Members</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Admin User</td>
+                                        <td>admin@arthainvest.com</td>
+                                        <td><span class="status-badge new">Admin</span></td>
+                                        <td>Active</td>
+                                        <td>
+                                            <button class="btn btn-sm">Edit</button>
+                                            <button class="btn btn-sm">Remove</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Team Leader</td>
+                                        <td>leader@arthainvest.com</td>
+                                        <td><span class="status-badge qualified">Team Leader</span></td>
+                                        <td>Active</td>
+                                        <td>
+                                            <button class="btn btn-sm">Edit</button>
+                                            <button class="btn btn-sm">Remove</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <button class="btn btn-secondary mt-20" onclick="openModal('addUserModal')">➕ Add Team Member</button>
+                    </div>
+
+                    <!-- Integrations -->
+                    <div class="card mt-20">
+                        <h3 style="margin-bottom: 20px; font-size: 18px; font-weight: 600;">Integrations</h3>
+                        <div class="grid-2">
+                            <div class="card" style="border: 2px solid var(--primary);">
+                                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                                    <div style="font-size: 32px;">💬</div>
+                                    <div>
+                                        <div style="font-weight: 600;">WhatsApp Business</div>
+                                        <div style="font-size: 12px; color: var(--text-secondary);">Connected</div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-secondary" style="width: 100%;">Manage</button>
+                            </div>
+                            <div class="card">
+                                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                                    <div style="font-size: 32px;">📧</div>
+                                    <div>
+                                        <div style="font-weight: 600;">Gmail Integration</div>
+                                        <div style="font-size: 12px; color: var(--text-secondary);">Not Connected</div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" style="width: 100%;">Connect</button>
+                            </div>
+                            <div class="card">
+                                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                                    <div style="font-size: 32px;">🔗</div>
+                                    <div>
+                                        <div style="font-weight: 600;">LinkedIn</div>
+                                        <div style="font-size: 12px; color: var(--text-secondary);">Not Connected</div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" style="width: 100%;">Connect</button>
+                            </div>
+                            <div class="card">
+                                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                                    <div style="font-size: 32px;">🔐</div>
+                                    <div>
+                                        <div style="font-weight: 600;">DigiLocker</div>
+                                        <div style="font-size: 12px; color: var(--text-secondary);">Connected</div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-secondary" style="width: 100%;">Manage</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Create Lead Modal -->
+    <div id="createLeadModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Lead</h2>
+                <button class="modal-close" onclick="closeModal('createLeadModal')">✕</button>
+            </div>
+            <div class="input-group">
+                <label>Full Name</label>
+                <input type="text" id="leadName" placeholder="Enter lead name">
+            </div>
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" id="leadEmail" placeholder="Enter email address">
+            </div>
+            <div class="input-group">
+                <label>Phone</label>
+                <input type="tel" id="leadPhone" placeholder="Enter phone number">
+            </div>
+            <div class="input-group">
+                <label>Company</label>
+                <input type="text" id="leadCompany" placeholder="Enter company name">
+            </div>
+            <div class="input-group">
+                <label>Source</label>
+                <select id="leadSource">
+                    <option>Website</option>
+                    <option>Referral</option>
+                    <option>Social Media</option>
+                    <option>Email Campaign</option>
+                    <option>Cold Call</option>
+                    <option>Event</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Expected Amount (₹)</label>
+                <input type="number" id="leadAmount" placeholder="Enter expected amount">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('createLeadModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createLead()">Create Lead</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Contact Modal -->
+    <div id="createContactModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Contact</h2>
+                <button class="modal-close" onclick="closeModal('createContactModal')">✕</button>
+            </div>
+            <div class="input-group">
+                <label>Full Name</label>
+                <input type="text" id="contactName" placeholder="Enter contact name">
+            </div>
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" id="contactEmail" placeholder="Enter email address">
+            </div>
+            <div class="input-group">
+                <label>Phone</label>
+                <input type="tel" id="contactPhone" placeholder="Enter phone number">
+            </div>
+            <div class="input-group">
+                <label>Company</label>
+                <input type="text" id="contactCompany" placeholder="Enter company name">
+            </div>
+            <div class="input-group">
+                <label>Position</label>
+                <input type="text" id="contactPosition" placeholder="Enter job position">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('createContactModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createContact()">Create Contact</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Task Modal -->
+    <div id="createTaskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Task</h2>
+                <button class="modal-close" onclick="closeModal('createTaskModal')">✕</button>
+            </div>
+            <div class="input-group">
+                <label>Task Title</label>
+                <input type="text" id="taskTitle" placeholder="Enter task title">
+            </div>
+            <div class="input-group">
+                <label>Description</label>
+                <textarea id="taskDescription" placeholder="Enter task description"></textarea>
+            </div>
+            <div class="input-group">
+                <label>Assigned To</label>
+                <select id="taskAssignee">
+                    <option>Your Name</option>
+                    <option>Team Lead</option>
+                    <option>Employee 1</option>
+                    <option>Employee 2</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Due Date</label>
+                <input type="date" id="taskDueDate">
+            </div>
+            <div class="input-group">
+                <label>Priority</label>
+                <select id="taskPriority">
+                    <option>Low</option>
+                    <option>Medium</option>
+                    <option>High</option>
+                    <option>Urgent</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('createTaskModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createTask()">Create Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Campaign Modal -->
+    <div id="createCampaignModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Campaign</h2>
+                <button class="modal-close" onclick="closeModal('createCampaignModal')">✕</button>
+            </div>
+            <div class="input-group">
+                <label>Campaign Name</label>
+                <input type="text" id="campaignName" placeholder="Enter campaign name">
+            </div>
+            <div class="input-group">
+                <label>Campaign Type</label>
+                <select id="campaignType">
+                    <option>Email</option>
+                    <option>WhatsApp</option>
+                    <option>SMS</option>
+                    <option>Social Media</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Target Audience</label>
+                <select id="campaignAudience">
+                    <option>All Leads</option>
+                    <option>Qualified Only</option>
+                    <option>Recent Leads</option>
+                    <option>High Value Leads</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Start Date</label>
+                <input type="date" id="campaignStartDate">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('createCampaignModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createCampaign()">Create Campaign</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add User Modal -->
+    <div id="addUserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Team Member</h2>
+                <button class="modal-close" onclick="closeModal('addUserModal')">✕</button>
+            </div>
+            <div class="input-group">
+                <label>Full Name</label>
+                <input type="text" placeholder="Enter full name">
+            </div>
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" placeholder="Enter email address">
+            </div>
+            <div class="input-group">
+                <label>Role</label>
+                <select>
+                    <option>Employee</option>
+                    <option>Team Lead</option>
+                    <option>Admin</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('addUserModal')">Cancel</button>
+                <button class="btn btn-primary">Add Member</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== Global State ====================
+        let currentUser = null;
+        const userRoles = {
+            admin: { name: 'Admin', role: 'admin', permissions: ['read', 'write', 'delete', 'admin'] },
+            leader: { name: 'Team Leader', role: 'leader', permissions: ['read', 'write', 'manage'] },
+            employee1: { name: 'Employee 1', role: 'employee', permissions: ['read', 'write'] },
+            employee2: { name: 'Employee 2', role: 'employee', permissions: ['read', 'write'] }
+        };
+
+        let leads = [];
+        let contacts = [];
+        let tasks = [];
+        let campaigns = [];
+        let selectedUserRole = null;
+        let charts = {};
+
+        // Initialize localStorage
+        function initializeData() {
+            const savedLeads = localStorage.getItem('crmLeads');
+            const savedContacts = localStorage.getItem('crmContacts');
+            const savedTasks = localStorage.getItem('crmTasks');
+            const savedCampaigns = localStorage.getItem('crmCampaigns');
+
+            if (savedLeads) leads = JSON.parse(savedLeads);
+            else leads = generateSampleLeads();
+
+            if (savedContacts) contacts = JSON.parse(savedContacts);
+            else contacts = generateSampleContacts();
+
+            if (savedTasks) tasks = JSON.parse(savedTasks);
+            else tasks = generateSampleTasks();
+
+            if (savedCampaigns) campaigns = JSON.parse(savedCampaigns);
+            else campaigns = generateSampleCampaigns();
+
+            saveData();
+        }
+
+        function saveData() {
+            localStorage.setItem('crmLeads', JSON.stringify(leads));
+            localStorage.setItem('crmContacts', JSON.stringify(contacts));
+            localStorage.setItem('crmTasks', JSON.stringify(tasks));
+            localStorage.setItem('crmCampaigns', JSON.stringify(campaigns));
+        }
+
+        // Sample Data Generators
+        function generateSampleLeads() {
+            return [
+                { id: 1, name: 'Rajesh Kumar', email: 'rajesh@company.com', phone: '9876543210', company: 'TechCorp', status: 'qualified', score: 85, source: 'Website', amount: 500000, owner: 'Employee 1', createdAt: new Date().toISOString() },
+                { id: 2, name: 'Priya Singh', email: 'priya@company.com', phone: '9876543211', company: 'InnovateLabs', status: 'new', score: 45, source: 'Referral', amount: 300000, owner: 'Employee 2', createdAt: new Date().toISOString() },
+                { id: 3, name: 'Amit Patel', email: 'amit@company.com', phone: '9876543212', company: 'DataSystems', status: 'contacted', score: 72, source: 'Email Campaign', amount: 750000, owner: 'Team Leader', createdAt: new Date().toISOString() },
+                { id: 4, name: 'Neha Sharma', email: 'neha@company.com', phone: '9876543213', company: 'CloudServices', status: 'negotiation', score: 88, source: 'Social Media', amount: 1200000, owner: 'Employee 1', createdAt: new Date().toISOString() },
+                { id: 5, name: 'Vikram Reddy', email: 'vikram@company.com', phone: '9876543214', company: 'SoftwareSolutions', status: 'won', score: 95, source: 'Cold Call', amount: 2500000, owner: 'Admin', createdAt: new Date().toISOString() },
+            ];
+        }
+
+        function generateSampleContacts() {
+            return [
+                { id: 1, name: 'Rajesh Kumar', email: 'rajesh@company.com', phone: '9876543210', company: 'TechCorp', position: 'CEO', interactions: 5 },
+                { id: 2, name: 'Priya Singh', email: 'priya@company.com', phone: '9876543211', company: 'InnovateLabs', position: 'CTO', interactions: 3 },
+                { id: 3, name: 'Amit Patel', email: 'amit@company.com', phone: '9876543212', company: 'DataSystems', position: 'Manager', interactions: 8 },
+            ];
+        }
+
+        function generateSampleTasks() {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            return [
+                { id: 1, title: 'Follow up with Rajesh', assignee: 'Employee 1', dueDate: tomorrow.toISOString().split('T')[0], priority: 'High', status: 'pending', relatedTo: 'Rajesh Kumar' },
+                { id: 2, title: 'Send proposal to Neha', assignee: 'Team Leader', dueDate: tomorrow.toISOString().split('T')[0], priority: 'High', status: 'pending', relatedTo: 'Neha Sharma' },
+                { id: 3, title: 'Schedule meeting', assignee: 'Employee 2', dueDate: tomorrow.toISOString().split('T')[0], priority: 'Medium', status: 'pending', relatedTo: 'Amit Patel' },
+            ];
+        }
+
+        function generateSampleCampaigns() {
+            return [
+                { id: 1, name: 'Q3 Product Launch', type: 'Email', audience: 'All Leads', status: 'active', startDate: new Date().toISOString(), sent: 125, opened: 45, clicked: 12 },
+                { id: 2, name: 'Summer Promotion', type: 'WhatsApp', audience: 'Qualified Only', status: 'scheduled', startDate: new Date().toISOString(), sent: 0, opened: 0, clicked: 0 },
+                { id: 3, name: 'Referral Program', type: 'Social Media', audience: 'Recent Leads', status: 'completed', startDate: new Date().toISOString(), sent: 89, opened: 34, clicked: 8 },
+            ];
+        }
+
+        // ==================== Authentication ====================
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeData();
+            setupTheme();
+            setupLoginPage();
+        });
+
+        function setupLoginPage() {
+            const userOptions = document.querySelectorAll('.user-option');
+            userOptions.forEach(option => {
+                option.addEventListener('click', function() {
+                    userOptions.forEach(o => o.classList.remove('selected'));
+                    this.classList.add('selected');
+                    selectedUserRole = this.dataset.role;
+                });
+            });
+        }
+
+        function login() {
+            if (!selectedUserRole) {
+                alert('Please select a user role');
+                return;
+            }
+
+            currentUser = userRoles[selectedUserRole];
+            document.getElementById('loginPage').style.display = 'none';
+            document.getElementById('appContainer').style.display = 'flex';
+            document.getElementById('userName').textContent = currentUser.name;
+            document.getElementById('userAvatar').textContent = currentUser.name.charAt(0);
+            document.getElementById('pageTitle').textContent = 'Dashboard';
+
+            // Load dashboard
+            switchPage('dashboard');
+            renderDashboard();
+            renderLeads();
+            renderContacts();
+            renderPipeline();
+            renderTasks();
+            renderCampaigns();
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                currentUser = null;
+                selectedUserRole = null;
+                document.getElementById('appContainer').style.display = 'none';
+                document.getElementById('loginPage').style.display = 'flex';
+                document.querySelectorAll('.user-option').forEach(o => o.classList.remove('selected'));
+            }
+        }
+
+        // ==================== UI Navigation ====================
+        function switchPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            event.target.closest('.nav-item').classList.add('active');
+
+            const titles = {
+                dashboard: 'Dashboard',
+                leads: 'Lead Management',
+                contacts: 'Contacts',
+                pipeline: 'Sales Pipeline',
+                tasks: 'Tasks & Activities',
+                reports: 'Reports & Analytics',
+                messaging: 'Messaging & Communication',
+                marketing: 'Marketing Campaigns',
+                settings: 'Settings'
+            };
+
+            document.getElementById('pageTitle').textContent = titles[pageId];
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('collapsed');
+        }
+
+        // ==================== Theme Management ====================
+        function setupTheme() {
+            const savedTheme = localStorage.getItem('crmTheme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('crmTheme', newTheme);
+            updateThemeIcon(newTheme);
+        }
+
+        function updateThemeIcon(theme) {
+            document.getElementById('themeIcon').textContent = theme === 'light' ? '🌙' : '☀️';
+        }
+
+        // ==================== Modal Management ====================
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // Close modal when clicking outside
+        window.addEventListener('click', function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.classList.remove('active');
+            }
+        });
+
+        // ==================== Lead Management ====================
+        function createLead() {
+            const name = document.getElementById('leadName').value;
+            const email = document.getElementById('leadEmail').value;
+            const phone = document.getElementById('leadPhone').value;
+            const company = document.getElementById('leadCompany').value;
+            const source = document.getElementById('leadSource').value;
+            const amount = parseInt(document.getElementById('leadAmount').value) || 0;
+
+            if (!name || !email) {
+                alert('Please fill in required fields');
+                return;
+            }
+
+            const newLead = {
+                id: Math.max(...leads.map(l => l.id), 0) + 1,
+                name,
+                email,
+                phone,
+                company,
+                status: 'new',
+                score: Math.floor(Math.random() * 40 + 30),
+                source,
+                amount,
+                owner: currentUser.name,
+                createdAt: new Date().toISOString()
+            };
+
+            leads.push(newLead);
+            saveData();
+            renderLeads();
+            closeModal('createLeadModal');
+            showNotification('Lead created successfully!', 'success');
+
+            // Clear form
+            document.getElementById('leadName').value = '';
+            document.getElementById('leadEmail').value = '';
+            document.getElementById('leadPhone').value = '';
+            document.getElementById('leadCompany').value = '';
+            document.getElementById('leadAmount').value = '';
+        }
+
+        function renderLeads() {
+            const tbody = document.getElementById('leadsTableBody');
+            tbody.innerHTML = '';
+
+            leads.forEach(lead => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><input type="checkbox" class="lead-checkbox"></td>
+                    <td><strong>${lead.name}</strong></td>
+                    <td>${lead.company}</td>
+                    <td>${lead.email}</td>
+                    <td>${lead.phone}</td>
+                    <td>
+                        <div class="score-meter">
+                            <div class="score-bar">
+                                <div class="score-fill" style="width: ${lead.score}%"></div>
+                            </div>
+                            <div class="score-text">${lead.score}</div>
+                        </div>
+                    </td>
+                    <td><span class="status-badge ${lead.status}">${lead.status}</span></td>
+                    <td>${lead.source}</td>
+                    <td>₹${(lead.amount / 100000).toFixed(1)}L</td>
+                    <td>${lead.owner}</td>
+                    <td>
+                        <button class="btn btn-sm" onclick="editLead(${lead.id})">✏️</button>
+                        <button class="btn btn-sm" onclick="deleteLead(${lead.id})" style="background-color: var(--danger); color: white;">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function filterLeads() {
+            const searchTerm = document.getElementById('leadsSearchInput').value.toLowerCase();
+            const statusFilter = document.getElementById('leadsStatusFilter').value;
+            const scoreFilter = document.getElementById('leadsScoreFilter').value;
+
+            const filtered = leads.filter(lead => {
+                const matchSearch = lead.name.toLowerCase().includes(searchTerm) ||
+                                   lead.email.toLowerCase().includes(searchTerm) ||
+                                   lead.company.toLowerCase().includes(searchTerm);
+                const matchStatus = !statusFilter || lead.status === statusFilter;
+                const matchScore = !scoreFilter || (
+                    scoreFilter === '90' ? lead.score >= 90 :
+                    scoreFilter === '70' ? lead.score >= 70 && lead.score < 90 :
+                    scoreFilter === '50' ? lead.score >= 50 && lead.score < 70 :
+                    scoreFilter === '30' ? lead.score >= 30 && lead.score < 50 :
+                    scoreFilter === '0' ? lead.score < 30 : true
+                );
+
+                return matchSearch && matchStatus && matchScore;
+            });
+
+            const tbody = document.getElementById('leadsTableBody');
+            tbody.innerHTML = '';
+
+            filtered.forEach(lead => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><input type="checkbox" class="lead-checkbox"></td>
+                    <td><strong>${lead.name}</strong></td>
+                    <td>${lead.company}</td>
+                    <td>${lead.email}</td>
+                    <td>${lead.phone}</td>
+                    <td>
+                        <div class="score-meter">
+                            <div class="score-bar">
+                                <div class="score-fill" style="width: ${lead.score}%"></div>
+                            </div>
+                            <div class="score-text">${lead.score}</div>
+                        </div>
+                    </td>
+                    <td><span class="status-badge ${lead.status}">${lead.status}</span></td>
+                    <td>${lead.source}</td>
+                    <td>₹${(lead.amount / 100000).toFixed(1)}L</td>
+                    <td>${lead.owner}</td>
+                    <td>
+                        <button class="btn btn-sm" onclick="editLead(${lead.id})">✏️</button>
+                        <button class="btn btn-sm" onclick="deleteLead(${lead.id})" style="background-color: var(--danger); color: white;">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function editLead(id) {
+            const lead = leads.find(l => l.id === id);
+            if (lead) {
+                document.getElementById('leadName').value = lead.name;
+                document.getElementById('leadEmail').value = lead.email;
+                document.getElementById('leadPhone').value = lead.phone;
+                document.getElementById('leadCompany').value = lead.company;
+                document.getElementById('leadSource').value = lead.source;
+                document.getElementById('leadAmount').value = lead.amount;
+                openModal('createLeadModal');
+            }
+        }
+
+        function deleteLead(id) {
+            if (confirm('Are you sure you want to delete this lead?')) {
+                leads = leads.filter(l => l.id !== id);
+                saveData();
+                renderLeads();
+                showNotification('Lead deleted successfully', 'success');
+            }
+        }
+
+        function exportLeads() {
+            const csv = [
+                ['Name', 'Email', 'Phone', 'Company', 'Status', 'Score', 'Amount'],
+                ...leads.map(l => [l.name, l.email, l.phone, l.company, l.status, l.score, l.amount])
+            ].map(row => row.join(',')).join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'leads.csv';
+            a.click();
+            showNotification('Leads exported successfully', 'success');
+        }
+
+        // ==================== Contact Management ====================
+        function createContact() {
+            const name = document.getElementById('contactName').value;
+            const email = document.getElementById('contactEmail').value;
+            const phone = document.getElementById('contactPhone').value;
+            const company = document.getElementById('contactCompany').value;
+            const position = document.getElementById('contactPosition').value;
+
+            if (!name || !email) {
+                alert('Please fill in required fields');
+                return;
+            }
+
+            const newContact = {
+                id: Math.max(...contacts.map(c => c.id), 0) + 1,
+                name,
+                email,
+                phone,
+                company,
+                position,
+                interactions: 0
+            };
+
+            contacts.push(newContact);
+            saveData();
+            renderContacts();
+            closeModal('createContactModal');
+            showNotification('Contact created successfully!', 'success');
+
+            document.getElementById('contactName').value = '';
+            document.getElementById('contactEmail').value = '';
+            document.getElementById('contactPhone').value = '';
+            document.getElementById('contactCompany').value = '';
+            document.getElementById('contactPosition').value = '';
+        }
+
+        function renderContacts() {
+            const grid = document.getElementById('contactsGrid');
+            grid.innerHTML = '';
+
+            contacts.forEach(contact => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                        <div class="user-avatar" style="width: 50px; height: 50px; font-size: 18px;">${contact.name.charAt(0)}</div>
+                        <div>
+                            <div style="font-weight: 600; font-size: 16px;">${contact.name}</div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">${contact.position}</div>
+                        </div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Company</div>
+                        <div class="stat-value">${contact.company}</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Email</div>
+                        <div class="stat-value" style="font-size: 13px;">${contact.email}</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Phone</div>
+                        <div class="stat-value">${contact.phone}</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Interactions</div>
+                        <div class="stat-value">${contact.interactions}</div>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button class="btn btn-sm" style="flex: 1;" onclick="editContact(${contact.id})">Edit</button>
+                        <button class="btn btn-sm" style="flex: 1;" onclick="deleteContact(${contact.id})">Delete</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function filterContacts() {
+            const searchTerm = document.getElementById('contactsSearchInput').value.toLowerCase();
+            const filtered = contacts.filter(c =>
+                c.name.toLowerCase().includes(searchTerm) ||
+                c.email.toLowerCase().includes(searchTerm) ||
+                c.company.toLowerCase().includes(searchTerm)
+            );
+
+            const grid = document.getElementById('contactsGrid');
+            grid.innerHTML = '';
+
+            filtered.forEach(contact => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                        <div class="user-avatar" style="width: 50px; height: 50px; font-size: 18px;">${contact.name.charAt(0)}</div>
+                        <div>
+                            <div style="font-weight: 600; font-size: 16px;">${contact.name}</div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">${contact.position}</div>
+                        </div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Company</div>
+                        <div class="stat-value">${contact.company}</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Email</div>
+                        <div class="stat-value" style="font-size: 13px;">${contact.email}</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Phone</div>
+                        <div class="stat-value">${contact.phone}</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Interactions</div>
+                        <div class="stat-value">${contact.interactions}</div>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button class="btn btn-sm" style="flex: 1;" onclick="editContact(${contact.id})">Edit</button>
+                        <button class="btn btn-sm" style="flex: 1;" onclick="deleteContact(${contact.id})">Delete</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function editContact(id) {
+            const contact = contacts.find(c => c.id === id);
+            if (contact) {
+                document.getElementById('contactName').value = contact.name;
+                document.getElementById('contactEmail').value = contact.email;
+                document.getElementById('contactPhone').value = contact.phone;
+                document.getElementById('contactCompany').value = contact.company;
+                document.getElementById('contactPosition').value = contact.position;
+                openModal('createContactModal');
+            }
+        }
+
+        function deleteContact(id) {
+            if (confirm('Are you sure you want to delete this contact?')) {
+                contacts = contacts.filter(c => c.id !== id);
+                saveData();
+                renderContacts();
+                showNotification('Contact deleted successfully', 'success');
+            }
+        }
+
+        // ==================== Pipeline Management ====================
+        function renderPipeline() {
+            const statuses = ['new', 'qualified', 'contacted', 'negotiation', 'won', 'lost'];
+            const statusLabels = {
+                new: '🆕 New',
+                qualified: '✅ Qualified',
+                contacted: '📞 Contacted',
+                negotiation: '💼 Negotiation',
+                won: '🎉 Won',
+                lost: '❌ Lost'
+            };
+
+            const board = document.getElementById('kanbanBoard');
+            board.innerHTML = '';
+
+            statuses.forEach(status => {
+                const leadsInStatus = leads.filter(l => l.status === status);
+                const totalAmount = leadsInStatus.reduce((sum, l) => sum + l.amount, 0);
+
+                const column = document.createElement('div');
+                column.className = 'kanban-column';
+
+                const header = document.createElement('div');
+                header.className = 'kanban-header';
+                header.innerHTML = `
+                    <div>
+                        <div class="kanban-title">${statusLabels[status]}</div>
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px;">₹${(totalAmount / 100000).toFixed(1)}L</div>
+                    </div>
+                    <div class="kanban-count">${leadsInStatus.length}</div>
+                `;
+                column.appendChild(header);
+
+                const cardsContainer = document.createElement('div');
+                cardsContainer.className = 'kanban-cards';
+
+                leadsInStatus.forEach(lead => {
+                    const card = document.createElement('div');
+                    card.className = 'kanban-card';
+                    card.draggable = true;
+                    card.innerHTML = `
+                        <div class="kanban-card-title">${lead.name}</div>
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${lead.company}</div>
+                        <div class="kanban-card-meta">
+                            <span>₹${(lead.amount / 100000).toFixed(1)}L</span>
+                            <span>${lead.score} pts</span>
+                        </div>
+                    `;
+                    cardsContainer.appendChild(card);
+                });
+
+                column.appendChild(cardsContainer);
+                board.appendChild(column);
+            });
+        }
+
+        // ==================== Task Management ====================
+        function createTask() {
+            const title = document.getElementById('taskTitle').value;
+            const description = document.getElementById('taskDescription').value;
+            const assignee = document.getElementById('taskAssignee').value;
+            const dueDate = document.getElementById('taskDueDate').value;
+            const priority = document.getElementById('taskPriority').value;
+
+            if (!title || !dueDate) {
+                alert('Please fill in required fields');
+                return;
+            }
+
+            const newTask = {
+                id: Math.max(...tasks.map(t => t.id), 0) + 1,
+                title,
+                description,
+                assignee,
+                dueDate,
+                priority,
+                status: 'pending',
+                relatedTo: ''
+            };
+
+            tasks.push(newTask);
+            saveData();
+            renderTasks();
+            closeModal('createTaskModal');
+            showNotification('Task created successfully!', 'success');
+
+            document.getElementById('taskTitle').value = '';
+            document.getElementById('taskDescription').value = '';
+            document.getElementById('taskDueDate').value = '';
+        }
+
+        function renderTasks() {
+            const tbody = document.getElementById('tasksTableBody');
+            tbody.innerHTML = '';
+
+            tasks.forEach(task => {
+                const row = document.createElement('tr');
+                const priorityColor = {
+                    'Low': 'rgba(16, 185, 129, 0.1)',
+                    'Medium': 'rgba(245, 158, 11, 0.1)',
+                    'High': 'rgba(239, 68, 68, 0.1)',
+                    'Urgent': 'rgba(139, 0, 0, 0.1)'
+                };
+
+                row.innerHTML = `
+                    <td><input type="checkbox"></td>
+                    <td><strong>${task.title}</strong></td>
+                    <td>${task.assignee}</td>
+                    <td>${task.dueDate}</td>
+                    <td><span class="status-badge ${task.priority.toLowerCase()}" style="background-color: ${priorityColor[task.priority]}; color: ${task.priority === 'Urgent' ? '#8b0000' : 'inherit'}">${task.priority}</span></td>
+                    <td><span class="status-badge ${task.status}">${task.status}</span></td>
+                    <td>${task.relatedTo || '-'}</td>
+                    <td>
+                        <button class="btn btn-sm" onclick="completeTask(${task.id})">✓</button>
+                        <button class="btn btn-sm" onclick="deleteTask(${task.id})">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function completeTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (task) {
+                task.status = task.status === 'pending' ? 'completed' : 'pending';
+                saveData();
+                renderTasks();
+            }
+        }
+
+        function deleteTask(id) {
+            if (confirm('Delete this task?')) {
+                tasks = tasks.filter(t => t.id !== id);
+                saveData();
+                renderTasks();
+            }
+        }
+
+        // ==================== Campaign Management ====================
+        function createCampaign() {
+            const name = document.getElementById('campaignName').value;
+            const type = document.getElementById('campaignType').value;
+            const audience = document.getElementById('campaignAudience').value;
+            const startDate = document.getElementById('campaignStartDate').value;
+
+            if (!name || !startDate) {
+                alert('Please fill in required fields');
+                return;
+            }
+
+            const newCampaign = {
+                id: Math.max(...campaigns.map(c => c.id), 0) + 1,
+                name,
+                type,
+                audience,
+                status: 'scheduled',
+                startDate,
+                sent: 0,
+                opened: 0,
+                clicked: 0
+            };
+
+            campaigns.push(newCampaign);
+            saveData();
+            renderCampaigns();
+            closeModal('createCampaignModal');
+            showNotification('Campaign created successfully!', 'success');
+
+            document.getElementById('campaignName').value = '';
+            document.getElementById('campaignStartDate').value = '';
+        }
+
+        function renderCampaigns() {
+            const grid = document.getElementById('campaignsGrid');
+            grid.innerHTML = '';
+
+            campaigns.forEach(campaign => {
+                const openRate = campaign.sent > 0 ? ((campaign.opened / campaign.sent) * 100).toFixed(1) : 0;
+                const clickRate = campaign.sent > 0 ? ((campaign.clicked / campaign.sent) * 100).toFixed(1) : 0;
+
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                        <div>
+                            <div style="font-weight: 600; font-size: 16px;">${campaign.name}</div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">${campaign.type}</div>
+                        </div>
+                        <span class="status-badge ${campaign.status}">${campaign.status}</span>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Audience</div>
+                        <div class="stat-value">${campaign.audience}</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Sent</div>
+                        <div class="stat-value">${campaign.sent}</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Open Rate</div>
+                        <div class="stat-value">${openRate}%</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat-label">Click Rate</div>
+                        <div class="stat-value">${clickRate}%</div>
+                    </div>
+                    <button class="btn btn-primary" style="width: 100%; margin-top: 15px;">View Details</button>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // ==================== Dashboard ====================
+        function renderDashboard() {
+            const totalLeads = leads.length;
+            const qualifiedLeads = leads.filter(l => l.status === 'qualified').length;
+            const pipelineValue = leads.reduce((sum, l) => sum + l.amount, 0);
+            const wonDeals = leads.filter(l => l.status === 'won').length;
+            const conversionRate = totalLeads > 0 ? Math.round((wonDeals / totalLeads) * 100) : 0;
+
+            document.getElementById('kpiTotalLeads').textContent = totalLeads;
+            document.getElementById('kpiQualifiedLeads').textContent = qualifiedLeads;
+            document.getElementById('kpiPipelineValue').textContent = '₹' + (pipelineValue / 100000).toFixed(1) + 'L';
+            document.getElementById('kpiConversionRate').textContent = conversionRate + '%';
+
+            renderDashboardCharts();
+            renderRecentActivity();
+        }
+
+        function renderDashboardCharts() {
+            // Leads by Source
+            const sourceData = {};
+            leads.forEach(lead => {
+                sourceData[lead.source] = (sourceData[lead.source] || 0) + 1;
+            });
+
+            const sourceCtx = document.getElementById('leadsSourceChart');
+            if (sourceCtx) {
+                if (charts.leadsSource) charts.leadsSource.destroy();
+                charts.leadsSource = new Chart(sourceCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(sourceData),
+                        datasets: [{
+                            data: Object.values(sourceData),
+                            backgroundColor: ['#0ea5e9', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { position: 'bottom' } }
+                    }
+                });
+            }
+
+            // Pipeline Status
+            const statusData = {};
+            ['new', 'qualified', 'contacted', 'negotiation', 'won', 'lost'].forEach(status => {
+                statusData[status] = leads.filter(l => l.status === status).length;
+            });
+
+            const statusCtx = document.getElementById('pipelineStatusChart');
+            if (statusCtx) {
+                if (charts.pipelineStatus) charts.pipelineStatus.destroy();
+                charts.pipelineStatus = new Chart(statusCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['New', 'Qualified', 'Contacted', 'Negotiation', 'Won', 'Lost'],
+                        datasets: [{
+                            label: 'Number of Leads',
+                            data: Object.values(statusData),
+                            backgroundColor: '#0ea5e9'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            }
+
+            // Revenue Forecast
+            const forecastCtx = document.getElementById('revenueForecastChart');
+            if (forecastCtx) {
+                if (charts.revenueForecast) charts.revenueForecast.destroy();
+                charts.revenueForecast = new Chart(forecastCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                        datasets: [{
+                            label: 'Projected Revenue',
+                            data: [45, 52, 48, 61, 55, 67, 72, 78, 85, 92, 98, 105],
+                            borderColor: '#0ea5e9',
+                            backgroundColor: 'rgba(14, 165, 233, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: true } }
+                    }
+                });
+            }
+
+            // Team Performance
+            const teamCtx = document.getElementById('teamPerformanceChart');
+            if (teamCtx) {
+                if (charts.teamPerformance) charts.teamPerformance.destroy();
+                charts.teamPerformance = new Chart(teamCtx, {
+                    type: 'radar',
+                    data: {
+                        labels: ['Leads Generated', 'Conversion', 'Revenue', 'Customer Satisfaction', 'Retention'],
+                        datasets: [{
+                            label: 'Team Performance',
+                            data: [85, 72, 88, 78, 92],
+                            borderColor: '#0ea5e9',
+                            backgroundColor: 'rgba(14, 165, 233, 0.2)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: true } }
+                    }
+                });
+            }
+        }
+
+        function renderRecentActivity() {
+            const list = document.getElementById('recentActivityList');
+            list.innerHTML = '';
+
+            const activities = [
+                { icon: '🆕', title: 'New lead created', description: 'Rajesh Kumar from TechCorp', time: '2 hours ago' },
+                { icon: '💬', title: 'Email sent', description: 'Follow-up to Priya Singh', time: '4 hours ago' },
+                { icon: '✅', title: 'Lead qualified', description: 'Amit Patel moved to qualified', time: '6 hours ago' },
+                { icon: '📞', title: 'Call logged', description: 'Call with Neha Sharma - 45 mins', time: '1 day ago' },
+                { icon: '🎉', title: 'Deal won', description: 'Vikram Reddy - ₹25 Lakhs', time: '2 days ago' }
+            ];
+
+            activities.forEach(activity => {
+                const item = document.createElement('div');
+                item.className = 'list-item';
+                item.innerHTML = `
+                    <div style="font-size: 24px;">${activity.icon}</div>
+                    <div class="list-item-content">
+                        <div class="list-item-title">${activity.title}</div>
+                        <div class="list-item-subtitle">${activity.description}</div>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">${activity.time}</div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        // ==================== Reports ====================
+        function exportReport() {
+            alert('Report exported successfully! Check your downloads folder.');
+        }
+
+        // ==================== Utility Functions ====================
+        function toggleSelectAll(checkbox, tableId) {
+            const checkboxes = document.querySelectorAll(`#${tableId} tbody input[type="checkbox"]`);
+            checkboxes.forEach(cb => cb.checked = checkbox.checked);
+        }
+
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        function editTemplate(templateName) {
+            alert(`Edit template: ${templateName}`);
+        }
+
+        function openNotifications() {
+            alert('You have 3 new notifications');
+        }
+
+        function openMessages() {
+            alert('Messages feature coming soon');
+        }
+
+        function openSearch() {
+            alert('Search feature coming soon');
+        }
+
+        function openUserMenu() {
+            alert('User menu - Profile, Settings, Logout');
+        }
+    </script>
+</body>
+</html>

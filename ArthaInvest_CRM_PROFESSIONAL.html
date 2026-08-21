@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArthaInvest CRM Pro - Enterprise Fintech Platform</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #1e3a8a;
+            --primary-light: #3b82f6;
+            --secondary: #0f766e;
+            --accent: #f59e0b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --light-bg: #f9fafb;
+            --dark-bg: #0f172a;
+            --card-bg: #ffffff;
+            --card-dark: #1e293b;
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --border-color: #e5e7eb;
+            --border-dark: #334155;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background-color: var(--light-bg);
+            color: var(--text-primary);
+            line-height: 1.6;
+            transition: 0.3s;
+        }
+
+        body.dark-mode {
+            background-color: var(--dark-bg);
+            color: #f1f5f9;
+        }
+
+        /* LOGIN SCREEN */
+        .login-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 16px;
+            padding: 50px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: var(--shadow-xl);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .login-logo {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .login-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* MAIN APP */
+        .app-wrapper {
+            display: none;
+            min-height: 100vh;
+            background-color: var(--light-bg);
+        }
+
+        .app-wrapper.active {
+            display: flex;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-right: 1px solid var(--border-color);
+            padding: 30px 0;
+            overflow-y: auto;
+            box-shadow: var(--shadow-sm);
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+        }
+
+        body.dark-mode .sidebar {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .sidebar-brand {
+            padding: 0 25px;
+            margin-bottom: 40px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-logo {
+            font-size: 32px;
+        }
+
+        .sidebar-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .sidebar-menu {
+            list-style: none;
+        }
+
+        .menu-item {
+            padding: 0;
+            margin: 8px 0;
+        }
+
+        .menu-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 25px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+        }
+
+        .menu-link:hover {
+            background-color: var(--light-bg);
+            color: var(--primary);
+        }
+
+        body.dark-mode .menu-link:hover {
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        .menu-link.active {
+            color: var(--primary);
+            background-color: rgba(59, 130, 246, 0.1);
+            border-left-color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* MAIN CONTENT */
+        .main-content {
+            margin-left: 280px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* HEADER */
+        .header {
+            background: white;
+            border-bottom: 1px solid var(--border-color);
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-sm);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        body.dark-mode .header {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .header-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-secondary {
+            background: var(--light-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border-color);
+        }
+
+        /* CONTENT AREA */
+        .content {
+            padding: 30px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* KPI GRID */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .kpi-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s;
+        }
+
+        body.dark-mode .kpi-card {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .kpi-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .kpi-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .kpi-change {
+            font-size: 13px;
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        /* SECTION */
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--primary);
+            display: inline-block;
+        }
+
+        /* TABLE */
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+        }
+
+        body.dark-mode .table-container {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th {
+            background: var(--light-bg);
+            padding: 16px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        body.dark-mode .table th {
+            background: rgba(0, 0, 0, 0.2);
+            border-color: var(--border-dark);
+        }
+
+        .table td {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+
+        body.dark-mode .table td {
+            border-color: var(--border-dark);
+        }
+
+        .table tbody tr:hover {
+            background-color: var(--light-bg);
+        }
+
+        body.dark-mode .table tbody tr:hover {
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+
+        /* BADGE */
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #047857;
+        }
+
+        .badge-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        /* CARD */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        body.dark-mode .card {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+        }
+
+        .card-content {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.8;
+        }
+
+        .card-stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        body.dark-mode .card-stat {
+            border-color: var(--border-dark);
+        }
+
+        .card-stat:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .stat-value {
+            color: var(--text-primary);
+            font-weight: 700;
+        }
+
+        /* INTEGRATION GRID */
+        .integration-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .integration-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        body.dark-mode .integration-card {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .integration-info h3 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .integration-info p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .integration-status {
+            text-align: right;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #d1fae5;
+            color: #047857;
+        }
+
+        .status-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+        }
+
+        /* CHART PLACEHOLDER */
+        .chart-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+
+        body.dark-mode .chart-container {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            .main-content {
+                margin-left: 0;
+            }
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="loginScreen">
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-logo">🏢</div>
+            <div class="login-title">ArthaInvest</div>
+            <div class="login-subtitle">Enterprise CRM Platform</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" class="form-control" id="loginEmail" value="admin@arthainvest.com">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-control" id="loginPassword" value="admin123">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">User Role</label>
+            <select class="form-control" id="loginRole">
+                <option value="admin">Administrator</option>
+                <option value="leader">Team Leader</option>
+                <option value="employee">Employee</option>
+            </select>
+        </div>
+
+        <button class="login-btn" onclick="login()">Sign In</button>
+    </div>
+</div>
+
+<!-- APP WRAPPER -->
+<div class="app-wrapper" id="appWrapper">
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="sidebar-logo">🏢</div>
+            <div class="sidebar-name">ArthaInvest</div>
+        </div>
+
+        <ul class="sidebar-menu">
+            <li class="menu-item">
+                <a class="menu-link active" onclick="switchPage('dashboard')">📊 Dashboard</a>
+            </li>
+            <li class="menu-item">
+                <a class="menu-link" onclick="switchPage('contacts')">👥 Contacts</a>
+            </li>
+            <li class="menu-item">
+                <a class="menu-link" onclick="switchPage('pipeline')">📈 Pipeline</a>
+            </li>
+            <li class="menu-item">
+                <a class="menu-link" onclick="switchPage('calls')">☎️ Calls</a>
+            </li>
+            <li class="menu-item">
+                <a class="menu-link" onclick="switchPage('marketing')">📢 Marketing</a>
+            </li>
+            <li class="menu-item">
+                <a class="menu-link" onclick="switchPage('integrations')">🔗 Integrations</a>
+            </li>
+            <li class="menu-item">
+                <a class="menu-link" onclick="switchPage('reports')">📋 Reports</a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
+        <!-- HEADER -->
+        <div class="header">
+            <div class="header-title">ArthaInvest CRM Pro</div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="toggleTheme()">🌙 Dark Mode</button>
+                <button class="btn btn-secondary" onclick="logout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <!-- CONTENT AREA -->
+        <div class="content">
+
+            <!-- DASHBOARD PAGE -->
+            <div class="page active" id="dashboard">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                    <h1 style="font-size: 28px; font-weight: 700; color: var(--text-primary);">Dashboard</h1>
+                    <button class="btn btn-primary">+ New Action</button>
+                </div>
+
+                <!-- KPI CARDS -->
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Total Contacts</div>
+                        <div class="kpi-value">1,247</div>
+                        <div class="kpi-change">↑ 12% from last month</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Total Deals</div>
+                        <div class="kpi-value">$2.5M</div>
+                        <div class="kpi-change">↑ 8% from last month</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Conversion Rate</div>
+                        <div class="kpi-value">32%</div>
+                        <div class="kpi-change">↑ 2% from last month</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Active Campaigns</div>
+                        <div class="kpi-value">12</div>
+                        <div class="kpi-change">Running across channels</div>
+                    </div>
+                </div>
+
+                <!-- CHARTS -->
+                <div class="section">
+                    <div class="section-title">Sales Performance</div>
+                    <div class="chart-container">📊 Sales Trend Chart - Real-time Data from Integrations</div>
+                </div>
+
+                <!-- INTEGRATIONS STATUS -->
+                <div class="section">
+                    <div class="section-title">Integration Status</div>
+                    <div class="integration-grid">
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>📱 WhatsApp Business</h3>
+                                <p>2,500+ contacts | 45% engagement</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Active</div>
+                                <div class="status-text">Phone: +91-98765-43210</div>
+                            </div>
+                        </div>
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>💼 LinkedIn Manager</h3>
+                                <p>1,200+ connections | 32% engagement</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Active</div>
+                                <div class="status-text">Account: @arthainvest</div>
+                            </div>
+                        </div>
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>💳 Razorpay</h3>
+                                <p>Transactions & Settlements</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Active</div>
+                                <div class="status-text">Volume: $5.2M</div>
+                            </div>
+                        </div>
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>☎️ Twilio</h3>
+                                <p>Click-to-Call & Tracking</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Active</div>
+                                <div class="status-text">Calls: 4,521</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTACTS PAGE -->
+            <div class="page" id="contacts">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                    <h1 style="font-size: 28px; font-weight: 700;">Contacts</h1>
+                    <button class="btn btn-primary">+ Add Contact</button>
+                </div>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Company</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>John Doe</strong></td>
+                                <td>john@example.com</td>
+                                <td>+91 98765 43210</td>
+                                <td>ABC Corp</td>
+                                <td><span class="badge badge-success">Active</span></td>
+                                <td><button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Edit</button></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Jane Smith</strong></td>
+                                <td>jane@example.com</td>
+                                <td>+91 87654 32109</td>
+                                <td>XYZ Ltd</td>
+                                <td><span class="badge badge-success">Active</span></td>
+                                <td><button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Edit</button></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Mike Johnson</strong></td>
+                                <td>mike@example.com</td>
+                                <td>+91 76543 21098</td>
+                                <td>Tech Solutions</td>
+                                <td><span class="badge badge-info">Pending</span></td>
+                                <td><button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Edit</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PIPELINE PAGE -->
+            <div class="page" id="pipeline">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">Sales Pipeline</h1>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <div class="card">
+                        <div class="card-title">New Leads</div>
+                        <div style="font-size: 24px; font-weight: 700; color: var(--primary); margin-bottom: 8px;">12</div>
+                        <div class="card-content">Fresh contacts imported this week</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Contacted</div>
+                        <div style="font-size: 24px; font-weight: 700; color: var(--primary); margin-bottom: 8px;">8</div>
+                        <div class="card-content">Initial outreach completed</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Interested</div>
+                        <div style="font-size: 24px; font-weight: 700; color: var(--primary); margin-bottom: 8px;">5</div>
+                        <div class="card-content">Follow-up scheduled</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Proposal</div>
+                        <div style="font-size: 24px; font-weight: 700; color: var(--primary); margin-bottom: 8px;">3</div>
+                        <div class="card-content">Awaiting client decision</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CALLS PAGE -->
+            <div class="page" id="calls">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                    <h1 style="font-size: 28px; font-weight: 700;">Call Logs</h1>
+                    <button class="btn btn-primary">+ Log Call</button>
+                </div>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Contact</th>
+                                <th>Date & Time</th>
+                                <th>Duration</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>John Doe</strong></td>
+                                <td>2026-08-18 14:30</td>
+                                <td>12 min</td>
+                                <td><span class="badge badge-info">Outbound</span></td>
+                                <td><span class="badge badge-success">Completed</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Jane Smith</strong></td>
+                                <td>2026-08-18 10:15</td>
+                                <td>8 min</td>
+                                <td><span class="badge badge-info">Inbound</span></td>
+                                <td><span class="badge badge-success">Completed</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- MARKETING PAGE -->
+            <div class="page" id="marketing">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">Marketing Campaigns</h1>
+
+                <div class="section">
+                    <div class="section-title">Active Campaigns</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                        <div class="card">
+                            <div class="card-title">📱 WhatsApp Newsletter</div>
+                            <div class="card-stat">
+                                <span class="stat-label">Reach</span>
+                                <span class="stat-value">2,500+ contacts</span>
+                            </div>
+                            <div class="card-stat">
+                                <span class="stat-label">Engagement</span>
+                                <span class="stat-value">45%</span>
+                            </div>
+                            <div class="card-stat">
+                                <span class="stat-label">Status</span>
+                                <span class="badge badge-success">Active</span>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">💼 LinkedIn Outreach</div>
+                            <div class="card-stat">
+                                <span class="stat-label">Reach</span>
+                                <span class="stat-value">1,200+ connections</span>
+                            </div>
+                            <div class="card-stat">
+                                <span class="stat-label">Engagement</span>
+                                <span class="stat-value">32%</span>
+                            </div>
+                            <div class="card-stat">
+                                <span class="stat-label">Status</span>
+                                <span class="badge badge-success">Active</span>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">✉️ Email Campaign</div>
+                            <div class="card-stat">
+                                <span class="stat-label">Reach</span>
+                                <span class="stat-value">5,000+ emails</span>
+                            </div>
+                            <div class="card-stat">
+                                <span class="stat-label">Open Rate</span>
+                                <span class="stat-value">28%</span>
+                            </div>
+                            <div class="card-stat">
+                                <span class="stat-label">Status</span>
+                                <span class="badge badge-success">Active</span>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">📞 SMS Blast</div>
+                            <div class="card-stat">
+                                <span class="stat-label">Reach</span>
+                                <span class="stat-value">3,500+ contacts</span>
+                            </div>
+                            <div class="card-stat">
+                                <span class="stat-label">Read Rate</span>
+                                <span class="stat-value">92%</span>
+                            </div>
+                            <div class="card-stat">
+                                <span class="stat-label">Status</span>
+                                <span class="badge badge-success">Active</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Marketing Tools</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+                        <button class="btn btn-primary" style="width: 100%; padding: 16px;">WhatsApp API</button>
+                        <button class="btn btn-primary" style="width: 100%; padding: 16px;">LinkedIn Manager</button>
+                        <button class="btn btn-primary" style="width: 100%; padding: 16px;">Mailchimp</button>
+                        <button class="btn btn-primary" style="width: 100%; padding: 16px;">SMS Gateway</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- INTEGRATIONS PAGE -->
+            <div class="page" id="integrations">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">Integrations</h1>
+
+                <div class="section">
+                    <div class="section-title">Connected Tools</div>
+                    <div class="integration-grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>📱 WhatsApp Business API</h3>
+                                <p>Send messages, media & templates directly from CRM</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Connected</div>
+                                <div class="status-text">Phone: +91-98765-43210</div>
+                            </div>
+                        </div>
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>💼 LinkedIn Campaign Manager</h3>
+                                <p>Run ads, manage connections & track engagement</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Connected</div>
+                                <div class="status-text">Account: @arthainvest</div>
+                            </div>
+                        </div>
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>💳 Razorpay Payments</h3>
+                                <p>Accept payments, invoices & settlements</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Connected</div>
+                                <div class="status-text">Volume: $5.2M</div>
+                            </div>
+                        </div>
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>☎️ Twilio Click-to-Call</h3>
+                                <p>One-click calling with automatic logging</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Connected</div>
+                                <div class="status-text">Calls: 4,521</div>
+                            </div>
+                        </div>
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>📄 DigiLocker</h3>
+                                <p>Secure document storage & compliance</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Connected</div>
+                                <div class="status-text">Documents: 1,240</div>
+                            </div>
+                        </div>
+                        <div class="integration-card">
+                            <div class="integration-info">
+                                <h3>📊 Google Analytics</h3>
+                                <p>Track campaign performance & ROI</p>
+                            </div>
+                            <div class="integration-status">
+                                <div class="status-badge">✓ Connected</div>
+                                <div class="status-text">Active tracking</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- REPORTS PAGE -->
+            <div class="page" id="reports">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">Reports & Analytics</h1>
+
+                <div class="section">
+                    <div class="section-title">Team Performance</div>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Team Member</th>
+                                    <th>Calls</th>
+                                    <th>Deals Closed</th>
+                                    <th>Revenue</th>
+                                    <th>Conversion Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Artha (Admin)</strong></td>
+                                    <td>245</td>
+                                    <td>32</td>
+                                    <td>$450,000</td>
+                                    <td><span class="badge badge-success">28%</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Employee 1</strong></td>
+                                    <td>189</td>
+                                    <td>18</td>
+                                    <td>$210,000</td>
+                                    <td><span class="badge badge-success">22%</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Employee 2</strong></td>
+                                    <td>156</td>
+                                    <td>14</td>
+                                    <td>$165,000</td>
+                                    <td><span class="badge badge-success">20%</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Sales Trend</div>
+                    <div class="chart-container">📊 Sales Trend Chart - Monthly Revenue Analysis</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    function login() {
+        const email = document.getElementById('loginEmail').value;
+        if (email) {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('appWrapper').classList.add('active');
+        }
+    }
+
+    function switchPage(page) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(page).classList.add('active');
+
+        document.querySelectorAll('.menu-link').forEach(link => link.classList.remove('active'));
+        event.target.classList.add('active');
+    }
+
+    function toggleTheme() {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+    }
+
+    function logout() {
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.getElementById('appWrapper').classList.remove('active');
+    }
+
+    if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark-mode');
+    }
+</script>
+</body>
+</html>

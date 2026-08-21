@@ -1,0 +1,2187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArthaInvest CRM - Professional Fintech Solution</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #0066cc;
+            --primary-dark: #0052a3;
+            --secondary: #00d4ff;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --light-bg: #f8fafc;
+            --dark-bg: #0f172a;
+            --card-light: #ffffff;
+            --card-dark: #1e293b;
+            --text-light: #1e293b;
+            --text-dark: #f1f5f9;
+            --border-light: #e2e8f0;
+            --border-dark: #334155;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background-color: var(--light-bg);
+            color: var(--text-light);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        body.dark-mode {
+            background-color: var(--dark-bg);
+            color: var(--text-dark);
+        }
+
+        /* LOGIN SCREEN */
+        .login-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0066cc 0%, #00d4ff 100%);
+            z-index: 1000;
+        }
+
+        .login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-box h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            color: #0066cc;
+            text-align: center;
+        }
+
+        .login-box p {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .form-group input, .form-group select {
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+        }
+
+        .btn-login {
+            padding: 12px;
+            background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 102, 204, 0.3);
+        }
+
+        .demo-users {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+
+        .demo-users p {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 10px;
+        }
+
+        .demo-btn {
+            padding: 8px;
+            margin: 5px 0;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .demo-btn:hover {
+            background: #e0e0e0;
+        }
+
+        /* MAIN APP */
+        .app-container {
+            display: none;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container.active {
+            display: flex;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 260px;
+            background: var(--card-light);
+            border-right: 1px solid var(--border-light);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s;
+            box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+        }
+
+        body.dark-mode .sidebar {
+            background: var(--card-dark);
+            border-right-color: var(--border-dark);
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        body.dark-mode .sidebar-header {
+            border-bottom-color: var(--border-dark);
+        }
+
+        .sidebar-logo {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0066cc, #00d4ff);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 15px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .nav-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        body.dark-mode .nav-item {
+            color: #aaa;
+        }
+
+        .nav-item:hover {
+            background: rgba(0, 102, 204, 0.05);
+            border-left-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .nav-item.active {
+            background: rgba(0, 102, 204, 0.1);
+            border-left-color: var(--primary);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .nav-icon {
+            font-size: 18px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .sidebar-footer {
+            padding: 15px 20px;
+            border-top: 1px solid var(--border-light);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        body.dark-mode .sidebar-footer {
+            border-top-color: var(--border-dark);
+        }
+
+        .btn-small {
+            padding: 8px 12px;
+            font-size: 12px;
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            cursor: pointer;
+            flex: 1;
+            transition: all 0.3s;
+            background: var(--light-bg);
+            color: var(--text-light);
+        }
+
+        body.dark-mode .btn-small {
+            background: #334155;
+            border-color: var(--border-dark);
+            color: var(--text-dark);
+        }
+
+        .btn-small:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* MAIN CONTENT */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* TOP BAR */
+        .top-bar {
+            background: var(--card-light);
+            border-bottom: 1px solid var(--border-light);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        body.dark-mode .top-bar {
+            background: var(--card-dark);
+            border-bottom-color: var(--border-dark);
+        }
+
+        .top-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex: 1;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: var(--light-bg);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            padding: 8px 12px;
+            gap: 10px;
+            flex: 1;
+            max-width: 300px;
+        }
+
+        body.dark-mode .search-box {
+            background: #334155;
+            border-color: var(--border-dark);
+        }
+
+        .search-box input {
+            background: none;
+            border: none;
+            outline: none;
+            font-size: 14px;
+            flex: 1;
+            color: var(--text-light);
+        }
+
+        body.dark-mode .search-box input {
+            color: var(--text-dark);
+        }
+
+        .top-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .theme-toggle {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            transition: transform 0.3s;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        .profile-menu {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: background 0.3s;
+        }
+
+        .profile-menu:hover {
+            background: rgba(0, 102, 204, 0.1);
+        }
+
+        .profile-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0066cc, #00d4ff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .profile-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .profile-name {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .profile-role {
+            font-size: 11px;
+            color: #999;
+        }
+
+        /* CONTENT AREA */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .breadcrumb {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 20px;
+        }
+
+        /* DASHBOARD */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: var(--card-light);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: var(--shadow);
+            transition: all 0.3s;
+        }
+
+        body.dark-mode .kpi-card {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .kpi-label {
+            font-size: 13px;
+            color: #999;
+            font-weight: 500;
+        }
+
+        .kpi-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .kpi-change {
+            font-size: 12px;
+            color: var(--success);
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: var(--card-light);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        body.dark-mode .chart-card {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        /* KANBAN */
+        .kanban-container {
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+            padding-bottom: 20px;
+        }
+
+        .kanban-column {
+            background: var(--light-bg);
+            border-radius: 8px;
+            padding: 15px;
+            min-width: 300px;
+            flex-shrink: 0;
+        }
+
+        body.dark-mode .kanban-column {
+            background: #334155;
+        }
+
+        .kanban-header {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .kanban-badge {
+            background: rgba(0, 102, 204, 0.1);
+            color: var(--primary);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .kanban-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-height: 200px;
+        }
+
+        .card {
+            background: var(--card-light);
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: var(--shadow);
+            cursor: move;
+            transition: all 0.3s;
+            border-left: 3px solid var(--primary);
+        }
+
+        body.dark-mode .card {
+            background: var(--card-dark);
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 8px;
+        }
+
+        .card-tags {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            background: rgba(0, 102, 204, 0.1);
+            color: var(--primary);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        /* TABLES */
+        .table-container {
+            background: var(--card-light);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+
+        body.dark-mode .table-container {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: var(--light-bg);
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        body.dark-mode thead {
+            background: #334155;
+            border-bottom-color: var(--border-dark);
+        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-light);
+            font-size: 14px;
+        }
+
+        body.dark-mode td {
+            border-bottom-color: var(--border-dark);
+        }
+
+        tbody tr:hover {
+            background: rgba(0, 102, 204, 0.05);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-hot {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+
+        .status-warm {
+            background: rgba(245, 158, 11, 0.1);
+            color: #f59e0b;
+        }
+
+        .status-cold {
+            background: rgba(100, 116, 139, 0.1);
+            color: #64748b;
+        }
+
+        .status-interested {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+        }
+
+        .status-converted {
+            background: rgba(0, 102, 204, 0.1);
+            color: #0066cc;
+        }
+
+        /* BUTTONS */
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 102, 204, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--light-bg);
+            border: 1px solid var(--border-light);
+            color: var(--text-light);
+        }
+
+        body.dark-mode .btn-secondary {
+            background: #334155;
+            border-color: var(--border-dark);
+            color: var(--text-dark);
+        }
+
+        .btn-secondary:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn-icon {
+            padding: 8px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            transition: color 0.3s;
+            color: #666;
+        }
+
+        body.dark-mode .btn-icon {
+            color: #aaa;
+        }
+
+        .btn-icon:hover {
+            color: var(--primary);
+        }
+
+        /* MODAL */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 500;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--card-light);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease-out;
+        }
+
+        body.dark-mode .modal-content {
+            background: var(--card-dark);
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        body.dark-mode .modal-header {
+            border-bottom-color: var(--border-dark);
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid var(--border-light);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        body.dark-mode .modal-footer {
+            border-top-color: var(--border-dark);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+            transition: color 0.3s;
+        }
+
+        .modal-close:hover {
+            color: var(--text-light);
+        }
+
+        body.dark-mode .modal-close:hover {
+            color: var(--text-dark);
+        }
+
+        /* FORM STYLES */
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .form-group-full {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group-full label {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .form-group-full input, .form-group-full select, .form-group-full textarea {
+            padding: 10px;
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            font-size: 14px;
+            background: var(--light-bg);
+            color: var(--text-light);
+            transition: border-color 0.3s;
+        }
+
+        body.dark-mode .form-group-full input,
+        body.dark-mode .form-group-full select,
+        body.dark-mode .form-group-full textarea {
+            background: #334155;
+            border-color: var(--border-dark);
+            color: var(--text-dark);
+        }
+
+        .form-group-full input:focus, .form-group-full select:focus, .form-group-full textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+        }
+
+        .form-group-full textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        /* INLINE ACTIONS */
+        .action-cell {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            background: rgba(0, 102, 204, 0.1);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+            transition: all 0.3s;
+            font-size: 16px;
+        }
+
+        .icon-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* EMPTY STATE */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            padding: 40px 20px;
+            text-align: center;
+            color: #999;
+        }
+
+        .empty-icon {
+            font-size: 64px;
+            opacity: 0.5;
+        }
+
+        .empty-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-light);
+        }
+
+        body.dark-mode .empty-title {
+            color: var(--text-dark);
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 70px;
+            }
+
+            .nav-item {
+                padding: 12px;
+                justify-content: center;
+            }
+
+            .nav-item span {
+                display: none;
+            }
+
+            .sidebar-header {
+                justify-content: center;
+                font-size: 0;
+            }
+
+            .sidebar-logo {
+                margin: 0;
+            }
+
+            .content {
+                padding: 15px;
+            }
+
+            .charts-grid, .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .kanban-container {
+                flex-direction: column;
+            }
+
+            .kanban-column {
+                min-width: 100%;
+            }
+        }
+
+        /* NOTIFICATIONS */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--card-light);
+            border-left: 4px solid var(--success);
+            padding: 15px 20px;
+            border-radius: 6px;
+            box-shadow: var(--shadow-lg);
+            z-index: 999;
+            animation: slideInRight 0.3s ease-out;
+        }
+
+        body.dark-mode .toast {
+            background: var(--card-dark);
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .toast.error {
+            border-left-color: var(--danger);
+        }
+
+        .toast.warning {
+            border-left-color: var(--warning);
+        }
+
+        .toast.info {
+            border-left-color: var(--primary);
+        }
+
+        /* HIDDEN */
+        .hidden {
+            display: none !important;
+        }
+
+        /* LOADING */
+        .spinner {
+            border: 3px solid rgba(0, 102, 204, 0.2);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- LOGIN SCREEN -->
+    <div class="login-container" id="loginContainer">
+        <div class="login-box">
+            <div class="login-box" style="text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 48px; font-weight: 700; background: linear-gradient(135deg, #0066cc, #00d4ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">AI</div>
+            </div>
+            <h1>ArthaInvest CRM</h1>
+            <p>Professional FinTech Solutions</p>
+            <form class="login-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="loginEmail" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" placeholder="••••••••" required>
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select id="loginRole" required>
+                        <option value="">Select a role</option>
+                        <option value="admin">Admin</option>
+                        <option value="team_leader">Team Leader</option>
+                        <option value="employee">Employee</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-login">Sign In</button>
+            </form>
+
+            <div class="demo-users">
+                <p>📌 Demo Users (Click to fill):</p>
+                <button type="button" class="demo-btn" onclick="loadDemo('admin')">👤 Admin Account</button>
+                <button type="button" class="demo-btn" onclick="loadDemo('team_leader')">👥 Team Leader Account</button>
+                <button type="button" class="demo-btn" onclick="loadDemo('employee1')">👨‍💼 Employee 1</button>
+                <button type="button" class="demo-btn" onclick="loadDemo('employee2')">👩‍💼 Employee 2</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div class="app-container" id="appContainer">
+        <!-- SIDEBAR -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">AI</div>
+                <span>ArthaInvest</span>
+            </div>
+            <div class="sidebar-nav" id="sidebarNav">
+                <!-- Populated by JS -->
+            </div>
+            <div class="sidebar-footer">
+                <button class="btn-small" id="themeToggle" onclick="toggleTheme()">🌙 Dark</button>
+                <button class="btn-small" onclick="handleLogout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <!-- TOP BAR -->
+            <div class="top-bar" id="topBar">
+                <div class="top-bar-left">
+                    <div class="search-box">
+                        <span>🔍</span>
+                        <input type="text" placeholder="Search leads, contacts..." id="globalSearch">
+                    </div>
+                </div>
+                <div class="top-bar-right">
+                    <button class="btn-icon" onclick="toggleTheme()">🌙</button>
+                    <div class="profile-menu" onclick="toggleProfileMenu()">
+                        <div class="profile-avatar" id="profileAvatar">A</div>
+                        <div class="profile-info">
+                            <div class="profile-name" id="profileName">User Name</div>
+                            <div class="profile-role" id="profileRole">Admin</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTENT AREA -->
+            <div class="content" id="content">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <div class="modal" id="leadModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Lead Details</h2>
+                <button class="modal-close" onclick="closeLeadModal()">✕</button>
+            </div>
+            <div class="modal-body" id="leadModalBody">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="addLeadModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Lead</h2>
+                <button class="modal-close" onclick="closeAddLeadModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="addLeadForm" onsubmit="handleAddLead(event)">
+                    <div class="form-row">
+                        <div class="form-group-full">
+                            <label>Full Name *</label>
+                            <input type="text" name="name" required>
+                        </div>
+                        <div class="form-group-full">
+                            <label>Email</label>
+                            <input type="email" name="email">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group-full">
+                            <label>Phone *</label>
+                            <input type="tel" name="phone" required>
+                        </div>
+                        <div class="form-group-full">
+                            <label>Company</label>
+                            <input type="text" name="company">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group-full">
+                            <label>Status</label>
+                            <select name="status">
+                                <option value="new">New</option>
+                                <option value="contacted">Contacted</option>
+                                <option value="interested">Interested</option>
+                                <option value="proposal">Proposal Sent</option>
+                                <option value="converted">Converted</option>
+                            </select>
+                        </div>
+                        <div class="form-group-full">
+                            <label>Assigned To</label>
+                            <select name="assigned_to" id="assignedToSelect">
+                                <option value="">Unassigned</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group-full">
+                        <label>Notes</label>
+                        <textarea name="notes" placeholder="Add any notes about this lead"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddLeadModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="document.getElementById('addLeadForm').dispatchEvent(new Event('submit'))">Add Lead</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="importModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Import Leads</h2>
+                <button class="modal-close" onclick="closeImportModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="importForm" onsubmit="handleImport(event)">
+                    <div class="form-group-full">
+                        <label>CSV File *</label>
+                        <input type="file" id="csvFile" accept=".csv,.xlsx" required>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: #f0f0f0; border-radius: 6px;">
+                        <p style="font-size: 12px; color: #666;">Expected CSV format: Name, Email, Phone, Company, Status</p>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="document.getElementById('importForm').dispatchEvent(new Event('submit'))">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== GLOBAL STATE ====================
+        let currentUser = null;
+        let allLeads = [];
+        let allContacts = [];
+        let allCallLogs = [];
+        let allTasks = [];
+        let allTeamMembers = [];
+        let currentPage = 'dashboard';
+
+        // Sample data
+        const DEMO_USERS = {
+            admin: { id: 1, name: 'Admin User', email: 'admin@arthainvest.com', password: 'admin123', role: 'admin', avatar: 'A' },
+            team_leader: { id: 2, name: 'Raj Kumar', email: 'raj@arthainvest.com', password: 'leader123', role: 'team_leader', avatar: 'R' },
+            employee1: { id: 3, name: 'Priya Singh', email: 'priya@arthainvest.com', password: 'emp123', role: 'employee', avatar: 'P', assigned_leads: [1, 2] },
+            employee2: { id: 4, name: 'Arjun Patel', email: 'arjun@arthainvest.com', password: 'emp123', role: 'employee', avatar: 'A', assigned_leads: [3, 4] },
+            employee3: { id: 5, name: 'Nisha Sharma', email: 'nisha@arthainvest.com', password: 'emp123', role: 'employee', avatar: 'N', assigned_leads: [5, 6] },
+            employee4: { id: 6, name: 'Vikram Das', email: 'vikram@arthainvest.com', password: 'emp123', role: 'employee', avatar: 'V', assigned_leads: [7, 8] }
+        };
+
+        const SAMPLE_LEADS = [
+            { id: 1, name: 'Rajesh Kumar', email: 'rajesh@company.com', phone: '9876543210', company: 'Tech Solutions', status: 'hot', temperature: 'hot', assigned_to: 3, created_at: '2026-08-15', notes: 'Very interested in insurance products' },
+            { id: 2, name: 'Anjali Patel', email: 'anjali@company.com', phone: '9876543211', company: 'Finance Ltd', status: 'warm', temperature: 'warm', assigned_to: 3, created_at: '2026-08-14', notes: 'Discussed requirements' },
+            { id: 3, name: 'Rohit Singh', email: 'rohit@company.com', phone: '9876543212', company: 'Business Corp', status: 'cold', temperature: 'cold', assigned_to: 4, created_at: '2026-08-13', notes: 'Initial contact' },
+            { id: 4, name: 'Priya Verma', email: 'priya@company.com', phone: '9876543213', company: 'Startup Inc', status: 'interested', temperature: 'warm', assigned_to: 4, created_at: '2026-08-12', notes: 'Awaiting proposal review' },
+            { id: 5, name: 'Vikram Sharma', email: 'vikram@company.com', phone: '9876543214', company: 'Enterprise Group', status: 'converted', temperature: 'hot', assigned_to: 5, created_at: '2026-08-11', notes: 'Closed deal for ₹50,000' },
+            { id: 6, name: 'Neha Gupta', email: 'neha@company.com', phone: '9876543215', company: 'Digital Solutions', status: 'warm', temperature: 'warm', assigned_to: 5, created_at: '2026-08-10', notes: 'Sent proposal' },
+            { id: 7, name: 'Arun Malhotra', email: 'arun@company.com', phone: '9876543216', company: 'Commerce Ltd', status: 'cold', temperature: 'cold', assigned_to: 6, created_at: '2026-08-09', notes: 'Follow up needed' },
+            { id: 8, name: 'Divya Desai', email: 'divya@company.com', phone: '9876543217', company: 'Ventures Group', status: 'interested', temperature: 'warm', assigned_to: 6, created_at: '2026-08-08', notes: 'Demo scheduled' }
+        ];
+
+        const SAMPLE_CALL_LOGS = [
+            { id: 1, lead_id: 1, duration: 12, date: '2026-08-18', notes: 'Discussed policy benefits', type: 'outbound' },
+            { id: 2, lead_id: 2, duration: 8, date: '2026-08-17', notes: 'Inquiry about premiums', type: 'inbound' },
+            { id: 3, lead_id: 5, duration: 25, date: '2026-08-16', notes: 'Closed deal discussion', type: 'outbound' }
+        ];
+
+        // ==================== INIT ====================
+        function init() {
+            loadData();
+            if (!currentUser) {
+                showLoginScreen();
+            } else {
+                showApp();
+                loadDashboard();
+            }
+        }
+
+        function loadData() {
+            const saved = localStorage.getItem('crmData');
+            if (saved) {
+                const data = JSON.parse(saved);
+                allLeads = data.leads || SAMPLE_LEADS;
+                allCallLogs = data.callLogs || SAMPLE_CALL_LOGS;
+                allTasks = data.tasks || [];
+                currentUser = data.currentUser;
+            } else {
+                allLeads = [...SAMPLE_LEADS];
+                allCallLogs = [...SAMPLE_CALL_LOGS];
+                allTasks = [];
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('crmData', JSON.stringify({
+                leads: allLeads,
+                callLogs: allCallLogs,
+                tasks: allTasks,
+                currentUser: currentUser
+            }));
+        }
+
+        // ==================== AUTH ====================
+        function loadDemo(demoType) {
+            const user = DEMO_USERS[demoType];
+            document.getElementById('loginEmail').value = user.email;
+            document.getElementById('loginPassword').value = user.password;
+            document.getElementById('loginRole').value = user.role;
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const role = document.getElementById('loginRole').value;
+
+            const user = Object.values(DEMO_USERS).find(u => u.email === email && u.password === password && u.role === role);
+
+            if (user) {
+                currentUser = user;
+                saveData();
+                showApp();
+                loadDashboard();
+            } else {
+                showToast('Invalid credentials', 'error');
+            }
+        }
+
+        function handleLogout() {
+            if (confirm('Are you sure you want to logout?')) {
+                currentUser = null;
+                localStorage.removeItem('crmData');
+                location.reload();
+            }
+        }
+
+        function showLoginScreen() {
+            document.getElementById('loginContainer').style.display = 'flex';
+            document.getElementById('appContainer').classList.remove('active');
+        }
+
+        function showApp() {
+            document.getElementById('loginContainer').style.display = 'none';
+            document.getElementById('appContainer').classList.add('active');
+            renderSidebar();
+            updateProfile();
+        }
+
+        // ==================== UI ====================
+        function renderSidebar() {
+            const nav = document.getElementById('sidebarNav');
+            nav.innerHTML = '';
+
+            const navItems = getNavItemsForRole();
+            navItems.forEach(item => {
+                const div = document.createElement('div');
+                div.className = `nav-item ${currentPage === item.page ? 'active' : ''}`;
+                div.innerHTML = `<span class="nav-icon">${item.icon}</span><span>${item.label}</span>`;
+                div.onclick = () => navigateTo(item.page);
+                nav.appendChild(div);
+            });
+        }
+
+        function getNavItemsForRole() {
+            const base = [
+                { icon: '📊', label: 'Dashboard', page: 'dashboard' },
+                { icon: '👥', label: 'Leads', page: 'leads' },
+                { icon: '📇', label: 'Contacts', page: 'contacts' },
+                { icon: '☎️', label: 'Call Logs', page: 'call_logs' },
+                { icon: '📝', label: 'Tasks', page: 'tasks' },
+                { icon: '📅', label: 'Calendar', page: 'calendar' },
+            ];
+
+            const adminExtra = [
+                { icon: '👨‍💼', label: 'Team Management', page: 'team_management' },
+                { icon: '📈', label: 'Reports', page: 'reports' },
+                { icon: '⚙️', label: 'Settings', page: 'settings' }
+            ];
+
+            const leaderExtra = [
+                { icon: '👥', label: 'Team Performance', page: 'team_performance' },
+                { icon: '📈', label: 'Reports', page: 'reports' }
+            ];
+
+            if (currentUser.role === 'admin') return [...base, ...adminExtra];
+            if (currentUser.role === 'team_leader') return [...base, ...leaderExtra];
+            return base;
+        }
+
+        function navigateTo(page) {
+            currentPage = page;
+            renderSidebar();
+
+            switch(page) {
+                case 'dashboard': loadDashboard(); break;
+                case 'leads': loadLeads(); break;
+                case 'contacts': loadContacts(); break;
+                case 'call_logs': loadCallLogs(); break;
+                case 'tasks': loadTasks(); break;
+                case 'calendar': loadCalendar(); break;
+                case 'team_management': loadTeamManagement(); break;
+                case 'team_performance': loadTeamPerformance(); break;
+                case 'reports': loadReports(); break;
+                case 'settings': loadSettings(); break;
+            }
+        }
+
+        function updateProfile() {
+            document.getElementById('profileName').textContent = currentUser.name;
+            document.getElementById('profileRole').textContent = currentUser.role.replace('_', ' ').toUpperCase();
+            document.getElementById('profileAvatar').textContent = currentUser.avatar;
+        }
+
+        // ==================== DASHBOARD ====================
+        function loadDashboard() {
+            let html = `
+                <div class="page-title">📊 Dashboard</div>
+                <div class="breadcrumb">Home / Dashboard</div>
+            `;
+
+            if (currentUser.role === 'admin') {
+                html += `
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-label">Total Leads</div>
+                            <div class="kpi-value">${allLeads.length}</div>
+                            <div class="kpi-change">↑ 12% this week</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Conversion Rate</div>
+                            <div class="kpi-value">18.5%</div>
+                            <div class="kpi-change">↑ 2.3% vs last month</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Active Team Members</div>
+                            <div class="kpi-value">6</div>
+                            <div class="kpi-change">All online</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Revenue This Month</div>
+                            <div class="kpi-value">₹${(allLeads.filter(l => l.status === 'converted').length * 50000).toLocaleString()}</div>
+                            <div class="kpi-change">↑ 35% vs last month</div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <div class="chart-title">Lead Status Distribution</div>
+                            <div style="height: 250px; background: linear-gradient(135deg, rgba(0,102,204,0.1), rgba(0,212,255,0.1)); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #999;">
+                                📊 Hot: ${allLeads.filter(l => l.temperature === 'hot').length} | Warm: ${allLeads.filter(l => l.temperature === 'warm').length} | Cold: ${allLeads.filter(l => l.temperature === 'cold').length}
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-title">Team Performance</div>
+                            <div style="height: 250px; background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(245,158,11,0.1)); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #999;">
+                                📈 Top Performer: Priya Singh (5 conversions)
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 30px;">
+                        <h2 style="margin-bottom: 15px;">Recent Activities</h2>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Employee</th>
+                                        <th>Activity</th>
+                                        <th>Lead</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Priya Singh</td>
+                                        <td><span class="status-badge status-converted">Lead Converted</span></td>
+                                        <td>Vikram Sharma</td>
+                                        <td>2 hours ago</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Arjun Patel</td>
+                                        <td><span class="status-badge status-hot">Proposal Sent</span></td>
+                                        <td>Priya Verma</td>
+                                        <td>5 hours ago</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Nisha Sharma</td>
+                                        <td><span class="status-badge status-warm">Call Logged</span></td>
+                                        <td>Anjali Patel</td>
+                                        <td>1 day ago</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } else if (currentUser.role === 'team_leader') {
+                const teamLeads = allLeads.filter(l => [3, 4, 5, 6].includes(l.assigned_to));
+                html += `
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-label">Team Leads</div>
+                            <div class="kpi-value">${teamLeads.length}</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Converted This Week</div>
+                            <div class="kpi-value">${teamLeads.filter(l => l.status === 'converted').length}</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Team Members</div>
+                            <div class="kpi-value">4</div>
+                        </div>
+                    </div>
+                    <div class="empty-state">
+                        <div class="empty-icon">👥</div>
+                        <div class="empty-title">Team Dashboard</div>
+                        <p>View your team's performance and lead management</p>
+                    </div>
+                `;
+            } else {
+                const myLeads = allLeads.filter(l => l.assigned_to === currentUser.id);
+                html += `
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-label">My Leads</div>
+                            <div class="kpi-value">${myLeads.length}</div>
+                            <div class="kpi-change">↑ 2 new today</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Converted</div>
+                            <div class="kpi-value">${myLeads.filter(l => l.status === 'converted').length}</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">This Month Revenue</div>
+                            <div class="kpi-value">₹${(myLeads.filter(l => l.status === 'converted').length * 50000).toLocaleString()}</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Tasks Today</div>
+                            <div class="kpi-value">${allTasks.filter(t => t.assigned_to === currentUser.id && t.date === new Date().toISOString().split('T')[0]).length}</div>
+                        </div>
+                    </div>
+                    <h2 style="margin-top: 30px; margin-bottom: 15px;">My Lead Pipeline</h2>
+                    ${renderKanbanView(myLeads)}
+                `;
+            }
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // ==================== LEADS ====================
+        function loadLeads() {
+            let leads = allLeads;
+            if (currentUser.role === 'employee') {
+                leads = allLeads.filter(l => l.assigned_to === currentUser.id);
+            } else if (currentUser.role === 'team_leader') {
+                leads = allLeads.filter(l => [3, 4, 5, 6].includes(l.assigned_to));
+            }
+
+            let html = `
+                <div class="page-title">👥 Leads</div>
+                <div class="breadcrumb">Home / Leads</div>
+                <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-primary" onclick="openAddLeadModal()">➕ Add Lead</button>
+                    <button class="btn btn-secondary" onclick="openImportModal()">📥 Import CSV</button>
+                    <button class="btn btn-secondary" onclick="exportLeadsToExcel()">📤 Export Excel</button>
+                    <button class="btn btn-secondary" onclick="toggleKanbanView()">📋 Kanban View</button>
+                </div>
+                <div id="leadsView">
+                    ${renderLeadsTable(leads)}
+                </div>
+            `;
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        function renderLeadsTable(leads) {
+            if (leads.length === 0) {
+                return `<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">No Leads Found</div></div>`;
+            }
+
+            let html = `<div class="table-container"><table><thead><tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Company</th>
+                <th>Status</th>
+                <th>Assigned To</th>
+                <th>Actions</th>
+            </tr></thead><tbody>`;
+
+            leads.forEach(lead => {
+                const assignee = Object.values(DEMO_USERS).find(u => u.id === lead.assigned_to);
+                html += `
+                    <tr>
+                        <td><strong>${lead.name}</strong></td>
+                        <td>${lead.email || '-'}</td>
+                        <td>${lead.phone}</td>
+                        <td>${lead.company || '-'}</td>
+                        <td><span class="status-badge status-${lead.temperature}">${lead.temperature.toUpperCase()}</span></td>
+                        <td>${assignee ? assignee.name : 'Unassigned'}</td>
+                        <td>
+                            <div class="action-cell">
+                                <button class="icon-btn" onclick="viewLead(${lead.id})" title="View">👁️</button>
+                                <button class="icon-btn" onclick="callLead(${lead.id})" title="Call">☎️</button>
+                                <button class="icon-btn" onclick="whatsappLead(${lead.id})" title="WhatsApp">💬</button>
+                                <button class="icon-btn" onclick="editLead(${lead.id})" title="Edit">✏️</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table></div>`;
+            return html;
+        }
+
+        function renderKanbanView(leads) {
+            const statuses = ['new', 'contacted', 'interested', 'proposal', 'converted'];
+            let html = `<div class="kanban-container">`;
+
+            statuses.forEach(status => {
+                const statusLeads = leads.filter(l => l.status === status);
+                const statusNames = { new: 'New', contacted: 'Contacted', interested: 'Interested', proposal: 'Proposal', converted: 'Converted' };
+
+                html += `
+                    <div class="kanban-column">
+                        <div class="kanban-header">
+                            <span>${statusNames[status]}</span>
+                            <div class="kanban-badge">${statusLeads.length}</div>
+                        </div>
+                        <div class="kanban-cards">
+                `;
+
+                statusLeads.forEach(lead => {
+                    html += `
+                        <div class="card" onclick="viewLead(${lead.id})">
+                            <div class="card-title">${lead.name}</div>
+                            <div class="card-subtitle">${lead.company || 'No Company'}</div>
+                            <div class="card-tags">
+                                <span class="tag">${lead.temperature}</span>
+                                <span class="tag">📞 ${lead.phone.slice(-4)}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `</div></div>`;
+            });
+
+            html += `</div>`;
+            return html;
+        }
+
+        function viewLead(leadId) {
+            const lead = allLeads.find(l => l.id === leadId);
+            const assignee = Object.values(DEMO_USERS).find(u => u.id === lead.assigned_to);
+            const relatedCalls = allCallLogs.filter(c => c.lead_id === leadId);
+
+            let html = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <h3 style="margin-bottom: 15px;">📋 Lead Information</h3>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div><strong>Name:</strong> ${lead.name}</div>
+                            <div><strong>Email:</strong> ${lead.email || '-'}</div>
+                            <div><strong>Phone:</strong> ${lead.phone}</div>
+                            <div><strong>Company:</strong> ${lead.company || '-'}</div>
+                            <div><strong>Status:</strong> <span class="status-badge status-${lead.temperature}">${lead.temperature.toUpperCase()}</span></div>
+                            <div><strong>Assigned To:</strong> ${assignee ? assignee.name : 'Unassigned'}</div>
+                            <div><strong>Created:</strong> ${lead.created_at}</div>
+                            <div><strong>Notes:</strong> ${lead.notes || 'No notes'}</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 style="margin-bottom: 15px;">☎️ Call History</h3>
+                        ${relatedCalls.length > 0 ? `
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                ${relatedCalls.map(c => `
+                                    <div style="background: var(--light-bg); padding: 10px; border-radius: 6px;">
+                                        <div style="font-weight: 600;">${c.type === 'inbound' ? '📥' : '📤'} ${c.type.toUpperCase()}</div>
+                                        <div style="font-size: 12px; color: #999;">Duration: ${c.duration} min</div>
+                                        <div style="font-size: 12px; color: #999;">Date: ${c.date}</div>
+                                        <div style="font-size: 12px; margin-top: 5px;">${c.notes}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `<p style="color: #999;">No calls logged yet</p>`}
+
+                        <div style="margin-top: 15px; display: flex; gap: 10px;">
+                            <button class="btn btn-primary btn-sm" onclick="callLead(${lead.id})">☎️ Call Now</button>
+                            <button class="btn btn-secondary btn-sm" onclick="whatsappLead(${lead.id})">💬 WhatsApp</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('leadModalBody').innerHTML = html;
+            document.getElementById('leadModal').classList.add('active');
+        }
+
+        function callLead(leadId) {
+            const lead = allLeads.find(l => l.id === leadId);
+            showToast(`☎️ Initiating call to ${lead.name} at ${lead.phone}`, 'info');
+
+            // Log the call
+            const callLog = {
+                id: allCallLogs.length + 1,
+                lead_id: leadId,
+                duration: Math.floor(Math.random() * 20) + 5,
+                date: new Date().toISOString().split('T')[0],
+                notes: 'Call initiated',
+                type: 'outbound'
+            };
+            allCallLogs.push(callLog);
+            saveData();
+        }
+
+        function whatsappLead(leadId) {
+            const lead = allLeads.find(l => l.id === leadId);
+            const message = `Hi ${lead.name}, I'm reaching out regarding our insurance products. Can we discuss?`;
+            const whatsappUrl = `https://wa.me/91${lead.phone}?text=${encodeURIComponent(message)}`;
+            window.open(whatsappUrl, '_blank');
+        }
+
+        function editLead(leadId) {
+            const lead = allLeads.find(l => l.id === leadId);
+            if (currentUser.role === 'employee' && lead.assigned_to !== currentUser.id) {
+                showToast('You can only edit your assigned leads', 'error');
+                return;
+            }
+            showToast('Edit lead: ' + lead.name, 'info');
+        }
+
+        function openAddLeadModal() {
+            const empSelect = document.getElementById('assignedToSelect');
+            empSelect.innerHTML = '<option value="">Unassigned</option>';
+            Object.values(DEMO_USERS).filter(u => u.role === 'employee').forEach(u => {
+                empSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
+            });
+            document.getElementById('addLeadModal').classList.add('active');
+        }
+
+        function closeAddLeadModal() {
+            document.getElementById('addLeadModal').classList.remove('active');
+            document.getElementById('addLeadForm').reset();
+        }
+
+        function handleAddLead(e) {
+            e.preventDefault();
+            const form = document.getElementById('addLeadForm');
+            const data = new FormData(form);
+
+            const newLead = {
+                id: Math.max(...allLeads.map(l => l.id)) + 1,
+                name: data.get('name'),
+                email: data.get('email'),
+                phone: data.get('phone'),
+                company: data.get('company'),
+                status: data.get('status'),
+                temperature: 'cold',
+                assigned_to: data.get('assigned_to') ? parseInt(data.get('assigned_to')) : null,
+                created_at: new Date().toISOString().split('T')[0],
+                notes: data.get('notes')
+            };
+
+            allLeads.push(newLead);
+            saveData();
+            closeAddLeadModal();
+            showToast('Lead added successfully', 'success');
+            loadLeads();
+        }
+
+        function openImportModal() {
+            document.getElementById('importModal').classList.add('active');
+        }
+
+        function closeImportModal() {
+            document.getElementById('importModal').classList.remove('active');
+            document.getElementById('csvFile').value = '';
+        }
+
+        function handleImport(e) {
+            e.preventDefault();
+            const file = document.getElementById('csvFile').files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const csv = event.target.result;
+                const lines = csv.split('\n');
+                let imported = 0;
+
+                lines.forEach((line, index) => {
+                    if (index === 0 || !line.trim()) return;
+                    const [name, email, phone, company, status] = line.split(',').map(s => s.trim());
+
+                    if (name && phone) {
+                        const duplicate = allLeads.find(l => l.phone === phone);
+                        if (!duplicate) {
+                            allLeads.push({
+                                id: Math.max(...allLeads.map(l => l.id)) + 1,
+                                name, email, phone, company,
+                                status: status || 'new',
+                                temperature: 'cold',
+                                assigned_to: null,
+                                created_at: new Date().toISOString().split('T')[0],
+                                notes: 'Imported from CSV'
+                            });
+                            imported++;
+                        }
+                    }
+                });
+
+                saveData();
+                closeImportModal();
+                showToast(`${imported} leads imported successfully`, 'success');
+                loadLeads();
+            };
+            reader.readAsText(file);
+        }
+
+        function exportLeadsToExcel() {
+            let leads = allLeads;
+            if (currentUser.role === 'employee') {
+                leads = allLeads.filter(l => l.assigned_to === currentUser.id);
+            }
+
+            let csv = 'Name,Email,Phone,Company,Status,Assigned To,Created Date\n';
+            leads.forEach(lead => {
+                const assignee = Object.values(DEMO_USERS).find(u => u.id === lead.assigned_to);
+                csv += `${lead.name},"${lead.email}","${lead.phone}","${lead.company}","${lead.status}","${assignee ? assignee.name : 'Unassigned'}","${lead.created_at}"\n`;
+            });
+
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv));
+            element.setAttribute('download', `leads_${new Date().toISOString().split('T')[0]}.csv`);
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+
+            showToast('Leads exported successfully', 'success');
+        }
+
+        function toggleKanbanView() {
+            let leads = allLeads;
+            if (currentUser.role === 'employee') {
+                leads = allLeads.filter(l => l.assigned_to === currentUser.id);
+            }
+            document.getElementById('leadsView').innerHTML = renderKanbanView(leads);
+        }
+
+        // ==================== CONTACTS ====================
+        function loadContacts() {
+            const html = `
+                <div class="page-title">📇 Contacts</div>
+                <div class="breadcrumb">Home / Contacts</div>
+                <div style="margin-bottom: 20px;">
+                    <button class="btn btn-primary" onclick="showToast('Contact management feature', 'info')">➕ Add Contact</button>
+                </div>
+                <div class="empty-state">
+                    <div class="empty-icon">📇</div>
+                    <div class="empty-title">Contact Management</div>
+                    <p>View and manage all contacts associated with leads</p>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // ==================== CALL LOGS ====================
+        function loadCallLogs() {
+            let logs = allCallLogs;
+            if (currentUser.role === 'employee') {
+                const myLeadIds = allLeads.filter(l => l.assigned_to === currentUser.id).map(l => l.id);
+                logs = allCallLogs.filter(c => myLeadIds.includes(c.lead_id));
+            }
+
+            let html = `
+                <div class="page-title">☎️ Call Logs</div>
+                <div class="breadcrumb">Home / Call Logs</div>
+                <div style="margin-bottom: 20px;">
+                    <button class="btn btn-primary" onclick="showToast('New call logged', 'success')">➕ Log Call</button>
+                </div>
+            `;
+
+            if (logs.length === 0) {
+                html += `<div class="empty-state"><div class="empty-icon">☎️</div><div class="empty-title">No Call Logs</div></div>`;
+            } else {
+                html += `<div class="table-container"><table><thead><tr>
+                    <th>Lead</th>
+                    <th>Type</th>
+                    <th>Duration</th>
+                    <th>Date</th>
+                    <th>Notes</th>
+                </tr></thead><tbody>`;
+
+                logs.forEach(log => {
+                    const lead = allLeads.find(l => l.id === log.lead_id);
+                    html += `
+                        <tr>
+                            <td><strong>${lead ? lead.name : 'Unknown'}</strong></td>
+                            <td>${log.type === 'inbound' ? '📥 Inbound' : '📤 Outbound'}</td>
+                            <td>${log.duration} min</td>
+                            <td>${log.date}</td>
+                            <td>${log.notes}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `</tbody></table></div>`;
+            }
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // ==================== TASKS ====================
+        function loadTasks() {
+            let tasks = allTasks;
+            if (currentUser.role === 'employee') {
+                tasks = allTasks.filter(t => t.assigned_to === currentUser.id);
+            }
+
+            let html = `
+                <div class="page-title">📝 Tasks</div>
+                <div class="breadcrumb">Home / Tasks</div>
+                <div style="margin-bottom: 20px;">
+                    <button class="btn btn-primary" onclick="showToast('Task creation feature', 'info')">➕ New Task</button>
+                </div>
+            `;
+
+            if (tasks.length === 0) {
+                html += `<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">No Tasks</div><p>Create a new task to get started</p></div>`;
+            } else {
+                html += `<div style="display: grid; gap: 15px;">`;
+                tasks.forEach(task => {
+                    html += `
+                        <div style="background: var(--card-light); border-left: 3px solid var(--primary); padding: 15px; border-radius: 6px;">
+                            <div style="font-weight: 600;">${task.title}</div>
+                            <div style="font-size: 12px; color: #999; margin-top: 5px;">Due: ${task.due_date}</div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+            }
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // ==================== CALENDAR ====================
+        function loadCalendar() {
+            const html = `
+                <div class="page-title">📅 Calendar</div>
+                <div class="breadcrumb">Home / Calendar</div>
+                <div style="background: var(--card-light); border: 1px solid var(--border-light); border-radius: 8px; padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 64px; margin-bottom: 10px;">📅</div>
+                    <p>Calendar integration coming soon</p>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // ==================== ADMIN - TEAM MANAGEMENT ====================
+        function loadTeamManagement() {
+            const employees = Object.values(DEMO_USERS).filter(u => u.role === 'employee');
+
+            let html = `
+                <div class="page-title">👨‍💼 Team Management</div>
+                <div class="breadcrumb">Home / Team Management</div>
+                <div class="table-container" style="margin-top: 20px;">
+                    <table>
+                        <thead><tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Assigned Leads</th>
+                            <th>Converted Leads</th>
+                            <th>Actions</th>
+                        </tr></thead>
+                        <tbody>
+            `;
+
+            employees.forEach(emp => {
+                const empLeads = allLeads.filter(l => l.assigned_to === emp.id);
+                const converted = empLeads.filter(l => l.status === 'converted').length;
+                html += `
+                    <tr>
+                        <td><strong>${emp.name}</strong></td>
+                        <td>${emp.email}</td>
+                        <td>${emp.role.replace('_', ' ').toUpperCase()}</td>
+                        <td>${empLeads.length}</td>
+                        <td>${converted}</td>
+                        <td>
+                            <div class="action-cell">
+                                <button class="icon-btn" onclick="showToast('View ${emp.name} details', 'info')">👁️</button>
+                                <button class="icon-btn" onclick="showToast('Edit ${emp.name}', 'info')">✏️</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table></div>`;
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // ==================== TEAM PERFORMANCE ====================
+        function loadTeamPerformance() {
+            const employees = Object.values(DEMO_USERS).filter(u => u.role === 'employee');
+
+            let html = `
+                <div class="page-title">📈 Team Performance</div>
+                <div class="breadcrumb">Home / Team Performance</div>
+                <div class="kpi-grid" style="margin-top: 20px;">
+            `;
+
+            employees.forEach(emp => {
+                const empLeads = allLeads.filter(l => l.assigned_to === emp.id);
+                const converted = empLeads.filter(l => l.status === 'converted').length;
+                const rate = empLeads.length > 0 ? ((converted / empLeads.length) * 100).toFixed(1) : 0;
+
+                html += `
+                    <div class="kpi-card">
+                        <div class="kpi-label">${emp.name}</div>
+                        <div style="font-size: 16px; margin-top: 10px;">
+                            <div>Leads: <strong>${empLeads.length}</strong></div>
+                            <div>Converted: <strong>${converted}</strong></div>
+                            <div>Rate: <strong>${rate}%</strong></div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `</div>`;
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // ==================== REPORTS ====================
+        function loadReports() {
+            const html = `
+                <div class="page-title">📊 Reports & Analytics</div>
+                <div class="breadcrumb">Home / Reports</div>
+
+                <div class="kpi-grid" style="margin-top: 20px;">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Total Leads</div>
+                        <div class="kpi-value">${allLeads.length}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Converted</div>
+                        <div class="kpi-value">${allLeads.filter(l => l.status === 'converted').length}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Conversion Rate</div>
+                        <div class="kpi-value">${((allLeads.filter(l => l.status === 'converted').length / allLeads.length) * 100).toFixed(1)}%</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Total Revenue</div>
+                        <div class="kpi-value">₹${(allLeads.filter(l => l.status === 'converted').length * 50000).toLocaleString()}</div>
+                    </div>
+                </div>
+
+                <div class="charts-grid" style="margin-top: 20px;">
+                    <div class="chart-card">
+                        <div class="chart-title">Lead Status Distribution</div>
+                        <table style="width: 100%; margin-top: 10px;">
+                            <tr><td>Hot Leads:</td><td style="text-align: right;"><strong>${allLeads.filter(l => l.temperature === 'hot').length}</strong></td></tr>
+                            <tr><td>Warm Leads:</td><td style="text-align: right;"><strong>${allLeads.filter(l => l.temperature === 'warm').length}</strong></td></tr>
+                            <tr><td>Cold Leads:</td><td style="text-align: right;"><strong>${allLeads.filter(l => l.temperature === 'cold').length}</strong></td></tr>
+                        </table>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-title">Lead Status Pipeline</div>
+                        <table style="width: 100%; margin-top: 10px;">
+                            <tr><td>New:</td><td style="text-align: right;"><strong>${allLeads.filter(l => l.status === 'new').length}</strong></td></tr>
+                            <tr><td>Contacted:</td><td style="text-align: right;"><strong>${allLeads.filter(l => l.status === 'contacted').length}</strong></td></tr>
+                            <tr><td>Interested:</td><td style="text-align: right;"><strong>${allLeads.filter(l => l.status === 'interested').length}</strong></td></tr>
+                            <tr><td>Proposal:</td><td style="text-align: right;"><strong>${allLeads.filter(l => l.status === 'proposal').length}</strong></td></tr>
+                            <tr><td>Converted:</td><td style="text-align: right;"><strong>${allLeads.filter(l => l.status === 'converted').length}</strong></td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <button class="btn btn-secondary" style="margin-top: 20px;" onclick="exportReportsToExcel()">📤 Export Report</button>
+            `;
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        function exportReportsToExcel() {
+            let csv = 'Report Type,Value\n';
+            csv += `Total Leads,${allLeads.length}\n`;
+            csv += `Converted,${allLeads.filter(l => l.status === 'converted').length}\n`;
+            csv += `Conversion Rate,${((allLeads.filter(l => l.status === 'converted').length / allLeads.length) * 100).toFixed(1)}%\n`;
+            csv += `Total Revenue,₹${(allLeads.filter(l => l.status === 'converted').length * 50000).toLocaleString()}\n`;
+
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv));
+            element.setAttribute('download', `report_${new Date().toISOString().split('T')[0]}.csv`);
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+
+            showToast('Report exported successfully', 'success');
+        }
+
+        // ==================== SETTINGS ====================
+        function loadSettings() {
+            const html = `
+                <div class="page-title">⚙️ Settings</div>
+                <div class="breadcrumb">Home / Settings</div>
+
+                <div style="margin-top: 20px; background: var(--card-light); border: 1px solid var(--border-light); border-radius: 8px; padding: 20px;">
+                    <h3 style="margin-bottom: 15px;">🎨 Appearance</h3>
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <button class="btn btn-secondary" onclick="toggleTheme()">🌙 Toggle Dark Mode</button>
+                    </div>
+
+                    <h3 style="margin-bottom: 15px;">🔔 Notifications</h3>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <input type="checkbox" id="emailNotif" checked>
+                        <label for="emailNotif">Email Notifications</label>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                        <input type="checkbox" id="pushNotif" checked>
+                        <label for="pushNotif">Push Notifications</label>
+                    </div>
+
+                    <h3 style="margin-bottom: 15px;">🔐 Security</h3>
+                    <div>
+                        <p style="color: #999; font-size: 12px;">Email: ${currentUser.email}</p>
+                        <button class="btn btn-secondary btn-sm" style="margin-top: 10px;" onclick="showToast('Password change feature coming soon', 'info')">Change Password</button>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // ==================== UTILITIES ====================
+        function closeLeadModal() {
+            document.getElementById('leadModal').classList.remove('active');
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+        }
+
+        function toggleProfileMenu() {
+            showToast('Profile menu', 'info');
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // Load theme preference
+        if (localStorage.getItem('theme') === 'dark') {
+            document.body.classList.add('dark-mode');
+        }
+
+        // Initialize app
+        init();
+    </script>
+</body>
+</html>

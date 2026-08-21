@@ -1,0 +1,352 @@
+================================================================================
+  ARTHAINVEST CRM - TEAM MEMBER QUICK START GUIDE
+  Your personal guide to getting started with the CRM
+================================================================================
+
+Welcome to ArthaInvest CRM! This guide will get you up and running in 5 minutes.
+
+================================================================================
+  INSTALLATION (5 MINUTES)
+================================================================================
+
+STEP 1: Download the installer
+   - Your manager sent you: ArthaInvestCRM_Setup.zip
+   - Download it (if in email) or find it in shared folder
+   - Extract the ZIP file to your Downloads folder
+
+STEP 2: Run the installer
+   - Open the extracted folder
+   - Double-click: INSTALLER.bat
+   - A command window will open
+   - It will say "Installing..." - just wait (1-2 minutes)
+   - When it says "INSTALLATION COMPLETE", the CRM will launch
+
+STEP 3: Your first login
+   - Username: admin (for initial setup)
+   - Password: 123
+   - Click: LOGIN
+   - You're now in the CRM!
+
+STEP 4: Change your password (IMPORTANT!)
+   - In the left sidebar, click: "Change Password"
+   - Current Password: 123
+   - New Password: [Create a strong password]
+   - Confirm Password: [Re-enter it]
+   - Click: "Change"
+   - Done! Your password is now secure
+
+NEXT TIME:
+   - Double-click: "ArthaInvest CRM.bat" on your Desktop
+   - Or search "ArthaInvest" in your Start Menu
+   - Login with your username and new password
+
+================================================================================
+  YOUR ACCOUNT
+================================================================================
+
+Your manager has assigned you an account. Depending on your role:
+
+EMPLOYEE (Sales Team):
+   ├─ Access: Leads, Clients, Deals, Tasks, Communications
+   ├─ Use for: Adding leads, logging calls, updating deal status
+   └─ Login: You'll get your username from your manager
+
+TEAM LEADER (Sales Manager):
+   ├─ Access: All above + Reports & Analytics
+   ├─ Use for: Team monitoring, performance tracking
+   └─ Login: You'll get your username from your manager
+
+ADMIN (Management):
+   ├─ Access: Everything + User management & settings
+   ├─ Use for: System configuration, user management
+   └─ Login: You'll get your username from your manager
+
+Your initial password is: 123
+IMPORTANT: Change this to a new password after first login!
+
+================================================================================
+  MAIN FEATURES
+================================================================================
+
+📊 DASHBOARD
+   What: Real-time view of your pipeline
+   Shows: Total clients, prospects, open deals, pipeline value
+   Use: Check status at start of day
+   How:
+     1. Click "Dashboard" in sidebar
+     2. You see all key metrics
+     3. Numbers update automatically
+
+👤 LEADS MANAGEMENT
+   What: Track prospects and potential customers
+   Shows: Lead name, company, contact, source, score (0-100)
+   Use: Add prospects, track follow-ups
+   How to add a lead:
+     1. Click "Leads" in sidebar
+     2. Fill in: Name, Phone, Email, Company, Source, Product, Budget
+     3. Click "Add Lead"
+     4. System auto-calculates score and tier (HOT/WARM/COOL/COLD)
+
+💼 CLIENTS
+   What: Database of active customers
+   Shows: Name, contact, product, premium amount, renewal date
+   Use: Track customer information, renewal dates
+   How:
+     1. Click "Clients" in sidebar
+     2. View all active clients
+     3. Update information as needed
+
+🤝 DEALS
+   What: Track sales opportunities through their stages
+   Shows: Deal name, client, value, stage, probability, close date
+   Use: Monitor pipeline health, track progress
+   How:
+     1. Click "Deals" in sidebar
+     2. See all open deals
+     3. Update stage as deal progresses
+
+✓ TASKS
+   What: Your action items and follow-ups
+   Shows: Description, priority, due date, status, assigned to
+   Use: Never forget a follow-up
+   How:
+     1. Click "Tasks" in sidebar
+     2. Create new tasks with priorities
+     3. Mark complete when done
+
+📞 COMMUNICATIONS
+   What: Log all your customer interactions
+   Shows: Contact, date, channel, type, outcome
+   Use: Keep record of every call/email/meeting
+   How:
+     1. Click "Communications" in sidebar
+     2. Add new communication
+     3. Select channel: Phone, Email, WhatsApp, In-person
+     4. Record outcome: Positive, Neutral, Negative
+     5. Add notes if needed
+
+================================================================================
+  DAILY WORKFLOW
+================================================================================
+
+EVERY MORNING (5 minutes):
+   1. Open ArthaInvest CRM
+   2. Click "Dashboard"
+   3. Check your KPIs
+   4. Note any HOT leads that need action today
+   5. Plan your day
+
+THROUGHOUT THE DAY:
+   1. When you find a new prospect → Add to Leads
+   2. When you call/email someone → Log in Communications
+   3. When deal status changes → Update in Deals
+   4. When you need a follow-up → Create Task
+
+END OF DAY (2 minutes):
+   1. Log any final communications
+   2. Update deal stages if needed
+   3. Review tomorrow's schedule
+   4. Close the application
+
+================================================================================
+  HOW TO ADD A LEAD (Most Important!)
+================================================================================
+
+Step-by-step to add a new prospect:
+
+1. Click "Leads" in the left sidebar
+2. You see a form at the top:
+
+   Fill in these fields:
+   ├─ Name: [Prospect's full name]
+   ├─ Phone: [Their phone number]
+   ├─ Email: [Their email address]
+   ├─ Company: [Their company name]
+   ├─ Source: [How you found them]
+   │  Options: Direct, Referral, LinkedIn, Website, Other
+   ├─ Product: [What product they need]
+   │  Options: Term Insurance, Health Insurance, POSP, DSA
+   └─ Budget: [₹ Amount they're willing to spend]
+
+3. Click: "Add Lead"
+4. Success message will appear
+5. Scroll down to see your new lead in the table
+
+IMPORTANT: The system auto-calculates a SCORE (0-100) and TIER:
+   ├─ HOT (80+): Call today!
+   ├─ WARM (60-79): Schedule meeting
+   ├─ COOL (40-59): Follow up next week
+   └─ COLD (<40): Long-term prospect
+
+The score is based on:
+   - Budget amount
+   - Company information
+   - How they found you
+   - Engagement level
+
+================================================================================
+  HOW TO LOG A COMMUNICATION
+================================================================================
+
+After every call, email, or meeting, log it:
+
+1. Click "Communications" in sidebar
+2. Fill in:
+   ├─ Contact Name: [Person you talked to]
+   ├─ Channel: [How you communicated]
+   │  Options: Phone, Email, WhatsApp, In-person
+   ├─ Type: [What kind of communication]
+   │  Options: Outbound Call, Inbound Call, Email, Meeting
+   ├─ Subject: [Brief topic]
+   ├─ Outcome: [How it went]
+   │  Options: Positive, Neutral, Negative
+   └─ Notes: [Any important details]
+
+3. Click: "Log Communication"
+
+WHY LOG COMMUNICATIONS?
+   - Never forget what you discussed
+   - Track next follow-up dates
+   - See communication history
+   - Team can see your progress
+   - Helps with deal status updates
+
+================================================================================
+  KEY TIPS FOR SUCCESS
+================================================================================
+
+✓ Log communications SAME DAY
+   Don't wait - do it while it's fresh!
+
+✓ Update deal status regularly
+   Move deals through pipeline as they progress
+
+✓ Use the score to prioritize
+   Focus on HOT leads first
+
+✓ Set follow-up tasks
+   Don't rely on memory - create tasks!
+
+✓ Complete your profile
+   Fill in as much detail as possible
+
+✓ Check dashboard daily
+   Know your numbers - know your performance
+
+✓ Ask your manager questions
+   Don't struggle alone - ask for help!
+
+================================================================================
+  PASSWORDS & SECURITY
+================================================================================
+
+YOUR PASSWORD:
+   - Change from default (123) after first login
+   - Use a strong password (mix of letters, numbers, symbols)
+   - Don't share your password with anyone
+   - Don't use the same password as other accounts
+
+IF YOU FORGET YOUR PASSWORD:
+   - Contact your manager
+   - They can reset it for you
+   - A password reset will be sent to you
+
+SECURITY TIPS:
+   - Log out before leaving your desk
+   - Don't leave the CRM open unattended
+   - Lock your computer when away
+   - Don't use public WiFi for CRM
+   - Report any suspicious activity to your manager
+
+================================================================================
+  COMMON QUESTIONS
+================================================================================
+
+Q: I can't find a lead I added yesterday
+A: Use Ctrl+F to search. Or scroll in the leads table.
+
+Q: The score didn't calculate
+A: Refresh the page (F5). It takes ~10 seconds.
+
+Q: What does the score mean?
+A: 0-100 scale. Higher = more qualified. 80+ = HOT (call today!)
+
+Q: Can I edit a lead after adding it?
+A: Currently view-only. Contact your manager for edits.
+
+Q: What if I make a mistake entering a lead?
+A: Contact your manager - they can delete/edit in admin.
+
+Q: Why do I see other people's data?
+A: Depending on your role. Employee sees all data. This is normal.
+
+Q: Can I export the data?
+A: Ask your manager - admin can export to Excel.
+
+Q: The app crashed
+A: Restart it. If it keeps crashing, contact your manager.
+
+Q: How often does data backup?
+A: Automatically on your computer. Never lost.
+
+================================================================================
+  KEYBOARD SHORTCUTS
+================================================================================
+
+F5                 Refresh the page
+Tab                Move between form fields
+Enter              Submit form / Click button
+Ctrl+F             Search/Find (in most browsers)
+Alt+F4             Close application
+Escape             Cancel dialog
+
+================================================================================
+  SUPPORT & HELP
+================================================================================
+
+IF YOU HAVE QUESTIONS:
+   📱 WhatsApp: Send to your manager or team group
+   📧 Email: Send to your manager
+   🗓️  Weekly Check-in: Fridays 4 PM
+
+COMMON ISSUES:
+
+Can't login?
+   - Check username spelling
+   - Verify password (remember you changed it)
+   - Contact manager if still stuck
+
+Can't add leads?
+   - Make sure you filled all required fields (Name, Phone)
+   - Click "Add Lead" button
+   - Wait a few seconds for confirmation
+
+Slow performance?
+   - Close other apps
+   - Restart the CRM
+   - Restart your computer
+
+App won't open?
+   - Run: VERIFY_INSTALLATION.bat to check setup
+   - Reinstall using: INSTALLER.bat
+   - Contact manager for help
+
+================================================================================
+  YOUR SUCCESS IS OUR SUCCESS
+================================================================================
+
+You now have a professional CRM system that will help you:
+   ✓ Never forget a lead or follow-up
+   ✓ Know exactly where each deal stands
+   ✓ Track your communications
+   ✓ Prioritize your time better
+   ✓ Close more deals faster
+   ✓ Work smarter, not harder
+
+The more you use the CRM, the more value you'll get from it!
+
+Questions? Ask your manager. They're here to help! 🚀
+
+Welcome to ArthaInvest CRM!
+
+================================================================================
