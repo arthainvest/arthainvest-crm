@@ -1,0 +1,15 @@
+.reports-container { padding: 20px; }
+.reports-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+.tab-navigation { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid #e0e0e0; }
+.tab-btn { padding: 10px 20px; background: none; border: none; cursor: pointer; font-weight: 500; color: #999; border-bottom: 3px solid transparent; transition: all 0.2s ease; }
+.tab-btn.active { color: #667eea; border-bottom-color: #667eea; }
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; margin-bottom: 30px; }
+.metric-card { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; text-align: center; }
+.metric-value { font-size: 28px; font-weight: bold; color: #667eea; }
+.metric-label { color: #999; margin-top: 5px; }
+.chart-container { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+.chart-container h3 { margin-top: 0; }
+.placeholder { color: #999; }
+.report-controls { display: flex; align-items: center; gap: 15px; }
+.report-controls label { font-weight: 500; }
+.report-controls select { padding: 8px 12px; border: 1px solid #e0e0e0; border-radius: 4px; }

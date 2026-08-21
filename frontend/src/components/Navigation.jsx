@@ -23,13 +23,37 @@ export default function Navigation({ onLogout }) {
           <span className="icon">📊</span>
           <span>Dashboard</span>
         </Link>
-        <Link to="/leads" className="nav-link">
+        <Link to="/contacts" className="nav-link">
           <span className="icon">👥</span>
+          <span>Contacts</span>
+        </Link>
+        <Link to="/leads" className="nav-link">
+          <span className="icon">📈</span>
           <span>Leads</span>
         </Link>
         <Link to="/pipeline" className="nav-link">
           <span className="icon">💼</span>
           <span>Pipeline</span>
+        </Link>
+        <Link to="/calls" className="nav-link">
+          <span className="icon">☎️</span>
+          <span>Calls</span>
+        </Link>
+        <Link to="/marketing" className="nav-link">
+          <span className="icon">📢</span>
+          <span>Marketing</span>
+        </Link>
+        <Link to="/reports" className="nav-link">
+          <span className="icon">📋</span>
+          <span>Reports</span>
+        </Link>
+        <Link to="/integrations" className="nav-link">
+          <span className="icon">🔗</span>
+          <span>Integrations</span>
+        </Link>
+        <Link to="/settings" className="nav-link">
+          <span className="icon">⚙️</span>
+          <span>Settings</span>
         </Link>
       </div>
 

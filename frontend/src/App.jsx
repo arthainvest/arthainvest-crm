@@ -2,8 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import Contacts from './components/Contacts';
 import LeadsList from './components/LeadsList';
-import KanbanBoard from './components/KanbanBoard';
+import Pipeline from './components/Pipeline';
+import Calls from './components/Calls';
+import Marketing from './components/Marketing';
+import Reports from './components/Reports';
+import Integrations from './components/Integrations';
+import Settings from './components/Settings';
 import Navigation from './components/Navigation';
 import './App.css';
 
@@ -29,8 +35,14 @@ function App() {
           <div className="main-content">
             <Routes>
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/contacts" element={<Contacts />} />
               <Route path="/leads" element={<LeadsList />} />
-              <Route path="/pipeline" element={<KanbanBoard />} />
+              <Route path="/pipeline" element={<Pipeline />} />
+              <Route path="/calls" element={<Calls />} />
+              <Route path="/marketing" element={<Marketing />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/integrations" element={<Integrations />} />
+              <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </div>
