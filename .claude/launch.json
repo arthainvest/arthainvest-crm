@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "AI CRM",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["ai-crm-server.js"],
+      "port": 3333
+    }
+  ]
+}

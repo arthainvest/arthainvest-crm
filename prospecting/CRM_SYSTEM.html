@@ -1,0 +1,1187 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArthaInvest CRM System</title>
+<style>
+:root {
+  --accent: #0f6f6c;
+  --accent2: #12857f;
+  --danger: #b3261e;
+  --warn: #a8630a;
+  --good: #15683f;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #12161c;
+  --muted: #5c6673;
+  --line: #e3e7ec;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --ink: #e8edf3;
+    --muted: #9aa6b4;
+    --line: #242c36;
+    --accent: #4dd0c7;
+    --accent2: #2fb3aa;
+    --warn: #e0a458;
+    --danger: #ff6b5e;
+    --good: #4ade80;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1116;
+  --panel: #161b22;
+  --ink: #e8edf3;
+  --muted: #9aa6b4;
+  --line: #242c36;
+  --accent: #4dd0c7;
+  --accent2: #2fb3aa;
+  --warn: #e0a458;
+  --danger: #ff6b5e;
+  --good: #4ade80;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.3);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.app { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 260px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 20px;
+  overflow-y: auto;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.sidebar h2 {
+  margin: 0 0 20px;
+  font-size: 18px;
+  color: var(--ink);
+}
+.user-box {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+}
+.user-box .label { color: var(--muted); display: block; margin-bottom: 4px; }
+.user-box .name { font-weight: 600; color: var(--ink); }
+.nav {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 30px;
+}
+.nav li {
+  margin-bottom: 8px;
+}
+.nav button {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+  font-weight: 500;
+  transition: all .2s;
+  font-family: inherit;
+}
+.nav button:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+.nav button.active {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+.logout-btn {
+  width: 100%;
+  padding: 10px;
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  margin-top: 20px;
+}
+
+.main {
+  flex: 1;
+  padding: 30px;
+  overflow-y: auto;
+}
+h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.subtext {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 30px;
+}
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+.stat .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+.stat .value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.stat .foot {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+}
+.section h2 {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.section > .note {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.btn {
+  padding: 10px 16px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  font-family: inherit;
+  transition: all .2s;
+}
+.btn:hover { background: var(--accent2); }
+.btn.secondary {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.btn.secondary:hover { background: var(--line); }
+.btn.small { padding: 6px 10px; font-size: 12px; }
+
+.input-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.input-group input,
+.input-group select {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+.input-group input::placeholder {
+  color: var(--muted);
+}
+.input-group input:focus,
+.input-group select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(15, 111, 108, 0.1);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th {
+  background: var(--bg);
+  text-align: left;
+  padding: 12px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+td {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+tbody tr:hover { background: var(--bg); }
+tbody tr:hover td { cursor: pointer; }
+
+.tag {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--ink);
+}
+.tag.new { background: rgba(21, 104, 63, 0.14); color: var(--good); }
+.tag.contacted { background: rgba(168, 99, 10, 0.14); color: var(--warn); }
+.tag.qualified { background: rgba(15, 111, 108, 0.14); color: var(--accent); }
+.tag.deal { background: rgba(179, 38, 30, 0.14); color: var(--danger); }
+
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 18, 0.45);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+.modal.on { display: flex; }
+.modal-content {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 30px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+.modal-close {
+  float: right;
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.kanban {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.column {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 12px;
+  min-height: 400px;
+}
+.column-head {
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--line);
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all .2s;
+  border-left: 3px solid var(--accent);
+}
+.card:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+.card-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.card-text {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.hide { display: none !important; }
+.text-center { text-align: center; }
+.text-muted { color: var(--muted); }
+
+/* Login */
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg);
+  padding: 20px;
+}
+.login-box {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 40px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+}
+.login-box h1 {
+  font-size: 24px;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+.login-box .subtext {
+  margin-bottom: 30px;
+}
+.login-box .form-group {
+  margin-bottom: 16px;
+}
+.login-box label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.login-box input {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+.login-box input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(15, 111, 108, 0.1);
+}
+.login-box .login-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 24px;
+  font-family: inherit;
+}
+.login-box .login-btn:hover { background: var(--accent2); }
+.login-box .demo-users {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.login-box .demo-users p {
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+.login-box .demo-users .user-btn {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+}
+.login-box .demo-users .user-btn:hover {
+  background: var(--line);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+.empty-state p { margin: 0 0 16px; }
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px 20px;
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  z-index: 1000;
+  animation: slideIn 0.3s ease;
+}
+.toast.success { border-left: 4px solid var(--good); }
+.toast.error { border-left: 4px solid var(--danger); }
+@keyframes slideIn {
+  from { transform: translateX(400px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+// ==============================================================
+// CRM SYSTEM - Complete Implementation
+// ==============================================================
+
+// ============ DATA LAYER ============
+const SAMPLE_LEADS = [
+  { id: 1, name: 'Rajesh Kumar', email: 'rajesh@example.com', phone: '9876543210', company: 'Tech Corp', stage: 'new', priority: 'high', amount: 500000, source: 'LinkedIn', lastContact: '2026-08-17', nextAction: 'Call', notes: 'Interested in insurance products' },
+  { id: 2, name: 'Priya Singh', email: 'priya@example.com', phone: '9876543211', company: 'Finance Ltd', stage: 'contacted', priority: 'medium', amount: 300000, source: 'Referral', lastContact: '2026-08-16', nextAction: 'Email followup', notes: 'SIP investor' },
+  { id: 3, name: 'Amit Patel', email: 'amit@example.com', phone: '9876543212', company: 'Invest Inc', stage: 'qualified', priority: 'high', amount: 750000, source: 'Cold Call', lastContact: '2026-08-15', nextAction: 'Schedule meeting', notes: 'High net worth individual' },
+  { id: 4, name: 'Neha Gupta', email: 'neha@example.com', phone: '9876543213', company: 'Business Plus', stage: 'new', priority: 'low', amount: 100000, source: 'Website', lastContact: '2026-08-17', nextAction: 'Welcome email', notes: 'New inquiry' },
+  { id: 5, name: 'Vikram Desai', email: 'vikram@example.com', phone: '9876543214', company: 'Gold Ventures', stage: 'deal', priority: 'high', amount: 2000000, source: 'Partner', lastContact: '2026-08-14', nextAction: 'Close deal', notes: 'Ready to close' },
+];
+
+const USERS = {
+  'admin': { password: 'admin', name: 'Artha', role: 'admin' },
+  'leader': { password: 'leader', name: 'Team Leader', role: 'leader' },
+  'emp1': { password: 'emp1', name: 'Employee 1', role: 'employee' },
+  'emp2': { password: 'emp2', name: 'Employee 2', role: 'employee' },
+  'emp3': { password: 'emp3', name: 'Employee 3', role: 'employee' },
+  'emp4': { password: 'emp4', name: 'Employee 4', role: 'employee' },
+};
+
+// ============ STATE MANAGEMENT ============
+let app = {
+  currentUser: null,
+  leads: JSON.parse(localStorage.getItem('crm_leads')) || SAMPLE_LEADS,
+  currentPage: 'dashboard',
+  selectedLead: null,
+};
+
+// ============ UTILITIES ============
+function saveData() {
+  localStorage.setItem('crm_leads', JSON.stringify(app.leads));
+}
+
+function showToast(message, type = 'success') {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// ============ LOGIN ============
+function showLoginPage() {
+  document.getElementById('app').innerHTML = `
+    <div class="login-container">
+      <div class="login-box">
+        <h1>ArthaInvest CRM</h1>
+        <p class="subtext">Complete Customer Relationship Management System</p>
+
+        <div class="form-group">
+          <label>Username</label>
+          <input id="username" type="text" placeholder="Enter username" />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input id="password" type="password" placeholder="Enter password" />
+        </div>
+
+        <button class="login-btn" onclick="login()">Login</button>
+
+        <div class="demo-users">
+          <p><strong>Demo Credentials:</strong></p>
+          <button class="user-btn" onclick="loginAs('admin')">Admin - Artha</button>
+          <button class="user-btn" onclick="loginAs('leader')">Team Leader</button>
+          <button class="user-btn" onclick="loginAs('emp1')">Employee 1</button>
+          <button class="user-btn" onclick="loginAs('emp2')">Employee 2</button>
+          <button class="user-btn" onclick="loginAs('emp3')">Employee 3</button>
+          <button class="user-btn" onclick="loginAs('emp4')">Employee 4</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function login() {
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+
+  if (!username || !password) {
+    showToast('Please enter username and password', 'error');
+    return;
+  }
+
+  const user = USERS[username];
+  if (!user || user.password !== password) {
+    showToast('Invalid username or password', 'error');
+    return;
+  }
+
+  app.currentUser = { username, ...user };
+  localStorage.setItem('crm_user', JSON.stringify(app.currentUser));
+  showDashboard();
+}
+
+function loginAs(username) {
+  const user = USERS[username];
+  app.currentUser = { username, ...user };
+  localStorage.setItem('crm_user', JSON.stringify(app.currentUser));
+  showDashboard();
+}
+
+// ============ DASHBOARD ============
+function showDashboard() {
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Dashboard</h1>
+        <p class="subtext">Welcome, ${app.currentUser.name}</p>
+
+        <div class="grid">
+          <div class="stat">
+            <div class="label">Total Leads</div>
+            <div class="value">${app.leads.length}</div>
+            <div class="foot">Active prospects</div>
+          </div>
+          <div class="stat">
+            <div class="label">In Pipeline</div>
+            <div class="value">${app.leads.filter(l => l.stage === 'deal').length}</div>
+            <div class="foot">Ready to close</div>
+          </div>
+          <div class="stat">
+            <div class="label">Total Value</div>
+            <div class="value">â‚¹${(app.leads.reduce((sum, l) => sum + l.amount, 0) / 1000000).toFixed(1)}Cr</div>
+            <div class="foot">Pipeline value</div>
+          </div>
+          <div class="stat">
+            <div class="label">Conversion</div>
+            <div class="value">${Math.round((app.leads.filter(l => l.stage === 'qualified' || l.stage === 'deal').length / app.leads.length) * 100)}%</div>
+            <div class="foot">Qualified leads</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Recent Activity</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Lead Name</th>
+                <th>Status</th>
+                <th>Value</th>
+                <th>Last Contact</th>
+                <th>Next Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${app.leads.slice(0, 5).map(lead => `
+                <tr onclick="viewLead(${lead.id})">
+                  <td><strong>${lead.name}</strong></td>
+                  <td><span class="tag ${lead.stage}">${lead.stage}</span></td>
+                  <td>â‚¹${(lead.amount / 100000).toFixed(1)}L</td>
+                  <td>${lead.lastContact}</td>
+                  <td>${lead.nextAction}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+// ============ SIDEBAR ============
+function renderSidebar() {
+  return `
+    <div class="sidebar">
+      <h2>CRM</h2>
+      <div class="user-box">
+        <div class="label">User</div>
+        <div class="name">${app.currentUser.name}</div>
+        <div class="label" style="margin-top: 6px;">Role</div>
+        <div class="name" style="text-transform: capitalize; font-size: 12px;">${app.currentUser.role}</div>
+      </div>
+
+      <ul class="nav">
+        <li><button class="active" onclick="showDashboard()">ðŸ“Š Dashboard</button></li>
+        <li><button onclick="showLeads()">ðŸ‘¥ Leads</button></li>
+        <li><button onclick="showPipeline()">ðŸ“ˆ Pipeline</button></li>
+        <li><button onclick="showTasks()">âœ“ Tasks</button></li>
+        <li><button onclick="showMessaging()">ðŸ’¬ Messages</button></li>
+        ${app.currentUser.role === 'admin' ? `
+          <li><button onclick="showSettings()">âš™ï¸ Settings</button></li>
+        ` : ''}
+      </ul>
+
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  `;
+}
+
+// ============ LEADS PAGE ============
+function showLeads() {
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Leads</h1>
+        <p class="subtext">Manage your sales prospects</p>
+
+        <div class="section">
+          <div class="controls">
+            <button class="btn" onclick="showAddLeadModal()">+ Add Lead</button>
+            <input type="text" id="searchInput" placeholder="Search by name or email..." style="flex: 1; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-family: inherit;">
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Company</th>
+                <th>Stage</th>
+                <th>Value</th>
+                <th>Source</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${app.leads.map(lead => `
+                <tr>
+                  <td><strong>${lead.name}</strong></td>
+                  <td><a href="mailto:${lead.email}">${lead.email}</a></td>
+                  <td>${lead.phone}</td>
+                  <td>${lead.company}</td>
+                  <td><span class="tag ${lead.stage}">${lead.stage}</span></td>
+                  <td>â‚¹${(lead.amount / 100000).toFixed(1)}L</td>
+                  <td>${lead.source}</td>
+                  <td>
+                    <button class="btn small" onclick="viewLead(${lead.id})">View</button>
+                    <button class="btn small" onclick="editLead(${lead.id})" style="background: var(--warn);">Edit</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+
+  // Search functionality
+  document.getElementById('searchInput').addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    document.querySelectorAll('tbody tr').forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(term) ? '' : 'none';
+    });
+  });
+}
+
+function showAddLeadModal() {
+  const html = `
+    <div class="modal on">
+      <div class="modal-content">
+        <button class="modal-close" onclick="closeModal()">Ã—</button>
+        <h2>Add New Lead</h2>
+
+        <div class="form-group" style="margin-top: 20px;">
+          <label>Name</label>
+          <input id="newLeadName" type="text" placeholder="Full name" />
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input id="newLeadEmail" type="email" placeholder="Email address" />
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input id="newLeadPhone" type="tel" placeholder="Phone number" />
+        </div>
+        <div class="form-group">
+          <label>Company</label>
+          <input id="newLeadCompany" type="text" placeholder="Company name" />
+        </div>
+        <div class="form-group">
+          <label>Amount</label>
+          <input id="newLeadAmount" type="number" placeholder="500000" />
+        </div>
+        <div class="form-group">
+          <label>Source</label>
+          <select id="newLeadSource">
+            <option>LinkedIn</option>
+            <option>Referral</option>
+            <option>Cold Call</option>
+            <option>Website</option>
+            <option>Email</option>
+          </select>
+        </div>
+
+        <button class="btn" style="width: 100%;" onclick="saveLead()">Save Lead</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function saveLead() {
+  const name = document.getElementById('newLeadName').value;
+  const email = document.getElementById('newLeadEmail').value;
+  const phone = document.getElementById('newLeadPhone').value;
+  const company = document.getElementById('newLeadCompany').value;
+  const amount = parseInt(document.getElementById('newLeadAmount').value) || 100000;
+  const source = document.getElementById('newLeadSource').value;
+
+  if (!name || !email) {
+    showToast('Name and email are required', 'error');
+    return;
+  }
+
+  const newLead = {
+    id: Math.max(...app.leads.map(l => l.id), 0) + 1,
+    name,
+    email,
+    phone,
+    company,
+    stage: 'new',
+    priority: 'medium',
+    amount,
+    source,
+    lastContact: new Date().toISOString().split('T')[0],
+    nextAction: 'Initial contact',
+    notes: '',
+  };
+
+  app.leads.push(newLead);
+  saveData();
+  closeModal();
+  showToast('Lead added successfully');
+  showLeads();
+}
+
+function viewLead(id) {
+  const lead = app.leads.find(l => l.id === id);
+  if (!lead) return;
+
+  const html = `
+    <div class="modal on">
+      <div class="modal-content">
+        <button class="modal-close" onclick="closeModal()">Ã—</button>
+        <h2>${lead.name}</h2>
+        <p class="subtext">${lead.company}</p>
+
+        <div class="form-group" style="margin-top: 20px;">
+          <label>Email</label>
+          <p><a href="mailto:${lead.email}">${lead.email}</a></p>
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <p><a href="tel:${lead.phone}">${lead.phone}</a></p>
+        </div>
+        <div class="form-group">
+          <label>Stage</label>
+          <select id="editStage" style="width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-family: inherit;">
+            <option ${lead.stage === 'new' ? 'selected' : ''}>new</option>
+            <option ${lead.stage === 'contacted' ? 'selected' : ''}>contacted</option>
+            <option ${lead.stage === 'qualified' ? 'selected' : ''}>qualified</option>
+            <option ${lead.stage === 'deal' ? 'selected' : ''}>deal</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Amount</label>
+          <p>â‚¹${(lead.amount / 100000).toFixed(1)}L</p>
+        </div>
+        <div class="form-group">
+          <label>Next Action</label>
+          <input id="editNextAction" type="text" value="${lead.nextAction}" style="width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-family: inherit;" />
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="editNotes" style="width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-family: inherit; min-height: 80px;">${lead.notes}</textarea>
+        </div>
+
+        <button class="btn" style="width: 100%;" onclick="updateLead(${lead.id})">Update Lead</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function updateLead(id) {
+  const lead = app.leads.find(l => l.id === id);
+  lead.stage = document.getElementById('editStage').value;
+  lead.nextAction = document.getElementById('editNextAction').value;
+  lead.notes = document.getElementById('editNotes').value;
+  lead.lastContact = new Date().toISOString().split('T')[0];
+
+  saveData();
+  closeModal();
+  showToast('Lead updated');
+  showLeads();
+}
+
+function editLead(id) {
+  viewLead(id);
+}
+
+function closeModal() {
+  const modal = document.querySelector('.modal');
+  if (modal) modal.remove();
+}
+
+// ============ PIPELINE PAGE ============
+function showPipeline() {
+  const stages = ['new', 'contacted', 'qualified', 'deal'];
+
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Pipeline</h1>
+        <p class="subtext">Visual sales pipeline view</p>
+
+        <div class="section">
+          <div class="kanban">
+            ${stages.map(stage => `
+              <div class="column">
+                <div class="column-head">${stage.toUpperCase()} (${app.leads.filter(l => l.stage === stage).length})</div>
+                ${app.leads.filter(l => l.stage === stage).map(lead => `
+                  <div class="card" onclick="viewLead(${lead.id})">
+                    <div class="card-title">${lead.name}</div>
+                    <div class="card-text">${lead.company}</div>
+                    <div class="card-text" style="margin-top: 6px;">â‚¹${(lead.amount / 100000).toFixed(1)}L</div>
+                  </div>
+                `).join('')}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+// ============ TASKS PAGE ============
+function showTasks() {
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Tasks</h1>
+        <p class="subtext">Daily activities and follow-ups</p>
+
+        <div class="section">
+          <h2>Your Next Actions</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Lead</th>
+                <th>Action</th>
+                <th>Priority</th>
+                <th>Last Contact</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${app.leads
+                .sort((a, b) =>
+                  ({high: 1, medium: 2, low: 3}[a.priority] || 3) -
+                  ({high: 1, medium: 2, low: 3}[b.priority] || 3)
+                )
+                .slice(0, 8)
+                .map(lead => `
+                  <tr onclick="viewLead(${lead.id})">
+                    <td><strong>${lead.name}</strong></td>
+                    <td>${lead.nextAction}</td>
+                    <td><span class="tag ${lead.priority}">${lead.priority}</span></td>
+                    <td>${lead.lastContact}</td>
+                  </tr>
+                `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+// ============ MESSAGING PAGE ============
+function showMessaging() {
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Messages</h1>
+        <p class="subtext">WhatsApp, Email & LinkedIn templates</p>
+
+        <div class="grid">
+          <div class="stat">
+            <div class="label">WhatsApp Ready</div>
+            <div class="value">477</div>
+            <div class="foot">Drafted messages</div>
+          </div>
+          <div class="stat">
+            <div class="label">Email Templates</div>
+            <div class="value">24</div>
+            <div class="foot">Ready to send</div>
+          </div>
+          <div class="stat">
+            <div class="label">LinkedIn Posts</div>
+            <div class="value">12</div>
+            <div class="foot">Scheduled</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Message Templates</h2>
+          <div class="controls">
+            <button class="btn" onclick="showMessageTemplate('whatsapp')">+ WhatsApp Template</button>
+            <button class="btn secondary" onclick="showMessageTemplate('email')">+ Email Template</button>
+            <button class="btn secondary" onclick="showMessageTemplate('linkedin')">+ LinkedIn Template</button>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Subject</th>
+                <th>Preview</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="tag qualified">WhatsApp</span></td>
+                <td>New Insurance Product</td>
+                <td>Hi, we have a new insurance product...</td>
+              </tr>
+              <tr>
+                <td><span class="tag qualified">Email</span></td>
+                <td>Monthly Portfolio Review</td>
+                <td>Your portfolio has grown by 15%...</td>
+              </tr>
+              <tr>
+                <td><span class="tag qualified">LinkedIn</span></td>
+                <td>Market Insights</td>
+                <td>Sharing latest market analysis...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+function showMessageTemplate(type) {
+  const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+  const html = `
+    <div class="modal on">
+      <div class="modal-content">
+        <button class="modal-close" onclick="closeModal()">Ã—</button>
+        <h2>${typeLabel} Message</h2>
+
+        <div class="form-group" style="margin-top: 20px;">
+          <label>Select Lead</label>
+          <select style="width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-family: inherit;">
+            <option>-- Select a lead --</option>
+            ${app.leads.map(l => `<option>${l.name}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Message</label>
+          <textarea style="width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-family: inherit; min-height: 120px;" placeholder="Type your message here..."></textarea>
+        </div>
+
+        <button class="btn" style="width: 100%; margin-top: 16px;" onclick="closeModal(); showToast('Message sent')">Send Message</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+// ============ SETTINGS PAGE ============
+function showSettings() {
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Settings</h1>
+        <p class="subtext">Admin panel & system configuration</p>
+
+        <div class="section">
+          <h2>Team Members</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${Object.entries(USERS).map(([username, user]) => `
+                <tr>
+                  <td>${user.name}</td>
+                  <td>${username}</td>
+                  <td style="text-transform: capitalize;">${user.role}</td>
+                  <td><span class="tag new">Active</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="section">
+          <h2>Data Management</h2>
+          <div class="controls">
+            <button class="btn" onclick="exportData()">ðŸ“¥ Export All Data</button>
+            <button class="btn secondary" onclick="clearAllData()" style="background: var(--danger); color: white;">ðŸ—‘ï¸ Clear All Data</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>System Info</h2>
+          <p><strong>Total Leads:</strong> ${app.leads.length}</p>
+          <p><strong>Database Size:</strong> ${(JSON.stringify(app.leads).length / 1024).toFixed(2)} KB</p>
+          <p><strong>Last Updated:</strong> ${new Date().toLocaleString()}</p>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+function exportData() {
+  const dataStr = JSON.stringify(app.leads, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `crm_export_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  showToast('Data exported');
+}
+
+function clearAllData() {
+  if (confirm('Are you sure? This will delete all leads.')) {
+    app.leads = [];
+    saveData();
+    showToast('All data cleared');
+    showSettings();
+  }
+}
+
+// ============ LOGOUT ============
+function logout() {
+  app.currentUser = null;
+  localStorage.removeItem('crm_user');
+  showLoginPage();
+}
+
+// ============ INITIALIZATION ============
+function init() {
+  // Skip login - go straight to dashboard
+  app.currentUser = { username: 'admin', name: 'Artha', role: 'admin' };
+  localStorage.setItem('crm_user', JSON.stringify(app.currentUser));
+  showDashboard();
+};
+    localStorage.setItem('crm_user', JSON.stringify(app.currentUser));
+    showDashboard();
+  } else {
+    const savedUser = JSON.parse(localStorage.getItem('crm_user'));
+    if (savedUser) {
+      app.currentUser = savedUser;
+      showDashboard();
+    } else {
+      showLoginPage();
+    }
+  }
+} else {
+    showLoginPage();
+  }
+}
+
+// Start app
+init();
+</script>
+</body>
+</html>
+

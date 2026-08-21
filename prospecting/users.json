@@ -1,0 +1,23 @@
+{
+  "_readme": [
+    "ArthaInvest dashboard users. Edit this file, then rebuild (or wait for 09:15).",
+    "",
+    "role: 'admin'    - sees everything, can assign leads, sees all activity",
+    "      'employee' - sees only leads assigned to them; client AUM data is hidden",
+    "",
+    "pin: 4-6 digits. Hashed when baked into the dashboard, so the PIN itself never",
+    "     appears in 09_Dashboard.html. CHANGE THESE BEFORE GIVING ANYONE ACCESS.",
+    "",
+    "IMPORTANT - this is workflow separation, NOT security. A local HTML file cannot",
+    "authenticate anyone. Anyone who has the file can read all of it. Real access",
+    "control is OneDrive folder permissions - only share the folder with people who",
+    "should see client data."
+  ],
+  "users": [
+    { "name": "Artha",      "role": "admin",    "pin": "0000" },
+    { "name": "Employee 1", "role": "employee", "pin": "0000" },
+    { "name": "Employee 2", "role": "employee", "pin": "0000" },
+    { "name": "Employee 3", "role": "employee", "pin": "0000" },
+    { "name": "Employee 4", "role": "employee", "pin": "0000" }
+  ]
+}

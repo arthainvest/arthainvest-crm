@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArthaInvest CRM</title>
+<style>
+:root {
+  --accent: #0f6f6c;
+  --accent2: #12857f;
+  --danger: #b3261e;
+  --warn: #a8630a;
+  --good: #15683f;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #12161c;
+  --muted: #5c6673;
+  --line: #e3e7ec;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1116; --panel: #161b22; --ink: #e8edf3; --muted: #9aa6b4; --line: #242c36;
+    --accent: #4dd0c7; --accent2: #2fb3aa; --warn: #e0a458; --danger: #ff6b5e; --good: #4ade80;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
+.app { display: flex; min-height: 100vh; }
+.sidebar { width: 260px; background: var(--panel); border-right: 1px solid var(--line); padding: 20px; overflow-y: auto; height: 100vh; position: sticky; top: 0; }
+.sidebar h2 { margin: 0 0 20px; font-size: 18px; color: var(--ink); }
+.user-box { background: var(--bg); border-radius: 8px; padding: 12px; margin-bottom: 20px; border: 1px solid var(--line); font-size: 12px; }
+.user-box .label { color: var(--muted); display: block; margin-bottom: 4px; }
+.user-box .name { font-weight: 600; color: var(--ink); }
+.nav { list-style: none; padding: 0; margin: 0 0 30px; }
+.nav li { margin-bottom: 8px; }
+.nav button { width: 100%; background: none; border: none; padding: 10px 12px; border-radius: 8px; color: var(--muted); cursor: pointer; font-size: 14px; text-align: left; font-weight: 500; font-family: inherit; }
+.nav button:hover { background: var(--bg); color: var(--ink); }
+.nav button.active { background: var(--accent); color: white; font-weight: 600; }
+.logout-btn { width: 100%; padding: 10px; background: var(--danger); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; margin-top: 20px; font-family: inherit; }
+.main { flex: 1; padding: 30px; overflow-y: auto; }
+h1 { margin: 0 0 8px; font-size: 28px; font-weight: 700; }
+.subtext { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 30px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.stat .label { font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+.stat .value { font-size: 32px; font-weight: 700; color: var(--accent); }
+.stat .foot { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+.section h2 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
+.controls { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.btn { padding: 10px 16px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; font-family: inherit; }
+.btn:hover { background: var(--accent2); }
+.btn.secondary { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
+.btn.secondary:hover { background: var(--line); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: var(--bg); text-align: left; padding: 12px; font-weight: 600; font-size: 11px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
+td { padding: 12px; border-bottom: 1px solid var(--line); }
+tbody tr:hover { background: var(--bg); cursor: pointer; }
+.tag { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--bg); color: var(--ink); }
+.tag.new { background: rgba(21, 104, 63, 0.14); color: var(--good); }
+.tag.contacted { background: rgba(168, 99, 10, 0.14); color: var(--warn); }
+.tag.qualified { background: rgba(15, 111, 108, 0.14); color: var(--accent); }
+.modal { display: none; position: fixed; inset: 0; background: rgba(8, 12, 18, 0.45); z-index: 100; align-items: center; justify-content: center; }
+.modal.on { display: flex; }
+.modal-content { background: var(--panel); border-radius: 12px; padding: 30px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; }
+.modal-close { float: right; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted); }
+.kanban { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.column { background: var(--bg); border-radius: 8px; padding: 12px; min-height: 400px; }
+.column-head { font-weight: 600; font-size: 13px; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 10px; cursor: pointer; border-left: 3px solid var(--accent); }
+.card:hover { box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.05); }
+.card-title { font-weight: 600; font-size: 13px; color: var(--ink); margin-bottom: 4px; }
+.card-text { font-size: 12px; color: var(--muted); }
+.input-group { display: flex; gap: 8px; margin-bottom: 16px; }
+.input-group input { flex: 1; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-family: inherit; font-size: 14px; }
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 20px; font-size: 14px; z-index: 1000; }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+const LEADS = JSON.parse(localStorage.getItem('crm_leads')) || [
+  { id: 1, name: 'Rajesh Kumar', email: 'rajesh@example.com', phone: '9876543210', company: 'Tech Corp', stage: 'new', amount: 500000, source: 'LinkedIn', nextAction: 'Call', notes: '' },
+  { id: 2, name: 'Priya Singh', email: 'priya@example.com', phone: '9876543211', company: 'Finance Ltd', stage: 'contacted', amount: 300000, source: 'Referral', nextAction: 'Email followup', notes: '' },
+  { id: 3, name: 'Amit Patel', email: 'amit@example.com', phone: '9876543212', company: 'Invest Inc', stage: 'qualified', amount: 750000, source: 'Cold Call', nextAction: 'Schedule meeting', notes: '' },
+  { id: 4, name: 'Neha Gupta', email: 'neha@example.com', phone: '9876543213', company: 'Business Plus', stage: 'new', amount: 100000, source: 'Website', nextAction: 'Welcome email', notes: '' },
+  { id: 5, name: 'Vikram Desai', email: 'vikram@example.com', phone: '9876543214', company: 'Gold Ventures', stage: 'deal', amount: 2000000, source: 'Partner', nextAction: 'Close deal', notes: '' },
+];
+
+let page = 'dashboard';
+
+function save() { localStorage.setItem('crm_leads', JSON.stringify(LEADS)); }
+
+function showDashboard() {
+  page = 'dashboard';
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Dashboard</h1>
+        <p class="subtext">Welcome, Artha (Admin)</p>
+        <div class="grid">
+          <div class="stat"><div class="label">Total Leads</div><div class="value">${LEADS.length}</div><div class="foot">Active prospects</div></div>
+          <div class="stat"><div class="label">In Pipeline</div><div class="value">${LEADS.filter(l => l.stage === 'deal').length}</div><div class="foot">Ready to close</div></div>
+          <div class="stat"><div class="label">Total Value</div><div class="value">₹${(LEADS.reduce((s, l) => s + l.amount, 0) / 1000000).toFixed(1)}Cr</div><div class="foot">Pipeline value</div></div>
+          <div class="stat"><div class="label">Conversion</div><div class="value">${Math.round((LEADS.filter(l => l.stage === 'qualified' || l.stage === 'deal').length / LEADS.length) * 100)}%</div><div class="foot">Qualified leads</div></div>
+        </div>
+        <div class="section">
+          <h2>Recent Leads</h2>
+          <table>
+            <thead><tr><th>Name</th><th>Status</th><th>Value</th><th>Next Action</th><th>Action</th></tr></thead>
+            <tbody>
+              ${LEADS.map(l => `<tr><td><strong>${l.name}</strong></td><td><span class="tag ${l.stage}">${l.stage}</span></td><td>₹${(l.amount / 100000).toFixed(1)}L</td><td>${l.nextAction}</td><td><button class="btn" onclick="viewLead(${l.id})">View</button></td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+function renderSidebar() {
+  return `
+    <div class="sidebar">
+      <h2>CRM</h2>
+      <div class="user-box"><div class="label">User</div><div class="name">Artha</div><div class="label" style="margin-top: 6px;">Role</div><div class="name" style="font-size: 12px;">Admin</div></div>
+      <ul class="nav">
+        <li><button class="${page === 'dashboard' ? 'active' : ''}" onclick="showDashboard()">📊 Dashboard</button></li>
+        <li><button class="${page === 'leads' ? 'active' : ''}" onclick="showLeads()">👥 Leads</button></li>
+        <li><button class="${page === 'pipeline' ? 'active' : ''}" onclick="showPipeline()">📈 Pipeline</button></li>
+        <li><button class="${page === 'tasks' ? 'active' : ''}" onclick="showTasks()">✓ Tasks</button></li>
+        <li><button class="${page === 'messages' ? 'active' : ''}" onclick="showMessages()">💬 Messages</button></li>
+      </ul>
+      <button class="logout-btn" onclick="alert('Logout feature coming soon')">Logout</button>
+    </div>
+  `;
+}
+
+function showLeads() {
+  page = 'leads';
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Leads</h1>
+        <p class="subtext">Manage your sales prospects</p>
+        <div class="section">
+          <div class="controls">
+            <button class="btn" onclick="alert('Add lead feature coming soon')">+ Add Lead</button>
+            <input type="text" id="search" placeholder="Search leads..." style="flex: 1; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-family: inherit;" />
+          </div>
+          <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>Stage</th><th>Value</th><th>Action</th></tr></thead>
+            <tbody>
+              ${LEADS.map(l => `<tr><td><strong>${l.name}</strong></td><td>${l.email}</td><td>${l.phone}</td><td>${l.company}</td><td><span class="tag ${l.stage}">${l.stage}</span></td><td>₹${(l.amount / 100000).toFixed(1)}L</td><td><button class="btn" onclick="viewLead(${l.id})">View</button></td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+function showPipeline() {
+  page = 'pipeline';
+  const stages = ['new', 'contacted', 'qualified', 'deal'];
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Pipeline</h1>
+        <p class="subtext">Visual sales pipeline view</p>
+        <div class="section">
+          <div class="kanban">
+            ${stages.map(stage => `
+              <div class="column">
+                <div class="column-head">${stage.toUpperCase()} (${LEADS.filter(l => l.stage === stage).length})</div>
+                ${LEADS.filter(l => l.stage === stage).map(l => `<div class="card" onclick="viewLead(${l.id})"><div class="card-title">${l.name}</div><div class="card-text">${l.company}</div><div class="card-text" style="margin-top: 6px;">₹${(l.amount / 100000).toFixed(1)}L</div></div>`).join('')}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+function showTasks() {
+  page = 'tasks';
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Tasks</h1>
+        <p class="subtext">Daily activities and follow-ups</p>
+        <div class="section">
+          <table>
+            <thead><tr><th>Lead</th><th>Action</th><th>Priority</th></tr></thead>
+            <tbody>
+              ${LEADS.slice(0, 8).map(l => `<tr><td><strong>${l.name}</strong></td><td>${l.nextAction}</td><td><span class="tag">Medium</span></td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+function showMessages() {
+  page = 'messages';
+  const html = `
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">
+        <h1>Messages</h1>
+        <p class="subtext">WhatsApp, Email & LinkedIn templates</p>
+        <div class="grid">
+          <div class="stat"><div class="label">WhatsApp Ready</div><div class="value">477</div><div class="foot">Drafted messages</div></div>
+          <div class="stat"><div class="label">Email Templates</div><div class="value">24</div><div class="foot">Ready to send</div></div>
+          <div class="stat"><div class="label">LinkedIn Posts</div><div class="value">12</div><div class="foot">Scheduled</div></div>
+        </div>
+        <div class="section">
+          <h2>Message Templates</h2>
+          <div class="controls">
+            <button class="btn" onclick="alert('WhatsApp coming soon')">+ WhatsApp Template</button>
+            <button class="btn secondary" onclick="alert('Email coming soon')">+ Email Template</button>
+            <button class="btn secondary" onclick="alert('LinkedIn coming soon')">+ LinkedIn Template</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+function viewLead(id) {
+  const lead = LEADS.find(l => l.id === id);
+  if (!lead) return;
+  const html = `
+    <div class="modal on">
+      <div class="modal-content">
+        <button class="modal-close" onclick="showDashboard()">×</button>
+        <h2>${lead.name}</h2>
+        <p class="subtext">${lead.company}</p>
+        <div style="margin-top: 20px;">
+          <p><strong>Email:</strong> <a href="mailto:${lead.email}">${lead.email}</a></p>
+          <p><strong>Phone:</strong> <a href="tel:${lead.phone}">${lead.phone}</a></p>
+          <p><strong>Stage:</strong> <select id="stage" style="padding: 8px; border-radius: 6px; border: 1px solid var(--line); font-family: inherit;">
+            <option ${lead.stage === 'new' ? 'selected' : ''}>new</option>
+            <option ${lead.stage === 'contacted' ? 'selected' : ''}>contacted</option>
+            <option ${lead.stage === 'qualified' ? 'selected' : ''}>qualified</option>
+            <option ${lead.stage === 'deal' ? 'selected' : ''}>deal</option>
+          </select></p>
+          <p><strong>Amount:</strong> ₹${(lead.amount / 100000).toFixed(1)}L</p>
+          <p><strong>Next Action:</strong> <input id="action" value="${lead.nextAction}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--line); font-family: inherit;" /></p>
+          <p><strong>Notes:</strong> <textarea id="notes" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--line); font-family: inherit; min-height: 80px;">${lead.notes}</textarea></p>
+          <button class="btn" style="width: 100%; margin-top: 16px;" onclick="updateLead(${id})">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = html;
+}
+
+function updateLead(id) {
+  const lead = LEADS.find(l => l.id === id);
+  lead.stage = document.getElementById('stage').value;
+  lead.nextAction = document.getElementById('action').value;
+  lead.notes = document.getElementById('notes').value;
+  save();
+  showDashboard();
+}
+
+showDashboard();
+</script>
+
+</body>
+</html>

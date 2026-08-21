@@ -1,0 +1,21 @@
+<!-- Add this line right before </head> to auto-login as Artha (admin) -->
+<script>
+  window.addEventListener('DOMContentLoaded', function(){
+    // Auto-login as Artha (admin) after page loads
+    setTimeout(function(){
+      const gateDiv = document.getElementById('gate');
+      if(gateDiv && !gateDiv.classList.contains('hide')){
+        // Simulate clicking the gate open by injecting ME directly
+        const USERS = window.USERS || [];
+        const artha = USERS.find(u => u.name === 'Artha');
+        if(artha){
+          window.ME = artha;
+          sessionStorage.setItem('artha_me', 'Artha');
+          gateDiv.classList.add('hide');
+          if(window.applyRole) window.applyRole();
+          if(window.refreshCrmViews) window.refreshCrmViews();
+        }
+      }
+    }, 500);
+  });
+</script>

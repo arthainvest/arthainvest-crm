@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(& \"C:\\\\Users\\\\artha\\\\OneDrive\\\\Desktop\\\\ArthaInvest\\\\prospecting\\\\build\\\\10_extract.ps1\")",
+      "PowerShell(& \"C:\\\\Users\\\\artha\\\\OneDrive\\\\Desktop\\\\ArthaInvest\\\\prospecting\\\\build\\\\20_score.ps1\")",
+      "PowerShell(& \"C:\\\\Users\\\\artha\\\\OneDrive\\\\Desktop\\\\ArthaInvest\\\\prospecting\\\\build\\\\20_score.ps1\" 2>&1)"
+    ]
+  }
+}
