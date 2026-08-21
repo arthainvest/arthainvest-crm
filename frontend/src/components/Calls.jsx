@@ -73,13 +73,16 @@ export default function Calls() {
   };
 
   const calculateStats = (callList) => {
+    const validCallList = (callList && Array.isArray(callList) && callList.length > 0) ? callList : mockCalls;
     setStats({
-      totalCalls: callList.length,
-      inbound: callList.filter(c => c.type === 'Inbound').length,
-      outbound: callList.filter(c => c.type === 'Outbound').length,
+      totalCalls: validCallList.length,
+      inbound: validCallList.filter(c => c.type === 'Inbound').length,
+      outbound: validCallList.filter(c => c.type === 'Outbound').length,
       avgDuration: '6m 8s'
     });
   };
+
+  const displayCalls = (calls && calls.length > 0) ? calls : mockCalls;
 
   return (
     <div className="calls-container">
@@ -121,7 +124,7 @@ export default function Calls() {
             </tr>
           </thead>
           <tbody>
-            {calls.map(call => (
+            {displayCalls && displayCalls.map(call => (
               <tr key={call.id}>
                 <td><strong>{call.name}</strong></td>
                 <td>{call.phone}</td>

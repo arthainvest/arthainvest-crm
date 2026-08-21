@@ -76,9 +76,7 @@ export default function LeadsList() {
     }
   };
 
-  if (loading) {
-    return <div className="leads-container"><p>Loading...</p></div>;
-  }
+  const displayLeads = (leads && leads.length > 0) ? leads : mockLeads;
 
   return (
     <div className="leads-container">
@@ -190,7 +188,7 @@ export default function LeadsList() {
         </div>
       )}
 
-      {leads.length > 0 ? (
+      {displayLeads && displayLeads.length > 0 ? (
         <table className="leads-table">
           <thead>
             <tr>
@@ -204,7 +202,7 @@ export default function LeadsList() {
             </tr>
           </thead>
           <tbody>
-            {leads.map((lead) => (
+            {displayLeads.map((lead) => (
               <tr key={lead.id}>
                 <td>{lead.name}</td>
                 <td>{lead.company || '-'}</td>

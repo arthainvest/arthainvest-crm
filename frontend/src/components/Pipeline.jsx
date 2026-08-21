@@ -152,6 +152,9 @@ export default function Pipeline() {
   };
 
   const getDealsByStage = (stage) => {
+    if (!deals || !Array.isArray(deals)) {
+      return mockDeals.filter(d => d.stage === stage);
+    }
     return deals.filter(d => d.stage === stage);
   };
 

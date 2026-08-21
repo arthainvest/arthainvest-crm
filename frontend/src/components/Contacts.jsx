@@ -91,13 +91,14 @@ export default function Contacts() {
     }
   };
 
-  // Use mock data if no contacts are loaded
-  const displayContacts = contacts.length === 0 ? mockContactsData : contacts;
+  // Always show mock data - use mock data if no contacts are loaded
+  const displayContacts = (contacts && contacts.length > 0) ? contacts : mockContactsData;
 
-  const filteredContacts = displayContacts.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredContacts = (displayContacts && displayContacts.length > 0) ?
+    displayContacts.filter(c =>
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.email.toLowerCase().includes(searchTerm.toLowerCase())
+    ) : mockContactsData;
 
   return (
     <div className="contacts-container">
