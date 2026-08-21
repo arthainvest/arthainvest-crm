@@ -1,0 +1,724 @@
+{
+  "schema_version": "1.0",
+  "schema_name": "ArthaInvest Unified CRM",
+  "description": "Master contact database consolidating Leads (11,466), Clients (27), and Warm Network (8,291) with deduplication and workflow tracking",
+
+  "master_table": {
+    "table_name": "CONTACTS",
+    "total_estimated_records": 19784,
+    "purpose": "Single source of truth for all prospect and customer relationships"
+  },
+
+  "column_schema": {
+    "workflow_priority_order": [
+      {
+        "priority": 1,
+        "section": "IDENTITY & DEDUPLICATION",
+        "columns": [
+          {
+            "name": "contact_id",
+            "type": "string",
+            "required": true,
+            "example": "ARTH-20260812-001234",
+            "description": "Unique internal ID (auto-generated UUID or incremental with date prefix). Primary key.",
+            "unique": true
+          },
+          {
+            "name": "dedup_hash",
+            "type": "string",
+            "required": true,
+            "example": "md5(mobile+email)",
+            "description": "SHA256 hash of (mobile + email + name_surname). Used to identify duplicates across import sources. Computed field.",
+            "indexed": true,
+            "nullable": false
+          },
+          {
+            "name": "source_ids",
+            "type": "JSON array",
+            "required": false,
+            "example": "[\"LEAD-5142\", \"WARM-1847\", \"CLIENT-003\"]",
+            "description": "Original IDs from source systems (Leads, Clients, Warm Network). Tracks merge history.",
+            "nullable": true
+          }
+        ]
+      },
+      {
+        "priority": 2,
+        "section": "CONTACT CLASSIFICATION",
+        "columns": [
+          {
+            "name": "contact_type",
+            "type": "enum",
+            "required": true,
+            "allowed_values": ["LEAD", "CLIENT", "WARM_NETWORK", "PROSPECT"],
+            "description": "Primary categorization. Updated as contact progresses through funnel."
+          },
+          {
+            "name": "contact_subtype",
+            "type": "string",
+            "required": false,
+            "example": "Lead:HNI, Client:Active, WarmNetwork:Hitesh",
+            "description": "Hierarchical subtype for reporting (e.g., Lead:HNI, Client:Dormant)."
+          },
+          {
+            "name": "tier",
+            "type": "enum",
+            "required": true,
+            "allowed_values": ["A", "B", "C"],
+            "default": "C",
+            "description": "Priority tier for outreach: A=High value, B=Medium, C=Low. Applies to Leads & Warm Network."
+          },
+          {
+            "name": "segment",
+            "type": "enum",
+            "required": true,
+            "allowed_values": ["HNI", "NRI", "Doctor", "Salaried", "Business", "Channel", "Other"],
+            "description": "Customer segment for tailored strategy."
+          },
+          {
+            "name": "priority",
+            "type": "enum",
+            "required": false,
+            "allowed_values": ["A", "B", "C"],
+            "description": "Warm Network priority override (supersedes tier if set)."
+          }
+        ]
+      },
+      {
+        "priority": 3,
+        "section": "CORE CONTACT INFO",
+        "columns": [
+          {
+            "name": "name",
+            "type": "string",
+            "required": true,
+            "max_length": 100,
+            "description": "Full name. Trimmed, title-cased."
+          },
+          {
+            "name": "mobile",
+            "type": "string",
+            "required": true,
+            "pattern": "^[6-9]\\d{9}$",
+            "description": "Primary 10-digit Indian mobile (6-9 prefix). Index for dedup & SMS."
+          },
+          {
+            "name": "mobile_2",
+            "type": "string",
+            "required": false,
+            "pattern": "^[6-9]\\d{9}$",
+            "description": "Secondary mobile number."
+          },
+          {
+            "name": "email",
+            "type": "string",
+            "required": false,
+            "pattern": "^[^@]+@[^@]+\\.[^@]+$",
+            "description": "Email address. Index for dedup & outreach."
+          },
+          {
+            "name": "city",
+            "type": "string",
+            "required": false,
+            "max_length": 50,
+            "description": "City of residence or business. Populated from Clients; optional for Leads & Warm."
+          }
+        ]
+      },
+      {
+        "priority": 4,
+        "section": "PROFESSIONAL PROFILE",
+        "columns": [
+          {
+            "name": "employer",
+            "type": "string",
+            "required": false,
+            "max_length": 100,
+            "description": "Employer or company name (Salaried/Business segments)."
+          },
+          {
+            "name": "job_title",
+            "type": "string",
+            "required": false,
+            "max_length": 80,
+            "description": "Job title or designation."
+          }
+        ]
+      },
+      {
+        "priority": 5,
+        "section": "WORKFLOW STATUS & OWNERSHIP",
+        "columns": [
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "allowed_values": [
+              "Uncontacted", "Contacted", "Interested", "Meeting_Scheduled", "Meeting_Done",
+              "Negotiating", "Converted", "DNCall", "Not_Interested", "Dead",
+              "Active", "Dormant", "Inactive", "Pending_Renewal"
+            ],
+            "default": "Uncontacted",
+            "description": "Current funnel status. Transitions governed by contact_type (see status_transitions)."
+          },
+          {
+            "name": "status_updated_at",
+            "type": "datetime",
+            "required": true,
+            "description": "Timestamp of last status change. Auto-updated."
+          },
+          {
+            "name": "owner",
+            "type": "string",
+            "required": true,
+            "allowed_values": ["Artha", "Hitesh", "Manohar", "Unassigned"],
+            "default": "Unassigned",
+            "description": "Assigned relationship manager."
+          },
+          {
+            "name": "whose",
+            "type": "enum",
+            "required": false,
+            "allowed_values": ["Own", "Hitesh", "Manohar"],
+            "description": "Warm Network source (whose connection). NULL for Leads & Clients."
+          }
+        ]
+      },
+      {
+        "priority": 6,
+        "section": "SOURCE & LEAD ORIGIN",
+        "columns": [
+          {
+            "name": "source",
+            "type": "enum",
+            "required": true,
+            "allowed_values": ["Cold", "Warm", "Hot"],
+            "description": "Temperature of lead (relationship depth)."
+          },
+          {
+            "name": "list",
+            "type": "enum",
+            "required": false,
+            "allowed_values": ["Loan_Seekers", "ICP", "Pipeline", "Brokers", "Warm_Network", "Imported", "Other"],
+            "description": "Source list or campaign (for Leads). NULL for Clients."
+          },
+          {
+            "name": "approach_strategy",
+            "type": "string",
+            "required": false,
+            "max_length": 200,
+            "example": "Referral via Hitesh; mention mutual connection",
+            "description": "Warm Network contact strategy. Guides first outreach message."
+          },
+          {
+            "name": "already_in_db",
+            "type": "enum",
+            "required": false,
+            "allowed_values": ["Y", "N", "Unknown"],
+            "description": "Warm Network flag: already in LEADS or CLIENTS? Guides merge logic."
+          }
+        ]
+      },
+      {
+        "priority": 7,
+        "section": "FINANCIAL PROFILE",
+        "columns": [
+          {
+            "name": "budget",
+            "type": "decimal",
+            "required": false,
+            "min": 0,
+            "currency": "INR",
+            "description": "Lead investment budget or capacity (in Rupees). For qualification."
+          },
+          {
+            "name": "aum",
+            "type": "decimal",
+            "required": false,
+            "min": 0,
+            "currency": "INR",
+            "description": "Assets Under Management (Clients only). Basis for commission estimates."
+          },
+          {
+            "name": "monthly_commit",
+            "type": "decimal",
+            "required": false,
+            "min": 0,
+            "currency": "INR",
+            "description": "Monthly SIP or commit amount (Clients only)."
+          },
+          {
+            "name": "lifetime_commission",
+            "type": "decimal",
+            "required": false,
+            "min": 0,
+            "currency": "INR",
+            "description": "Total commission earned from this contact (Clients only). Computed."
+          }
+        ]
+      },
+      {
+        "priority": 8,
+        "section": "PRODUCTS & POLICIES",
+        "columns": [
+          {
+            "name": "products",
+            "type": "JSON array",
+            "required": false,
+            "example": "[\"MF\", \"SIP\", \"Insurance\", \"Loan\"]",
+            "description": "Products this contact holds or is interested in (Clients) or invested in (Leads)."
+          },
+          {
+            "name": "policy_numbers",
+            "type": "JSON array",
+            "required": false,
+            "example": "[\"TATA-POL-12345\", \"NIVA-INS-67890\"]",
+            "description": "Insurance policy or investment identifiers (Clients only)."
+          }
+        ]
+      },
+      {
+        "priority": 9,
+        "section": "ACTION & FOLLOW-UP",
+        "columns": [
+          {
+            "name": "next_action",
+            "type": "string",
+            "required": false,
+            "max_length": 200,
+            "example": "Call on Wednesday 2-3pm; discuss MF portfolio",
+            "description": "Planned next step (Leads & Warm Network)."
+          },
+          {
+            "name": "next_action_date",
+            "type": "date",
+            "required": false,
+            "description": "Scheduled date for next_action. Drives task list."
+          },
+          {
+            "name": "last_contact",
+            "type": "datetime",
+            "required": false,
+            "description": "Timestamp of last phone call, email, SMS, or meeting."
+          },
+          {
+            "name": "last_contact_type",
+            "type": "enum",
+            "required": false,
+            "allowed_values": ["Call", "Email", "SMS", "WhatsApp", "Meeting", "Portal"],
+            "description": "Channel of last contact."
+          },
+          {
+            "name": "next_review",
+            "type": "date",
+            "required": false,
+            "description": "Scheduled review or renewal date (Clients only)."
+          }
+        ]
+      },
+      {
+        "priority": 10,
+        "section": "DATES & METADATA",
+        "columns": [
+          {
+            "name": "date_added",
+            "type": "datetime",
+            "required": true,
+            "description": "Record creation date in this system. Auto-set on insert."
+          },
+          {
+            "name": "date_converted",
+            "type": "date",
+            "required": false,
+            "description": "Date lead converted to client (status = Converted). Auto-set."
+          },
+          {
+            "name": "notes",
+            "type": "text",
+            "required": false,
+            "max_length": 1000,
+            "description": "Freeform notes on relationship, preferences, history."
+          },
+          {
+            "name": "updated_at",
+            "type": "datetime",
+            "required": true,
+            "description": "Last modification timestamp. Auto-updated on any change."
+          }
+        ]
+      }
+    ]
+  },
+
+  "unique_id_strategy": {
+    "primary_key": "contact_id",
+    "generation_method": "UUID v4 or incremental (ARTH-DATE-SERIAL)",
+    "deduplication_logic": {
+      "step1_hash_creation": "Compute dedup_hash = SHA256(LOWER(TRIM(mobile)) + '|' + LOWER(TRIM(email)) + '|' + LOWER(TRIM(SPLIT(name)[0])) + '|' + LOWER(TRIM(SPLIT(name)[-1])))",
+      "step2_exact_match": "Query CONTACTS WHERE dedup_hash = incoming_hash. If found, merge (see merge_strategy).",
+      "step3_fuzzy_match": "If no exact match and source=Lead/WarmNetwork: fuzzy match on (name + mobile) with 85%+ similarity. Flag for manual review if match found.",
+      "step4_insert_or_merge": "If no matches: INSERT new record. If match found: MERGE into existing record (retain contact_id, append source_ids, reconcile fields per source_priority).",
+      "source_priority_on_merge": [
+        1,
+        "CLIENT (highest - active customer)"
+      ],
+      [
+        2,
+        "LEAD (converted or hot prospect)"
+      ],
+      [
+        3,
+        "WARM_NETWORK (relationship intel)"
+      ]
+    ],
+    "merge_strategy": {
+      "keep": "contact_id (existing), date_added (earlier of two), created_at, dedup_hash",
+      "append": "source_ids (array), reconcile notes (timestamp each merge)",
+      "prefer_client_values": [
+        "Name (CLIENT most reliable)",
+        "Email, Mobile, City (CLIENT most complete)",
+        "AUM, MonthlyCommit, Products (CLIENT specific)"
+      ],
+      "prefer_lead_values": [
+        "Budget (LEAD-specific)",
+        "Tier, Segment (LEAD-specific)"
+      ],
+      "prefer_warmnetwork_values": [
+        "Whose, ApproachStrategy (WARM-specific)"
+      ],
+      "merge_notes_example": "[2026-08-12 MERGE: LEAD-5142 + WARM-1847] LEAD tier=A, segment=HNI merged with WARM owner=Hitesh, approach='referral via Hitesh'. Contact was already known."
+    }
+  },
+
+  "status_transitions": {
+    "LEAD_workflow": {
+      "states": [
+        "Uncontacted",
+        "Contacted",
+        "Interested",
+        "Meeting_Scheduled",
+        "Meeting_Done",
+        "Negotiating",
+        "Converted",
+        "DNCall",
+        "Not_Interested",
+        "Dead"
+      ],
+      "allowed_transitions": {
+        "Uncontacted": [
+          "Contacted",
+          "Dead"
+        ],
+        "Contacted": [
+          "Interested",
+          "Not_Interested",
+          "DNCall",
+          "Dead"
+        ],
+        "Interested": [
+          "Meeting_Scheduled",
+          "Negotiating",
+          "Not_Interested",
+          "DNCall"
+        ],
+        "Meeting_Scheduled": [
+          "Meeting_Done",
+          "Not_Interested",
+          "DNCall"
+        ],
+        "Meeting_Done": [
+          "Negotiating",
+          "Interested",
+          "Not_Interested",
+          "DNCall"
+        ],
+        "Negotiating": [
+          "Converted",
+          "Not_Interested",
+          "DNCall"
+        ],
+        "Converted": [],
+        "DNCall": [
+          "Contacted",
+          "Dead"
+        ],
+        "Not_Interested": [
+          "Contacted"
+        ],
+        "Dead": []
+      },
+      "rules": "Once Converted, status is terminal (cannot revert). DNCall (Do Not Call) is quasi-terminal but reopenable if contact re-engages."
+    },
+    "CLIENT_workflow": {
+      "states": [
+        "Active",
+        "Pending_Renewal",
+        "Dormant",
+        "Inactive"
+      ],
+      "allowed_transitions": {
+        "Active": [
+          "Pending_Renewal",
+          "Dormant",
+          "Inactive"
+        ],
+        "Pending_Renewal": [
+          "Active",
+          "Dormant",
+          "Inactive"
+        ],
+        "Dormant": [
+          "Active",
+          "Inactive"
+        ],
+        "Inactive": []
+      },
+      "rules": "Inactive is terminal (client opted out). Dormant = no contact in 6+ months but relationship intact."
+    },
+    "WARM_NETWORK_workflow": {
+      "states": [
+        "Uncontacted",
+        "Contacted",
+        "Interested",
+        "Converted",
+        "Not_Interested",
+        "Dead"
+      ],
+      "allowed_transitions": {
+        "Uncontacted": [
+          "Contacted",
+          "Dead"
+        ],
+        "Contacted": [
+          "Interested",
+          "Not_Interested",
+          "Dead"
+        ],
+        "Interested": [
+          "Converted",
+          "Not_Interested"
+        ],
+        "Converted": [
+          "Active"
+        ],
+        "Not_Interested": [
+          "Contacted"
+        ],
+        "Dead": []
+      },
+      "rules": "Warm Network is often ephemeral; conversion = becomes CLIENT. Not_Interested contacts can be re-engaged if new intelligence surfaces."
+    }
+  },
+
+  "required_vs_optional_fields": {
+    "required_for_any_contact": [
+      "contact_id",
+      "dedup_hash",
+      "contact_type",
+      "name",
+      "mobile",
+      "status",
+      "status_updated_at",
+      "owner",
+      "tier",
+      "segment",
+      "source",
+      "date_added",
+      "updated_at"
+    ],
+    "required_for_LEAD": [
+      "tier (A/B/C)",
+      "segment",
+      "source (Cold/Warm/Hot)",
+      "list (source list)"
+    ],
+    "optional_for_LEAD": [
+      "email",
+      "employer",
+      "job_title",
+      "budget",
+      "next_action",
+      "next_action_date",
+      "last_contact",
+      "notes"
+    ],
+    "required_for_CLIENT": [
+      "segment",
+      "status (Active/Dormant/Inactive/Pending_Renewal)"
+    ],
+    "required_for_CLIENT_if_active": [
+      "city",
+      "products (at least one)"
+    ],
+    "optional_for_CLIENT": [
+      "email",
+      "aum",
+      "monthly_commit",
+      "policy_numbers",
+      "lifetime_commission",
+      "next_review",
+      "last_contact",
+      "notes"
+    ],
+    "required_for_WARM_NETWORK": [
+      "whose (Own/Hitesh/Manohar)",
+      "priority (A/B/C)"
+    ],
+    "optional_for_WARM_NETWORK": [
+      "email",
+      "employer",
+      "job_title",
+      "already_in_db (Y/N/Unknown)",
+      "approach_strategy",
+      "next_action",
+      "next_action_date",
+      "notes"
+    ]
+  },
+
+  "indexing_strategy": {
+    "primary_key_index": "contact_id (UNIQUE, CLUSTERED)",
+    "dedup_index": "dedup_hash (UNIQUE, for rapid merge detection)",
+    "search_indices": [
+      "mobile (partition 1M records/index)",
+      "email (partition 1M records/index)",
+      "owner (low cardinality: 4 values)",
+      "status (low cardinality: 10 values)",
+      "contact_type (low cardinality: 4 values)",
+      "tier (low cardinality: 3 values)",
+      "segment (low cardinality: 7 values)"
+    ],
+    "range_indices": [
+      "date_added (range queries for weekly/monthly reports)",
+      "status_updated_at (funnel velocity analysis)",
+      "next_action_date (task list queries)"
+    ]
+  },
+
+  "data_validation_rules": {
+    "mobile": "^[6-9]\\d{9}$, required, non-null, indexed",
+    "email": "Valid email format OR NULL (not empty string)",
+    "budget": "If segment=HNI or Business, strongly recommended; nullable",
+    "status": "Must be in allowed_values for contact_type; transitions must be valid",
+    "tier": "A=High (expected budget >25L), B=Medium (10L-25L), C=Low (<10L) - advisory",
+    "segment": "Based on job_title, employer, budget signals",
+    "name": "Non-empty, trimmed, max 100 chars",
+    "date_added": "Cannot be future date",
+    "date_converted": "Must be >= date_added, set only when status=Converted",
+    "next_action_date": "If set, must be future date or today",
+    "dedup_hash": "Immutable after creation; recompute only on name/mobile/email change"
+  },
+
+  "reporting_dimensions": {
+    "by_contact_type": "LEAD vs CLIENT vs WARM_NETWORK (funnel split)",
+    "by_status": "Uncontacted vs Contacted vs Interested vs Converted (funnel depth)",
+    "by_tier": "A/B/C (prioritization)",
+    "by_segment": "HNI/NRI/Doctor/Salaried/Business/Channel (personalization)",
+    "by_owner": "Artha/Hitesh/Manohar/Unassigned (capacity)",
+    "by_source": "Cold/Warm/Hot (lead quality)",
+    "by_list": "Loan_Seekers/ICP/Pipeline/Brokers/Warm_Network (source effectiveness)",
+    "funnel_velocity": "Days from Contacted → Interested → Meeting → Converted (by owner, segment)",
+    "aum_by_segment": "Total AUM by customer segment (revenue potential)",
+    "commission_yield": "Commission per contact type, per product (profitability)"
+  },
+
+  "migration_notes": {
+    "from_leads_table": "Import all 11,466 rows. Compute dedup_hash on each. Default contact_type='LEAD', owner='Unassigned', source='Cold/Warm/Hot' (from source column). Map status values: Uncontacted/Contacted/Interested/Meeting/DNCall → Unified enum.",
+    "from_clients_table": "Import all 27 rows. Set contact_type='CLIENT', status='Active' (default), owner='Unassigned'. Prioritize name, email, mobile from CLIENT table on merge.",
+    "from_warm_network_table": "Import all 8,291 rows. Set contact_type='WARM_NETWORK', whose=(Own/Hitesh/Manohar), priority=(A/B/C). Check already_in_db before import; if Y, flag for merge review.",
+    "dedup_on_import": "Post-import, identify duplicates via dedup_hash. Flag top 100 highest-value dupes (by budget/aum) for manual review before merge.",
+    "source_ids_tracking": "Preserve original IDs (LEAD-*, CLIENT-*, WARM-*) in source_ids array for audit trail and future reverse-mapping if needed."
+  },
+
+  "example_records": {
+    "lead_example": {
+      "contact_id": "ARTH-20260812-001234",
+      "dedup_hash": "abc123def456...",
+      "source_ids": [
+        "LEAD-5142"
+      ],
+      "contact_type": "LEAD",
+      "name": "Rajesh Kumar",
+      "mobile": "9876543210",
+      "email": "rajesh.kumar@example.com",
+      "employer": "Infosys",
+      "job_title": "Senior Software Engineer",
+      "tier": "A",
+      "segment": "Salaried",
+      "status": "Interested",
+      "status_updated_at": "2026-08-10T14:30:00Z",
+      "owner": "Artha",
+      "source": "Warm",
+      "list": "ICP",
+      "budget": 2500000,
+      "next_action": "Call to discuss MF SIP",
+      "next_action_date": "2026-08-15",
+      "last_contact": "2026-08-10T14:30:00Z",
+      "last_contact_type": "Call",
+      "date_added": "2026-08-01T10:00:00Z",
+      "notes": "Interested in equity MF, has existing SIP of 10k/month. Ask about risk appetite.",
+      "updated_at": "2026-08-10T14:30:00Z"
+    },
+    "client_example": {
+      "contact_id": "ARTH-20260801-000003",
+      "dedup_hash": "xyz789uvw012...",
+      "source_ids": [
+        "CLIENT-003"
+      ],
+      "contact_type": "CLIENT",
+      "name": "Priya Sharma",
+      "mobile": "9123456789",
+      "email": "priya.sharma@email.com",
+      "city": "Mumbai",
+      "tier": "A",
+      "segment": "HNI",
+      "status": "Active",
+      "status_updated_at": "2026-08-01T00:00:00Z",
+      "owner": "Hitesh",
+      "products": [
+        "MF",
+        "Insurance"
+      ],
+      "aum": 50000000,
+      "monthly_commit": 100000,
+      "policy_numbers": [
+        "TATA-POL-12345",
+        "NIVA-INS-67890"
+      ],
+      "lifetime_commission": 125000,
+      "last_contact": "2026-08-10T16:45:00Z",
+      "last_contact_type": "Portal",
+      "next_review": "2026-09-15",
+      "date_added": "2025-03-20T09:00:00Z",
+      "notes": "Prefers email communication. Insurance premium due Sept 15. AUM growing steadily.",
+      "updated_at": "2026-08-10T16:45:00Z"
+    },
+    "warm_network_example": {
+      "contact_id": "ARTH-20260812-001847",
+      "dedup_hash": "pqr345stu678...",
+      "source_ids": [
+        "WARM-1847"
+      ],
+      "contact_type": "WARM_NETWORK",
+      "name": "Amit Patel",
+      "mobile": "9988776655",
+      "email": "amit.patel@company.com",
+      "employer": "TCS",
+      "job_title": "Finance Manager",
+      "tier": "B",
+      "segment": "Salaried",
+      "priority": "A",
+      "whose": "Hitesh",
+      "status": "Uncontacted",
+      "status_updated_at": "2026-08-12T00:00:00Z",
+      "owner": "Unassigned",
+      "already_in_db": "N",
+      "approach_strategy": "Referral via Hitesh Sharma. Mention mutual acquaintance and discuss investment opportunities for corporate employees.",
+      "next_action": "Send warm intro email from Hitesh",
+      "next_action_date": "2026-08-13",
+      "date_added": "2026-08-12T10:00:00Z",
+      "notes": "Hitesh says Amit is open to MF investment; finance background means he'll ask detailed questions.",
+      "updated_at": "2026-08-12T10:00:00Z"
+    }
+  }
+}

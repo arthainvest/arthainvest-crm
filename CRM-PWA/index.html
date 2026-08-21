@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#1e3a8a">
+    <meta name="description" content="ArthaInvest Enterprise Fintech CRM Platform">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ArthaInvest">
+
+    <title>ArthaInvest CRM Pro - Enterprise Fintech Platform</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%231e3a8a' width='192' height='192'/><text x='50%' y='50%' font-size='100' font-family='Arial' fill='white' text-anchor='middle' dominant-baseline='middle'>🏢</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%231e3a8a' width='192' height='192' rx='45'/><text x='50%' y='50%' font-size='100' font-family='Arial' fill='white' text-anchor='middle' dominant-baseline='middle'>🏢</text></svg>">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #1e3a8a;
+            --primary-light: #3b82f6;
+            --secondary: #0f766e;
+            --accent: #f59e0b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --light-bg: #f9fafb;
+            --dark-bg: #0f172a;
+            --card-bg: #ffffff;
+            --card-dark: #1e293b;
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --border-color: #e5e7eb;
+            --border-dark: #334155;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: var(--light-bg);
+            color: var(--text-primary);
+            line-height: 1.6;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        /* LOGIN */
+        .login-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 16px;
+            padding: 50px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .login-logo {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .login-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* APP */
+        .app-wrapper {
+            display: none;
+            min-height: 100vh;
+        }
+
+        .app-wrapper.active {
+            display: flex;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-right: 1px solid var(--border-color);
+            padding: 30px 0;
+            overflow-y: auto;
+            box-shadow: var(--shadow-sm);
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+        }
+
+        .sidebar-brand {
+            padding: 0 25px;
+            margin-bottom: 40px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-logo {
+            font-size: 32px;
+        }
+
+        .sidebar-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .sidebar-menu {
+            list-style: none;
+        }
+
+        .menu-item {
+            padding: 0;
+            margin: 8px 0;
+        }
+
+        .menu-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 25px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+        }
+
+        .menu-link:hover {
+            background-color: var(--light-bg);
+            color: var(--primary);
+        }
+
+        .menu-link.active {
+            color: var(--primary);
+            background-color: rgba(59, 130, 246, 0.1);
+            border-left-color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* MAIN */
+        .main-content {
+            margin-left: 280px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* HEADER */
+        .header {
+            background: white;
+            border-bottom: 1px solid var(--border-color);
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-sm);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .header-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-secondary {
+            background: var(--light-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* CONTENT */
+        .content {
+            padding: 30px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* KPI GRID */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .kpi-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+        }
+
+        .kpi-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .kpi-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .kpi-change {
+            font-size: 13px;
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        /* SECTION */
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--primary);
+            display: inline-block;
+        }
+
+        /* TABLE */
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            margin-bottom: 30px;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th {
+            background: var(--light-bg);
+            padding: 16px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .table td {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+
+        .table tbody tr:hover {
+            background-color: var(--light-bg);
+        }
+
+        /* BADGE */
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #047857;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-danger {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .badge-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        /* CARD */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+        }
+
+        .card-stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-stat:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .stat-value {
+            color: var(--text-primary);
+            font-weight: 700;
+        }
+
+        /* ACTION BUTTONS */
+        .action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 5px;
+            transition: 0.3s;
+        }
+
+        .action-btn:hover {
+            transform: scale(1.2);
+        }
+
+        /* DROPDOWN */
+        select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        /* MOBILE RESPONSIVE */
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            .main-content {
+                margin-left: 0;
+            }
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+            .login-card {
+                padding: 30px 20px;
+            }
+            .content {
+                padding: 20px;
+            }
+        }
+
+        /* Install banner */
+        .install-banner {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--primary);
+            color: white;
+            padding: 16px 20px;
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            z-index: 500;
+            gap: 10px;
+        }
+
+        .install-banner.show {
+            display: flex;
+            align-items: center;
+        }
+
+        .install-banner button {
+            background: white;
+            color: var(--primary);
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- INSTALL BANNER -->
+<div class="install-banner" id="installBanner">
+    <span>Install ArthaInvest CRM for quick access</span>
+    <button onclick="installApp()">Install</button>
+    <button onclick="dismissInstall()">✕</button>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="loginScreen">
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-logo">🏢</div>
+            <div class="login-title">ArthaInvest</div>
+            <div class="login-subtitle">Enterprise Fintech CRM</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" class="form-control" id="loginEmail" value="admin@arthainvest.com">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-control" id="loginPassword" value="admin123">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">User Role</label>
+            <select class="form-control" id="loginRole">
+                <option value="admin">Administrator</option>
+                <option value="leader">Team Leader</option>
+                <option value="employee">Employee</option>
+            </select>
+        </div>
+
+        <button class="login-btn" onclick="login()">Sign In</button>
+    </div>
+</div>
+
+<!-- APP -->
+<div class="app-wrapper" id="appWrapper">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="sidebar-brand">
+            <div class="sidebar-logo">🏢</div>
+            <div class="sidebar-name">ArthaInvest</div>
+        </div>
+
+        <ul class="sidebar-menu">
+            <li class="menu-item"><a class="menu-link active" onclick="switchPage('dashboard')">📊 Dashboard</a></li>
+            <li class="menu-item"><a class="menu-link" onclick="switchPage('contacts')">👥 Contacts</a></li>
+            <li class="menu-item"><a class="menu-link" onclick="switchPage('pipeline')">📈 Pipeline</a></li>
+            <li class="menu-item"><a class="menu-link" onclick="switchPage('calls')">☎️ Calls</a></li>
+            <li class="menu-item"><a class="menu-link" onclick="switchPage('team')">👔 Team</a></li>
+            <li class="menu-item"><a class="menu-link" onclick="switchPage('reports')">📊 Reports</a></li>
+            <li class="menu-item"><a class="menu-link" onclick="switchPage('documents')">📁 DigiLocker</a></li>
+            <li class="menu-item"><a class="menu-link" onclick="switchPage('marketing')">📢 Marketing</a></li>
+            <li class="menu-item"><a class="menu-link" onclick="switchPage('integrations')">🔗 Integrations</a></li>
+        </ul>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main-content">
+        <!-- HEADER -->
+        <div class="header">
+            <div class="header-title">ArthaInvest CRM Pro</div>
+            <div class="header-actions">
+                <button class="btn btn-secondary">🌙 Theme</button>
+                <button class="btn btn-secondary" onclick="logout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <!-- CONTENT -->
+        <div class="content">
+
+            <!-- DASHBOARD -->
+            <div class="page active" id="dashboard">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">Dashboard</h1>
+
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Deals Closed (This Month)</div>
+                        <div class="kpi-value">18</div>
+                        <div class="kpi-change">₹45,00,000</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">In Progress</div>
+                        <div class="kpi-value">12</div>
+                        <div class="kpi-change">₹32,00,000</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Rejected</div>
+                        <div class="kpi-value">5</div>
+                        <div class="kpi-change">₹8,50,000</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">On Hold</div>
+                        <div class="kpi-value">7</div>
+                        <div class="kpi-change">₹15,50,000</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Login/Sanction</div>
+                        <div class="kpi-value">22</div>
+                        <div class="kpi-change">₹65,00,000</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Disbursed</div>
+                        <div class="kpi-value">14</div>
+                        <div class="kpi-change">₹42,00,000</div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Pipeline Status</div>
+                    <div class="kpi-grid">
+                        <div class="card">
+                            <div class="card-title">New Leads</div>
+                            <div class="card-stat">
+                                <span class="stat-label">Count</span>
+                                <span class="stat-value">15</span>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Contacted</div>
+                            <div class="card-stat">
+                                <span class="stat-label">Count</span>
+                                <span class="stat-value">12</span>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Interested</div>
+                            <div class="card-stat">
+                                <span class="stat-label">Count</span>
+                                <span class="stat-value">8</span>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Proposal</div>
+                            <div class="card-stat">
+                                <span class="stat-label">Count</span>
+                                <span class="stat-value">5</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTACTS -->
+            <div class="page" id="contacts">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 30px;">
+                    <h1 style="font-size: 28px; font-weight: 700;">Contacts</h1>
+                    <div>
+                        <button class="btn btn-primary btn-small" id="importBtn">📥 Import</button>
+                        <button class="btn btn-primary btn-small" id="exportBtn" style="display: none;">📤 Export</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Company</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>John Doe</strong></td>
+                                <td>john@example.com</td>
+                                <td>+91 98765 43210</td>
+                                <td>ABC Corp</td>
+                                <td><span class="badge badge-success">Active</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Jane Smith</strong></td>
+                                <td>jane@example.com</td>
+                                <td>+91 87654 32109</td>
+                                <td>XYZ Ltd</td>
+                                <td><span class="badge badge-success">Active</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PIPELINE -->
+            <div class="page" id="pipeline">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">Sales Pipeline</h1>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Folder</th>
+                                <th>Client</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Login</th>
+                                <th>Sanction</th>
+                                <th>Disbursed</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><button onclick="switchPage('documents')" title="Open ABC Corp folder" style="padding: 10px 14px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 18px; width: 100%; text-align: center;">📂</button></td>
+                                <td><strong>ABC Corp</strong></td>
+                                <td>₹25,00,000</td>
+                                <td><span class="badge badge-success">In Progress</span></td>
+                                <td>✓</td>
+                                <td>✓</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td><button onclick="switchPage('documents')" title="Open XYZ Ltd folder" style="padding: 10px 14px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 18px; width: 100%; text-align: center;">📂</button></td>
+                                <td><strong>XYZ Ltd</strong></td>
+                                <td>₹15,00,000</td>
+                                <td><span class="badge badge-warning">On Hold</span></td>
+                                <td>✓</td>
+                                <td>-</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td><button onclick="switchPage('documents')" title="Open Tech Solutions folder" style="padding: 10px 14px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 18px; width: 100%; text-align: center;">📂</button></td>
+                                <td><strong>Tech Solutions</strong></td>
+                                <td>₹35,00,000</td>
+                                <td><span class="badge badge-success">Disbursed</span></td>
+                                <td>✓</td>
+                                <td>✓</td>
+                                <td>✓</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 50px;">
+                    <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 20px;">📄 Pipeline Client Documents</h2>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Client</th>
+                                    <th>Document Type</th>
+                                    <th>Status</th>
+                                    <th>Upload Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>John Doe</strong></td>
+                                    <td>KYC</td>
+                                    <td><span class="badge badge-success">Received</span></td>
+                                    <td>2026-08-15</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Jane Smith</strong></td>
+                                    <td>Income Proof</td>
+                                    <td><span class="badge badge-warning">Pending</span></td>
+                                    <td>-</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Tech Solutions</strong></td>
+                                    <td>Bank Statements</td>
+                                    <td><span class="badge badge-success">Received</span></td>
+                                    <td>2026-08-18</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CALLS -->
+            <div class="page" id="calls">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">Calls & Follow-ups</h1>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Client</th>
+                                <th>Phone</th>
+                                <th>Call</th>
+                                <th>WhatsApp</th>
+                                <th>Email</th>
+                                <th>Follow-up Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>John Doe</strong></td>
+                                <td>+91 98765 43210</td>
+                                <td><a href="tel:+919876543210" class="action-btn" title="Click to Call">☎️</a></td>
+                                <td><a href="https://wa.me/919876543210" target="_blank" class="action-btn" title="WhatsApp">💬</a></td>
+                                <td><a href="mailto:john@example.com" class="action-btn" title="Email">✉️</a></td>
+                                <td>
+                                    <select onchange="updateFWP(this)">
+                                        <option>Select Status</option>
+                                        <option value="interested">Interested</option>
+                                        <option value="notinterested">Not Interested</option>
+                                        <option value="inprocess">In Process</option>
+                                    </select>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Jane Smith</strong></td>
+                                <td>+91 87654 32109</td>
+                                <td><a href="tel:+919876543210" class="action-btn" title="Click to Call">☎️</a></td>
+                                <td><a href="https://wa.me/919876543210" target="_blank" class="action-btn" title="WhatsApp">💬</a></td>
+                                <td><a href="mailto:jane@example.com" class="action-btn" title="Email">✉️</a></td>
+                                <td>
+                                    <select onchange="updateFWP(this)">
+                                        <option>Select Status</option>
+                                        <option value="interested">Interested</option>
+                                        <option value="notinterested">Not Interested</option>
+                                        <option value="inprocess">In Process</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TEAM MANAGEMENT -->
+            <div class="page" id="team">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">👔 Team Management</h1>
+
+                <div style="margin-bottom: 40px;">
+                    <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 20px;">🎯 Team Leader</h2>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                        <div class="card" style="cursor: pointer; border-left: 4px solid var(--primary);" onclick="openTeamMemberProfile('rajesh', 'Rajesh Kumar', 'Team Leader', '+91-98765-11111', 'rajesh@arthainvest.com', '45 Leads', '18 Closed', '₹85,00,000')">
+                            <div style="font-size: 48px; margin-bottom: 10px;">👔</div>
+                            <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 5px;">Rajesh Kumar</h3>
+                            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 10px;">Team Leader</p>
+                            <div style="background: #f0fdf4; padding: 8px; border-radius: 6px; font-size: 12px; color: #059669; font-weight: 600;">
+                                📊 45 Leads | 18 Closed | ₹85,00,000
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 20px;">👨‍💼 Employees (4)</h2>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                        <div class="card" style="cursor: pointer; border-left: 4px solid var(--success);" onclick="openTeamMemberProfile('emp1', 'Arjun Sharma', 'Employee', '+91-98765-22222', 'arjun@arthainvest.com', '28 Leads', '12 Closed', '₹52,00,000')">
+                            <div style="font-size: 48px; margin-bottom: 10px;">👨</div>
+                            <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 5px;">Arjun Sharma</h3>
+                            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 10px;">Employee</p>
+                            <div style="background: #f0fdf4; padding: 8px; border-radius: 6px; font-size: 12px; color: #059669; font-weight: 600;">
+                                📊 28 Leads | 12 Closed | ₹52,00,000
+                            </div>
+                        </div>
+
+                        <div class="card" style="cursor: pointer; border-left: 4px solid var(--success);" onclick="openTeamMemberProfile('emp2', 'Priya Singh', 'Employee', '+91-98765-33333', 'priya@arthainvest.com', '32 Leads', '15 Closed', '₹68,00,000')">
+                            <div style="font-size: 48px; margin-bottom: 10px;">👩</div>
+                            <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 5px;">Priya Singh</h3>
+                            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 10px;">Employee</p>
+                            <div style="background: #f0fdf4; padding: 8px; border-radius: 6px; font-size: 12px; color: #059669; font-weight: 600;">
+                                📊 32 Leads | 15 Closed | ₹68,00,000
+                            </div>
+                        </div>
+
+                        <div class="card" style="cursor: pointer; border-left: 4px solid var(--success);" onclick="openTeamMemberProfile('emp3', 'Vikram Patel', 'Employee', '+91-98765-44444', 'vikram@arthainvest.com', '25 Leads', '10 Closed', '₹48,00,000')">
+                            <div style="font-size: 48px; margin-bottom: 10px;">👨</div>
+                            <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 5px;">Vikram Patel</h3>
+                            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 10px;">Employee</p>
+                            <div style="background: #f0fdf4; padding: 8px; border-radius: 6px; font-size: 12px; color: #059669; font-weight: 600;">
+                                📊 25 Leads | 10 Closed | ₹48,00,000
+                            </div>
+                        </div>
+
+                        <div class="card" style="cursor: pointer; border-left: 4px solid var(--success);" onclick="openTeamMemberProfile('emp4', 'Neha Desai', 'Employee', '+91-98765-55555', 'neha@arthainvest.com', '30 Leads', '14 Closed', '₹62,00,000')">
+                            <div style="font-size: 48px; margin-bottom: 10px;">👩</div>
+                            <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 5px;">Neha Desai</h3>
+                            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 10px;">Employee</p>
+                            <div style="background: #f0fdf4; padding: 8px; border-radius: 6px; font-size: 12px; color: #059669; font-weight: 600;">
+                                📊 30 Leads | 14 Closed | ₹62,00,000
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- REPORTS -->
+            <div class="page" id="reports">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">📊 Reports - Employee Performance</h1>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Role</th>
+                                <th>Phone</th>
+                                <th>Email</th>
+                                <th>Total Leads</th>
+                                <th>Deals Closed</th>
+                                <th>Revenue Generated</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Rajesh Kumar</strong></td>
+                                <td><span class="badge badge-success">Team Leader</span></td>
+                                <td>+91-98765-11111</td>
+                                <td>rajesh@arthainvest.com</td>
+                                <td>45</td>
+                                <td>18</td>
+                                <td>₹85,00,000</td>
+                                <td><button onclick="openTeamMemberProfile('rajesh', 'Rajesh Kumar', 'Team Leader', '+91-98765-11111', 'rajesh@arthainvest.com', '45 Leads', '18 Closed', '₹85,00,000')" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">View</button></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Arjun Sharma</strong></td>
+                                <td><span class="badge badge-info">Employee</span></td>
+                                <td>+91-98765-22222</td>
+                                <td>arjun@arthainvest.com</td>
+                                <td>28</td>
+                                <td>12</td>
+                                <td>₹52,00,000</td>
+                                <td><button onclick="openTeamMemberProfile('emp1', 'Arjun Sharma', 'Employee', '+91-98765-22222', 'arjun@arthainvest.com', '28 Leads', '12 Closed', '₹52,00,000')" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">View</button></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Priya Singh</strong></td>
+                                <td><span class="badge badge-info">Employee</span></td>
+                                <td>+91-98765-33333</td>
+                                <td>priya@arthainvest.com</td>
+                                <td>32</td>
+                                <td>15</td>
+                                <td>₹68,00,000</td>
+                                <td><button onclick="openTeamMemberProfile('emp2', 'Priya Singh', 'Employee', '+91-98765-33333', 'priya@arthainvest.com', '32 Leads', '15 Closed', '₹68,00,000')" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">View</button></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Vikram Patel</strong></td>
+                                <td><span class="badge badge-info">Employee</span></td>
+                                <td>+91-98765-44444</td>
+                                <td>vikram@arthainvest.com</td>
+                                <td>25</td>
+                                <td>10</td>
+                                <td>₹48,00,000</td>
+                                <td><button onclick="openTeamMemberProfile('emp3', 'Vikram Patel', 'Employee', '+91-98765-44444', 'vikram@arthainvest.com', '25 Leads', '10 Closed', '₹48,00,000')" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">View</button></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Neha Desai</strong></td>
+                                <td><span class="badge badge-info">Employee</span></td>
+                                <td>+91-98765-55555</td>
+                                <td>neha@arthainvest.com</td>
+                                <td>30</td>
+                                <td>14</td>
+                                <td>₹62,00,000</td>
+                                <td><button onclick="openTeamMemberProfile('emp4', 'Neha Desai', 'Employee', '+91-98765-55555', 'neha@arthainvest.com', '30 Leads', '14 Closed', '₹62,00,000')" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">View</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TEAM MEMBER PROFILE MODAL -->
+            <div id="memberModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center; overflow-y: auto;">
+                <div style="background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 600px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin: 20px auto;">
+                    <button onclick="closeTeamMemberProfile()" style="float: right; padding: 8px 12px; background: var(--border-color); color: var(--text-primary); border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 600;">✕</button>
+
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <div id="memberAvatar" style="font-size: 80px; margin-bottom: 15px;">👨</div>
+                        <h2 id="memberName" style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">Name</h2>
+                        <p id="memberRole" style="font-size: 16px; color: var(--text-secondary); margin-bottom: 20px;">Role</p>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
+                            <p style="font-size: 12px; color: var(--text-secondary); font-weight: 600; margin-bottom: 5px;">📞 Phone</p>
+                            <p id="memberPhone" style="font-size: 16px; font-weight: 600;">+91-98765-11111</p>
+                        </div>
+                        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
+                            <p style="font-size: 12px; color: var(--text-secondary); font-weight: 600; margin-bottom: 5px;">📧 Email</p>
+                            <p id="memberEmail" style="font-size: 16px; font-weight: 600;">email@arthainvest.com</p>
+                        </div>
+                        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
+                            <p style="font-size: 12px; color: var(--text-secondary); font-weight: 600; margin-bottom: 5px;">📊 Leads</p>
+                            <p id="memberLeads" style="font-size: 16px; font-weight: 600;">45 Leads</p>
+                        </div>
+                        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
+                            <p style="font-size: 12px; color: var(--text-secondary); font-weight: 600; margin-bottom: 5px;">✅ Closed</p>
+                            <p id="memberClosed" style="font-size: 16px; font-weight: 600;">18 Closed</p>
+                        </div>
+                    </div>
+
+                    <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; border-left: 4px solid var(--success);">
+                        <p style="font-size: 12px; color: var(--text-secondary); font-weight: 600; margin-bottom: 8px;">💰 Revenue Generated</p>
+                        <p id="memberRevenue" style="font-size: 24px; font-weight: 700; color: var(--success);">₹85,00,000</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DIGILOCKER -->
+            <div class="page" id="documents">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">📁 DigiLocker - Employee-wise Client Folders</h1>
+
+                <div style="margin-bottom: 50px;">
+                    <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 3px solid var(--primary);">👔 Rajesh Kumar (Team Leader)</h2>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                        <div class="card" style="border-left: 4px solid var(--success); cursor: pointer;">
+                            <div style="padding: 20px;">
+                                <div style="font-size: 40px; margin-bottom: 10px;">👤</div>
+                                <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 5px;">John Doe</h3>
+                                <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 15px;">john@example.com</p>
+                                <div style="background: #f0fdf4; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
+                                    <p style="font-size: 12px; color: #059669; font-weight: 600;">✓ KYC - Received</p>
+                                    <p style="font-size: 12px; color: #059669;">📄 2026-08-15</p>
+                                </div>
+                                <button style="width: 100%; padding: 10px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">📂 Open Folder</button>
+                            </div>
+                        </div>
+
+                        <div class="card" style="border-left: 4px solid var(--success); cursor: pointer;">
+                            <div style="padding: 20px;">
+                                <div style="font-size: 40px; margin-bottom: 10px;">🏢</div>
+                                <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 5px;">Tech Solutions</h3>
+                                <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 15px;">contact@techsolutions.com</p>
+                                <div style="background: #f0fdf4; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
+                                    <p style="font-size: 12px; color: #059669; font-weight: 600;">✓ Bank Statements - Received</p>
+                                    <p style="font-size: 12px; color: #059669;">📄 2026-08-18</p>
+                                </div>
+                                <button style="width: 100%; padding: 10px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">📂 Open Folder</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 50px;">
+                    <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 3px solid var(--success);">👨 Arjun Sharma (Employee)</h2>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                        <div class="card" style="border-left: 4px solid var(--warning); cursor: pointer;">
+                            <div style="padding: 20px;">
+                                <div style="font-size: 40px; margin-bottom: 10px;">👤</div>
+                                <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 5px;">Jane Smith</h3>
+                                <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 15px;">jane@example.com</p>
+                                <div style="background: #fffbeb; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
+                                    <p style="font-size: 12px; color: #d97706; font-weight: 600;">⏳ Income Proof - Pending</p>
+                                    <p style="font-size: 12px; color: #d97706;">📄 Awaiting upload</p>
+                                </div>
+                                <button style="width: 100%; padding: 10px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">📂 Open Folder</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 50px;">
+                    <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 20px;">📊 Folder Storage Summary</h2>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Client Folder</th>
+                                    <th>Documents Count</th>
+                                    <th>Total Size</th>
+                                    <th>Last Updated</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>📁 John Doe</strong></td>
+                                    <td>3 files</td>
+                                    <td>2.4 MB</td>
+                                    <td>2026-08-15</td>
+                                    <td><span class="badge badge-success">Complete</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>📁 Jane Smith</strong></td>
+                                    <td>1 file</td>
+                                    <td>850 KB</td>
+                                    <td>2026-08-10</td>
+                                    <td><span class="badge badge-warning">Incomplete</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>📁 Tech Solutions</strong></td>
+                                    <td>5 files</td>
+                                    <td>5.2 MB</td>
+                                    <td>2026-08-18</td>
+                                    <td><span class="badge badge-success">Complete</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MARKETING -->
+            <div class="page" id="marketing">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">Marketing & Creatives</h1>
+
+                <div class="kpi-grid">
+                    <div class="card">
+                        <div class="card-title">📱 Active Campaigns</div>
+                        <div class="card-stat">
+                            <span class="stat-label">WhatsApp</span>
+                            <span class="stat-value">2,500+ contacts</span>
+                        </div>
+                        <div class="card-stat">
+                            <span class="stat-label">LinkedIn</span>
+                            <span class="stat-value">1,200+ connections</span>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">🎨 Design Tools</div>
+                        <button class="btn btn-primary btn-small" style="width: 100%; margin-top: 10px;">Connect Canva</button>
+                        <button class="btn btn-primary btn-small" style="width: 100%; margin-top: 10px;">Connect Claude AI</button>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">📊 Content</div>
+                        <div class="card-stat">
+                            <span class="stat-label">Creatives</span>
+                            <span class="stat-value">45 templates</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- INTEGRATIONS -->
+            <div class="page" id="integrations">
+                <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 30px;">Integrations & Credentials</h1>
+
+                <div id="credentialsContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px;">
+                    <!-- Credentials will be loaded here -->
+                </div>
+            </div>
+
+            <!-- EDIT CREDENTIALS MODAL -->
+            <div id="editModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center;">
+                <div style="background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+                    <h2 id="editTitle" style="font-size: 22px; font-weight: 700; margin-bottom: 20px;">Edit Credential</h2>
+
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">Credential Value</label>
+                        <input id="editInput" type="text" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 14px;" placeholder="Enter new value">
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 20px;">
+                        <button onclick="saveCredential()" style="flex: 1; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">✓ Save</button>
+                        <button onclick="closeEditModal()" style="flex: 1; padding: 12px; background: var(--border-color); color: var(--text-primary); border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">✕ Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').then(reg => {
+            console.log('Service Worker registered');
+        }).catch(err => console.log('SW registration failed:', err));
+    }
+
+    // Install Prompt for PWA
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        document.getElementById('installBanner').classList.add('show');
+    });
+
+    function installApp() {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('User accepted the install prompt');
+                }
+                deferredPrompt = null;
+                document.getElementById('installBanner').classList.remove('show');
+            });
+        }
+    }
+
+    function dismissInstall() {
+        document.getElementById('installBanner').classList.remove('show');
+    }
+
+    const userRole = localStorage.getItem('userRole') || 'admin';
+
+    function login() {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('appWrapper').classList.add('active');
+        localStorage.setItem('userRole', document.getElementById('loginRole').value);
+        updateUIByRole();
+    }
+
+    function updateUIByRole() {
+        const role = document.getElementById('loginRole').value;
+        const exportBtn = document.getElementById('exportBtn');
+
+        if (role === 'admin') {
+            document.getElementById('importBtn').style.display = 'inline-block';
+            exportBtn.style.display = 'inline-block';
+        } else {
+            document.getElementById('importBtn').style.display = 'inline-block';
+            exportBtn.style.display = 'none';
+        }
+    }
+
+    function switchPage(page) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(page).classList.add('active');
+        document.querySelectorAll('.menu-link').forEach(link => link.classList.remove('active'));
+        event.target.classList.add('active');
+    }
+
+    function logout() {
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.getElementById('appWrapper').classList.remove('active');
+    }
+
+    function updateFWP(select) {
+        alert('FWP Status Updated: ' + select.value);
+    }
+
+    // Credentials Management
+    const defaultCredentials = {
+        whatsapp: { label: '📱 WhatsApp Business API', field: 'Phone Number', value: '+91-98765-43210' },
+        linkedin: { label: '💼 LinkedIn Campaign Manager', field: 'Email', value: 'artha@arthainvest.com' },
+        razorpay: { label: '💳 Razorpay Payments', field: 'Email', value: 'payments@arthainvest.com' },
+        twilio: { label: '☎️ Twilio (Click-to-Call)', field: 'Phone Number', value: '+91-87654-32109' },
+        email: { label: '✉️ Email Service', field: 'Email Address', value: 'support@arthainvest.com' },
+        digilocker: { label: '📄 DigiLocker', field: 'Email ID', value: 'documents@arthainvest.com' }
+    };
+
+    function loadCredentials() {
+        const stored = localStorage.getItem('credentials');
+        return stored ? JSON.parse(stored) : defaultCredentials;
+    }
+
+    function saveCredentialsToStorage(credentials) {
+        localStorage.setItem('credentials', JSON.stringify(credentials));
+    }
+
+    function renderCredentials() {
+        const credentials = loadCredentials();
+        const container = document.getElementById('credentialsContainer');
+        const currentRole = localStorage.getItem('userRole') || 'admin';
+        const isAdmin = currentRole === 'admin';
+
+        container.innerHTML = Object.entries(credentials).map(([key, cred]) => `
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <div class="card-title">${cred.label}</div>
+                    ${isAdmin ? `<button onclick="openEditModal('${key}', '${cred.label}', '${cred.value}')" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">✏️ Edit</button>` : ''}
+                </div>
+                <div class="card-stat">
+                    <span class="stat-label">${cred.field}</span>
+                    <span class="stat-value" id="cred-${key}">${cred.value}</span>
+                </div>
+                <div class="card-stat">
+                    <span class="stat-label">Status</span>
+                    <span class="badge badge-success">Connected</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    let currentEditKey = '';
+
+    function openEditModal(key, label, value) {
+        const currentRole = localStorage.getItem('userRole') || 'admin';
+        if (currentRole !== 'admin') {
+            alert('Only Admin can edit credentials!');
+            return;
+        }
+        currentEditKey = key;
+        document.getElementById('editTitle').textContent = `Edit ${label}`;
+        document.getElementById('editInput').value = value;
+        document.getElementById('editModal').style.display = 'flex';
+        document.getElementById('editInput').focus();
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+        currentEditKey = '';
+    }
+
+    function saveCredential() {
+        const newValue = document.getElementById('editInput').value.trim();
+        if (!newValue) {
+            alert('Please enter a value!');
+            return;
+        }
+
+        const credentials = loadCredentials();
+        credentials[currentEditKey].value = newValue;
+        saveCredentialsToStorage(credentials);
+
+        document.getElementById(`cred-${currentEditKey}`).textContent = newValue;
+        closeEditModal();
+        alert('✓ Credential updated successfully!');
+    }
+
+    // Team Member Profile Functions
+    function openTeamMemberProfile(id, name, role, phone, email, leads, closed, revenue) {
+        const avatar = role === 'Team Leader' ? '👔' : (name.includes('a') || name.includes('i') || name.includes('u') ? (name.includes('Priya') || name.includes('Neha') ? '👩' : '👨') : '👨');
+
+        document.getElementById('memberAvatar').textContent = avatar;
+        document.getElementById('memberName').textContent = name;
+        document.getElementById('memberRole').textContent = role;
+        document.getElementById('memberPhone').textContent = phone;
+        document.getElementById('memberEmail').textContent = email;
+        document.getElementById('memberLeads').textContent = leads;
+        document.getElementById('memberClosed').textContent = closed;
+        document.getElementById('memberRevenue').textContent = revenue;
+
+        document.getElementById('memberModal').style.display = 'flex';
+    }
+
+    function closeTeamMemberProfile() {
+        document.getElementById('memberModal').style.display = 'none';
+    }
+
+    document.addEventListener('click', function(event) {
+        const modal = document.getElementById('memberModal');
+        if (event.target === modal) {
+            closeTeamMemberProfile();
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        renderCredentials();
+    });
+
+    updateUIByRole();
+</script>
+</body>
+</html>

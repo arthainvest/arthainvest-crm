@@ -1,0 +1,101 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+pnpm-debug.log
+lerna-debug.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.editor.json
+
+# Testing
+coverage/
+.nyc_output/
+jest-coverage/
+
+# OS files
+Thumbs.db
+.DS_Store
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+
+# Uploads
+uploads/
+public/uploads/
+
+# Cache
+.eslintcache
+tsconfig.tsbuildinfo
+
+# Production build
+.vercel
+.netlify
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Backup files
+*.bak
+*.backup
+*.sql.gz
+
+# IDE-specific
+*.code-workspace
+
+# Package manager
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Local development
+.env.local.example
+.eslintignore
+
+# Analytics
+.next-analytics-id
+
+# Generated files
+.graphql-config.yml
+schema.graphql
+
+# Media files (if large)
+*.mp4
+*.avi
+*.mov
+*.flv
+
+# Node
+.pnp
+.pnp.js

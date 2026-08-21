@@ -1,0 +1,45 @@
+{
+  "name": "arthainvest-crm",
+  "version": "1.0.0",
+  "description": "ArthaInvest CRM Pro - Enterprise Fintech Platform",
+  "main": "main.js",
+  "homepage": "./",
+  "author": "ArthaInvest",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder -mwl"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.6"
+  },
+  "devDependencies": {
+    "electron": "latest",
+    "electron-builder": "latest"
+  },
+  "build": {
+    "appId": "com.arthainvest.crm",
+    "productName": "ArthaInvest CRM",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "manifest.json",
+      "sw.js",
+      "db.js",
+      "node_modules/**/*"
+    ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ArthaInvest CRM"
+    }
+  }
+}
