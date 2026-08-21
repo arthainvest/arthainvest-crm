@@ -45,10 +45,12 @@ export default function Pipeline() {
   const fetchDeals = async () => {
     try {
       const response = await fetch('/api/pipeline');
+      if (!response.ok) throw new Error('API error');
       const data = await response.json();
       setDeals(data);
     } catch (error) {
       console.error('Error fetching deals:', error);
+      // Use mock data as fallback
       setDeals(mockDeals);
     }
   };

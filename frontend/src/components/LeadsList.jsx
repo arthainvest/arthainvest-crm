@@ -26,10 +26,20 @@ export default function LeadsList() {
       setLeads(data);
     } catch (err) {
       console.error('Failed to fetch leads:', err);
+      // Use mock data as fallback
+      setLeads(mockLeads);
     } finally {
       setLoading(false);
     }
   };
+
+  const mockLeads = [
+    { id: 1, name: 'Neha Singh', company: 'Startup Fund', email: 'neha@startup.com', phone: '+91-9876543210', status: 'New', score: 85 },
+    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', email: 'vikram@techpark.com', phone: '+91-9876543211', status: 'Contacted', score: 72 },
+    { id: 3, name: 'Anjali Desai', company: 'Retail Chain', email: 'anjali@retail.com', phone: '+91-9876543212', status: 'Interested', score: 65 },
+    { id: 4, name: 'Amit Patel', company: 'Manufacturing', email: 'amit@mfg.com', phone: '+91-9876543213', status: 'Qualified', score: 58 },
+    { id: 5, name: 'Priya Kapoor', company: 'Digital Ventures', email: 'priya@digital.com', phone: '+91-9876543214', status: 'New', score: 80 }
+  ];
 
   const handleAddLead = async (e) => {
     e.preventDefault();

@@ -17,11 +17,13 @@ export default function Calls() {
   const fetchCalls = async () => {
     try {
       const response = await fetch('/api/calls');
+      if (!response.ok) throw new Error('API error');
       const data = await response.json();
       setCalls(data);
       calculateStats(data);
     } catch (error) {
       console.error('Error fetching calls:', error);
+      // Use mock data as fallback
       setCalls(mockCalls);
       calculateStats(mockCalls);
     }

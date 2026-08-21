@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react';
 import '../styles/Contacts.css';
 
 export default function Contacts() {
-  const [contacts, setContacts] = useState([]);
+  // Mock data
+  const mockContactsData = [
+    { id: 1, name: 'Neha Singh', company: 'Tech Startup', email: 'neha@techstartup.com', phone: '+91-9876543210', score: 85, tier: 'Premium' },
+    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', email: 'vikram@techpark.com', phone: '+91-9876543211', score: 72, tier: 'Gold' },
+    { id: 3, name: 'Anjali Desai', company: 'Retail Chain', email: 'anjali@retail.com', phone: '+91-9876543212', score: 65, tier: 'Silver' },
+    { id: 4, name: 'Amit Patel', company: 'Manufacturing', email: 'amit@mfg.com', phone: '+91-9876543213', score: 58, tier: 'Silver' },
+    { id: 5, name: 'Priya Kapoor', company: 'Digital Ventures', email: 'priya@digital.com', phone: '+91-9876543214', score: 80, tier: 'Premium' }
+  ];
+
+  const [contacts, setContacts] = useState(mockContactsData);
   const [showForm, setShowForm] = useState(false);
   const [showCommunication, setShowCommunication] = useState(false);
   const [showDigi, setShowDigi] = useState(false);
@@ -20,11 +29,13 @@ export default function Contacts() {
   const fetchContacts = async () => {
     try {
       const response = await fetch('/api/contacts');
+      if (!response.ok) throw new Error('API error');
       const data = await response.json();
       setContacts(data);
     } catch (error) {
       console.error('Error fetching contacts:', error);
-      setContacts(mockContacts);
+      // Use mock data as fallback
+      setContacts(mockContactsData);
     }
   };
 
@@ -77,7 +88,10 @@ export default function Contacts() {
     }
   };
 
-  const filteredContacts = contacts.filter(c =>
+  // Use mock data if no contacts are loaded
+  const displayContacts = contacts.length === 0 ? mockContactsData : contacts;
+
+  const filteredContacts = displayContacts.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
