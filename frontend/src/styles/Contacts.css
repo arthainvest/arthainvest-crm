@@ -281,7 +281,7 @@
   max-width: 600px;
 }
 
-.digi-info {
+.digi-modal .digi-info {
   background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
   color: white;
   padding: 20px;
@@ -289,20 +289,20 @@
   margin-bottom: 20px;
 }
 
-.digi-info h3 {
+.digi-modal .digi-info h3 {
   margin: 0 0 10px 0;
 }
 
-.digi-info p {
+.digi-modal .digi-info p {
   margin: 5px 0;
   font-size: 14px;
 }
 
-.digi-section {
+.digi-modal .digi-section {
   margin-bottom: 20px;
 }
 
-.digi-section h4 {
+.digi-modal .digi-section h4 {
   margin-top: 0;
   margin-bottom: 15px;
   color: #333;
@@ -333,7 +333,7 @@
   gap: 10px;
 }
 
-.digi-btn {
+.digi-modal .digi-btn {
   padding: 10px;
   border: 1px solid #9C27B0;
   background: white;
@@ -344,7 +344,7 @@
   transition: all 0.2s ease;
 }
 
-.digi-btn:hover {
+.digi-modal .digi-btn:hover {
   background: #9C27B0;
   color: white;
 }

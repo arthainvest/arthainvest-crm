@@ -106,7 +106,7 @@
   background-color: #f8f9fa;
 }
 
-.status-badge {
+.leads-table .status-badge {
   display: inline-block;
   padding: 6px 12px;
   border-radius: 20px;
@@ -115,27 +115,27 @@
   text-transform: capitalize;
 }
 
-.status-badge.new {
+.leads-table .status-badge.new {
   background-color: #e3f2fd;
   color: #1976d2;
 }
 
-.status-badge.qualified {
+.leads-table .status-badge.qualified {
   background-color: #e8f5e9;
   color: #388e3c;
 }
 
-.status-badge.proposal {
+.leads-table .status-badge.proposal {
   background-color: #fff3e0;
   color: #f57c00;
 }
 
-.status-badge.negotiation {
+.leads-table .status-badge.negotiation {
   background-color: #fce4ec;
   color: #c2185b;
 }
 
-.status-badge.closed {
+.leads-table .status-badge.closed {
   background-color: #f3e5f5;
   color: #7b1fa2;
 }
