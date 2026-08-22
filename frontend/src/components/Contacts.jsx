@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../styles/Contacts.css';
 
+const WhatsAppIcon = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+    <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.004c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0012.05 2zm5.71 14.14c-.24.68-1.4 1.31-1.94 1.36-.5.05-1.13.07-1.82-.11-.42-.11-.96-.31-1.65-.61-2.9-1.25-4.79-4.17-4.94-4.36-.15-.19-1.18-1.57-1.18-3 0-1.43.75-2.13 1.02-2.42.27-.29.59-.36.78-.36l.56.01c.18 0 .42-.07.66.5.24.58.83 2 .9 2.15.07.15.12.32.02.51-.09.19-.14.31-.28.48-.14.17-.29.37-.42.5-.14.14-.28.29-.12.56.16.28.71 1.17 1.52 1.89 1.05.93 1.93 1.22 2.21 1.36.28.14.44.12.6-.07.16-.19.68-.79.86-1.06.18-.28.36-.23.6-.14.24.09 1.53.72 1.79.85.26.13.44.19.5.3.06.11.06.63-.18 1.31z" />
+  </svg>
+);
+
+const emptyContactForm = { name: '', company: '', email: '', phone: '', city: '' };
+
 export default function Contacts() {
   // Mock data
   const mockContactsData = [
@@ -12,20 +20,30 @@ export default function Contacts() {
   ];
 
   const [contacts, setContacts] = useState(mockContactsData);
-  const [showForm, setShowForm] = useState(false);
-  const [showCommunication, setShowCommunication] = useState(false);
-  const [showDigi, setShowDigi] = useState(false);
-  const [showNotes, setShowNotes] = useState(false);
-  const [communicationTab, setCommunicationTab] = useState('message');
-  const [selectedContact, setSelectedContact] = useState(null);
-  const [message, setMessage] = useState('');
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailBody, setEmailBody] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Expand/collapse per-contact details
+  const [expandedContacts, setExpandedContacts] = useState({});
+
+  // Add/Edit Contact modal
+  const [showForm, setShowForm] = useState(false);
+  const [editingContactId, setEditingContactId] = useState(null);
+  const [contactForm, setContactForm] = useState(emptyContactForm);
+
+  // Email modal
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+
+  // DigiLocker modal
+  const [showDigi, setShowDigi] = useState(false);
+
   // Notes & voice-note state
+  const [showNotes, setShowNotes] = useState(false);
   const [contactNotes, setContactNotes] = useState({});
   const [noteDraft, setNoteDraft] = useState({ callDateTime: '', nextConversation: '', transcript: '' });
+  const [editingNoteId, setEditingNoteId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [draftAudioUrl, setDraftAudioUrl] = useState(null);
   const [speechSupported] = useState(() => !!(window.SpeechRecognition || window.webkitSpeechRecognition));
@@ -56,6 +74,10 @@ export default function Contacts() {
       console.error('Error fetching contacts:', error);
       setContacts(mockContactsData);
     }
+  };
+
+  const toggleExpand = (contactId) => {
+    setExpandedContacts((prev) => ({ ...prev, [contactId]: !prev[contactId] }));
   };
 
   const handleImportClick = () => {
@@ -132,16 +154,18 @@ export default function Contacts() {
     }
   };
 
-  const handleMessage = (contact) => {
-    setSelectedContact(contact);
-    setCommunicationTab('message');
-    setShowCommunication(true);
-  };
-
   const handleEmail = (contact) => {
     setSelectedContact(contact);
-    setCommunicationTab('email');
-    setShowCommunication(true);
+    setShowEmailModal(true);
+  };
+
+  const sendEmail = () => {
+    if (emailSubject.trim() && emailBody.trim()) {
+      window.location.href = `mailto:${selectedContact.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+      setEmailSubject('');
+      setEmailBody('');
+      setShowEmailModal(false);
+    }
   };
 
   const handleDigi = (contact) => {
@@ -149,14 +173,52 @@ export default function Contacts() {
     setShowDigi(true);
   };
 
+  const handleAddContactClick = () => {
+    setEditingContactId(null);
+    setContactForm(emptyContactForm);
+    setShowForm(true);
+  };
+
+  const handleEditContact = (contact) => {
+    setEditingContactId(contact.id);
+    setContactForm({
+      name: contact.name || '',
+      company: contact.company || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+      city: contact.city || ''
+    });
+    setShowForm(true);
+  };
+
+  const handleDeleteContact = (contactId) => {
+    if (window.confirm('Are you sure you want to delete this contact?')) {
+      setContacts((prev) => prev.filter((c) => c.id !== contactId));
+    }
+  };
+
+  const handleSaveContact = (e) => {
+    e.preventDefault();
+    if (!contactForm.name.trim()) return;
+
+    if (editingContactId) {
+      setContacts((prev) => prev.map((c) => (
+        c.id === editingContactId ? { ...c, ...contactForm } : c
+      )));
+    } else {
+      setContacts((prev) => [
+        ...prev,
+        { id: Date.now(), score: '', ...contactForm }
+      ]);
+    }
+    setShowForm(false);
+    setContactForm(emptyContactForm);
+    setEditingContactId(null);
+  };
+
   const handleNotes = (contact) => {
     setSelectedContact(contact);
-    setNoteDraft({
-      callDateTime: new Date().toISOString().slice(0, 16),
-      nextConversation: '',
-      transcript: ''
-    });
-    setDraftAudioUrl(null);
+    resetNoteDraft();
     setIsRecording(false);
     setShowNotes(true);
   };
@@ -164,6 +226,30 @@ export default function Contacts() {
   const closeNotes = () => {
     if (isRecording) stopRecording();
     setShowNotes(false);
+  };
+
+  const resetNoteDraft = () => {
+    setNoteDraft({
+      callDateTime: new Date().toISOString().slice(0, 16),
+      nextConversation: '',
+      transcript: ''
+    });
+    setDraftAudioUrl(null);
+    setEditingNoteId(null);
+  };
+
+  const handleEditNote = (note) => {
+    setNoteDraft({
+      callDateTime: note.callDateTime || '',
+      nextConversation: note.nextConversation || '',
+      transcript: note.transcript || ''
+    });
+    setDraftAudioUrl(note.audioUrl || null);
+    setEditingNoteId(note.id);
+  };
+
+  const cancelEditNote = () => {
+    resetNoteDraft();
   };
 
   const startRecording = async () => {
@@ -219,24 +305,39 @@ export default function Contacts() {
       alert('Add a transcript note or record a voice note before saving.');
       return;
     }
-    const entry = {
-      id: Date.now(),
-      callDateTime: noteDraft.callDateTime,
-      nextConversation: noteDraft.nextConversation,
-      transcript: noteDraft.transcript.trim(),
-      audioUrl: draftAudioUrl,
-      createdAt: new Date().toLocaleString()
-    };
-    setContactNotes((prev) => ({
-      ...prev,
-      [selectedContact.id]: [entry, ...(prev[selectedContact.id] || [])]
-    }));
-    setNoteDraft({
-      callDateTime: new Date().toISOString().slice(0, 16),
-      nextConversation: '',
-      transcript: ''
-    });
-    setDraftAudioUrl(null);
+
+    if (editingNoteId) {
+      setContactNotes((prev) => ({
+        ...prev,
+        [selectedContact.id]: (prev[selectedContact.id] || []).map((n) =>
+          n.id === editingNoteId
+            ? {
+                ...n,
+                callDateTime: noteDraft.callDateTime,
+                nextConversation: noteDraft.nextConversation,
+                transcript: noteDraft.transcript.trim(),
+                audioUrl: draftAudioUrl,
+                updatedAt: new Date().toLocaleString()
+              }
+            : n
+        )
+      }));
+    } else {
+      const entry = {
+        id: Date.now(),
+        callDateTime: noteDraft.callDateTime,
+        nextConversation: noteDraft.nextConversation,
+        transcript: noteDraft.transcript.trim(),
+        audioUrl: draftAudioUrl,
+        createdAt: new Date().toLocaleString()
+      };
+      setContactNotes((prev) => ({
+        ...prev,
+        [selectedContact.id]: [entry, ...(prev[selectedContact.id] || [])]
+      }));
+    }
+
+    resetNoteDraft();
   };
 
   const deleteNote = (contactId, noteId) => {
@@ -244,23 +345,7 @@ export default function Contacts() {
       ...prev,
       [contactId]: (prev[contactId] || []).filter((n) => n.id !== noteId)
     }));
-  };
-
-  const sendMessage = () => {
-    if (message.trim()) {
-      alert(`Message sent to ${selectedContact.name}: ${message}`);
-      setMessage('');
-      setShowCommunication(false);
-    }
-  };
-
-  const sendEmail = () => {
-    if (emailSubject.trim() && emailBody.trim()) {
-      window.location.href = `mailto:${selectedContact.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-      setEmailSubject('');
-      setEmailBody('');
-      setShowCommunication(false);
-    }
+    if (editingNoteId === noteId) resetNoteDraft();
   };
 
   // Always show mock data - use mock data if no contacts are loaded
@@ -288,7 +373,7 @@ export default function Contacts() {
           {canExport && (
             <button className="btn-secondary" onClick={handleExportCSV}>📤 Export</button>
           )}
-          <button className="btn-primary" onClick={() => setShowForm(true)}>+ Add Contact</button>
+          <button className="btn-primary" onClick={handleAddContactClick}>+ Add Contact</button>
         </div>
       </div>
 
@@ -301,84 +386,152 @@ export default function Contacts() {
         />
       </div>
 
-      <div className="contacts-grid">
-        {filteredContacts.map(contact => (
-          <div key={contact.id} className="contact-card">
-            <div className="card-header">
-              <h3>{contact.name}</h3>
-              <span className="score-badge">{contact.score}%</span>
-            </div>
+      <div className="contacts-list">
+        {filteredContacts.map((contact) => {
+          const isExpanded = !!expandedContacts[contact.id];
+          return (
+            <div key={contact.id} className="contact-row">
+              <div className="contact-row-main">
+                <button
+                  type="button"
+                  className="contact-name-toggle"
+                  onClick={() => toggleExpand(contact.id)}
+                  title={isExpanded ? 'Hide details' : 'Show details'}
+                >
+                  <span className={`expand-arrow ${isExpanded ? 'open' : ''}`}>▸</span>
+                  <span className="contact-name">{contact.name}</span>
+                </button>
 
-            <div className="card-info">
-              <p><strong>Company:</strong> {contact.company}</p>
-              <p><strong>Email:</strong> {contact.email}</p>
-              <p><strong>Phone:</strong> {contact.phone}</p>
-              <p><strong>City/Area:</strong> 📍 {contact.city}</p>
-            </div>
+                {contact.score !== '' && contact.score != null && (
+                  <span className="score-badge-inline">{contact.score}%</span>
+                )}
 
-            <div className="action-buttons">
-              <button className="btn-action call" onClick={() => handleCall(contact)} title="Click to Call">☎️</button>
-              <button className="btn-action message" onClick={() => handleMessage(contact)} title="Direct Message">💬</button>
-              <button className="btn-action email" onClick={() => handleEmail(contact)} title="Send Email">📧</button>
-              <button className="btn-action whatsapp" onClick={() => handleWhatsApp(contact)} title="WhatsApp">📱</button>
-              <button className="btn-action digilocker" onClick={() => handleDigi(contact)} title="DigiLocker">🔐</button>
-              <button className="btn-action notes" onClick={() => handleNotes(contact)} title="Notes & Follow-up">📝</button>
-              <button className="btn-action delete" onClick={() => alert('Delete feature coming')}>🗑️</button>
+                <div className="contact-row-actions">
+                  <button className="btn-action call" onClick={() => handleCall(contact)} title="Click to Call">☎️</button>
+                  <button className="btn-action email" onClick={() => handleEmail(contact)} title="Send Email">📧</button>
+                  <button className="btn-action whatsapp" onClick={() => handleWhatsApp(contact)} title="WhatsApp">
+                    <WhatsAppIcon />
+                  </button>
+                  <button className="btn-action digilocker" onClick={() => handleDigi(contact)} title="DigiLocker">🔐</button>
+                  <button className="btn-action notes" onClick={() => handleNotes(contact)} title="Notes & Follow-up">📝</button>
+                </div>
+
+                <div className="contact-row-corner">
+                  <button className="btn-corner edit" onClick={() => handleEditContact(contact)} title="Edit">✏️</button>
+                  <button className="btn-corner delete" onClick={() => handleDeleteContact(contact.id)} title="Delete">🗑️</button>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="contact-row-details">
+                  <p><strong>Company:</strong> {contact.company || '-'}</p>
+                  <p><strong>Email:</strong> {contact.email || '-'}</p>
+                  <p><strong>Phone:</strong> {contact.phone || '-'}</p>
+                  <p><strong>City/Area:</strong> 📍 {contact.city || '-'}</p>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Communication Modal */}
-      {showCommunication && selectedContact && (
-        <div className="modal-overlay" onClick={() => setShowCommunication(false)}>
+      {/* Add/Edit Contact Modal */}
+      {showForm && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{communicationTab === 'message' ? 'Send Message' : 'Send Email'} to {selectedContact.name}</h2>
-              <button className="btn-close" onClick={() => setShowCommunication(false)}>×</button>
+              <h2>{editingContactId ? 'Edit Contact' : 'Add New Contact'}</h2>
+              <button className="btn-close" onClick={() => setShowForm(false)}>×</button>
             </div>
 
-            {communicationTab === 'message' && (
-              <div className="modal-body">
-                <textarea
-                  placeholder="Type your message..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows="6"
-                />
-                <div className="modal-actions">
-                  <button className="btn-primary" onClick={sendMessage}>Send Message</button>
-                  <button className="btn-secondary" onClick={() => setShowCommunication(false)}>Cancel</button>
-                </div>
-              </div>
-            )}
-
-            {communicationTab === 'email' && (
+            <form onSubmit={handleSaveContact}>
               <div className="modal-body">
                 <div className="form-group">
-                  <label>Subject:</label>
+                  <label>Name *</label>
                   <input
                     type="text"
-                    placeholder="Email subject..."
-                    value={emailSubject}
-                    onChange={(e) => setEmailSubject(e.target.value)}
+                    required
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
                   />
                 </div>
                 <div className="form-group">
-                  <label>Message:</label>
-                  <textarea
-                    placeholder="Email body..."
-                    value={emailBody}
-                    onChange={(e) => setEmailBody(e.target.value)}
-                    rows="6"
+                  <label>Company</label>
+                  <input
+                    type="text"
+                    value={contactForm.company}
+                    onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })}
                   />
                 </div>
-                <div className="modal-actions">
-                  <button className="btn-primary" onClick={sendEmail}>Send Email</button>
-                  <button className="btn-secondary" onClick={() => setShowCommunication(false)}>Cancel</button>
+                <div className="form-group">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Phone</label>
+                  <input
+                    type="tel"
+                    value={contactForm.phone}
+                    onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>City/Area</label>
+                  <input
+                    type="text"
+                    value={contactForm.city}
+                    onChange={(e) => setContactForm({ ...contactForm, city: e.target.value })}
+                  />
                 </div>
               </div>
-            )}
+              <div className="modal-actions">
+                <button type="submit" className="btn-primary">
+                  {editingContactId ? 'Save Changes' : 'Add Contact'}
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Email Modal */}
+      {showEmailModal && selectedContact && (
+        <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Send Email to {selectedContact.name}</h2>
+              <button className="btn-close" onClick={() => setShowEmailModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Subject:</label>
+                <input
+                  type="text"
+                  placeholder="Email subject..."
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>Message:</label>
+                <textarea
+                  placeholder="Email body..."
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                  rows="6"
+                />
+              </div>
+              <div className="modal-actions">
+                <button className="btn-primary" onClick={sendEmail}>Send Email</button>
+                <button className="btn-secondary" onClick={() => setShowEmailModal(false)}>Cancel</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -494,7 +647,12 @@ export default function Contacts() {
                 </div>
 
                 <div className="modal-actions">
-                  <button className="btn-primary" onClick={saveNote}>💾 Save Note</button>
+                  <button className="btn-primary" onClick={saveNote}>
+                    {editingNoteId ? '💾 Update Note' : '💾 Save Note'}
+                  </button>
+                  {editingNoteId && (
+                    <button className="btn-secondary" onClick={cancelEditNote}>Cancel Edit</button>
+                  )}
                 </div>
               </div>
 
@@ -504,16 +662,20 @@ export default function Contacts() {
                   <p className="no-notes">No notes yet for this contact.</p>
                 ) : (
                   (contactNotes[selectedContact.id] || []).map((note) => (
-                    <div key={note.id} className="note-entry">
+                    <div key={note.id} className={`note-entry ${editingNoteId === note.id ? 'editing' : ''}`}>
                       <div className="note-entry-header">
                         <span>📞 {note.callDateTime ? new Date(note.callDateTime).toLocaleString() : '—'}</span>
-                        <button className="btn-delete-note" onClick={() => deleteNote(selectedContact.id, note.id)}>🗑️</button>
+                        <div className="note-entry-actions">
+                          <button className="btn-edit-note" onClick={() => handleEditNote(note)} title="Edit">✏️</button>
+                          <button className="btn-delete-note" onClick={() => deleteNote(selectedContact.id, note.id)} title="Delete">🗑️</button>
+                        </div>
                       </div>
                       {note.nextConversation && (
                         <div className="note-next">⏭️ Next: {new Date(note.nextConversation).toLocaleString()}</div>
                       )}
                       {note.transcript && <p className="note-transcript">{note.transcript}</p>}
                       {note.audioUrl && <audio controls src={note.audioUrl} className="voice-playback" />}
+                      {note.updatedAt && <div className="note-updated">Edited {note.updatedAt}</div>}
                     </div>
                   ))
                 )}

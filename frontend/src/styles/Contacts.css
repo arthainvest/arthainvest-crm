@@ -36,74 +36,112 @@
   font-size: 14px;
 }
 
-.contacts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+.contacts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.contact-card {
+.contact-row {
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
-  padding: 20px;
-  transition: all 0.3s ease;
+  transition: box-shadow 0.2s ease;
 }
 
-.contact-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+.contact-row:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-.card-header {
+.contact-row-main {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
+  gap: 14px;
+  padding: 10px 14px;
 }
 
-.card-header h3 {
-  margin: 0;
-  font-size: 18px;
+.contact-name-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  min-width: 160px;
+  flex: 1 1 auto;
+  text-align: left;
 }
 
-.score-badge {
+.expand-arrow {
+  display: inline-block;
+  font-size: 11px;
+  color: #999;
+  transition: transform 0.2s ease;
+}
+
+.expand-arrow.open {
+  transform: rotate(90deg);
+}
+
+.contact-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: #2c3e50;
+}
+
+.score-badge-inline {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   padding: 4px 12px;
   border-radius: 20px;
   font-size: 12px;
   font-weight: bold;
+  flex: 0 0 auto;
 }
 
-.card-info {
-  margin-bottom: 15px;
+.contact-row-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
-.card-info p {
-  margin: 8px 0;
-  font-size: 14px;
+.contact-row-corner {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding-left: 10px;
+  margin-left: 4px;
+  border-left: 1px solid #eee;
+}
+
+.contact-row-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 6px 20px;
+  padding: 0 14px 14px 42px;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 2px;
+  padding-top: 12px;
+}
+
+.contact-row-details p {
+  margin: 0;
+  font-size: 13px;
   color: #666;
 }
 
-.card-info p:last-child {
-  color: #444;
-  font-weight: 500;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .btn-action {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 15px;
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-action.call {
@@ -111,26 +149,9 @@
   color: white;
 }
 
-.btn-action.call:hover {
-  transform: scale(1.1);
-}
-
-.btn-action.message {
-  background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-  color: white;
-}
-
-.btn-action.message:hover {
-  transform: scale(1.1);
-}
-
 .btn-action.email {
   background: linear-gradient(135deg, #FF9100 0%, #F57C00 100%);
   color: white;
-}
-
-.btn-action.email:hover {
-  transform: scale(1.1);
 }
 
 .btn-action.whatsapp {
@@ -138,17 +159,9 @@
   color: white;
 }
 
-.btn-action.whatsapp:hover {
-  transform: scale(1.1);
-}
-
 .btn-action.digilocker {
   background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
   color: white;
-}
-
-.btn-action.digilocker:hover {
-  transform: scale(1.1);
 }
 
 .btn-action.notes {
@@ -156,13 +169,30 @@
   color: white;
 }
 
-.btn-action.notes:hover {
+.btn-action:hover {
   transform: scale(1.1);
 }
 
-.btn-action.delete {
-  background: linear-gradient(135deg, #F44336 0%, #D32F2F 100%);
-  color: white;
+.btn-corner {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  background: #f5f5f5;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-corner.edit:hover {
+  background: #e3f2fd;
+}
+
+.btn-corner.delete:hover {
+  background: #ffebee;
 }
 
 .modal-overlay {
@@ -411,6 +441,11 @@
   margin-bottom: 12px;
 }
 
+.note-entry.editing {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
 .note-entry-header {
   display: flex;
   justify-content: space-between;
@@ -420,6 +455,12 @@
   color: #444;
 }
 
+.note-entry-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-edit-note,
 .btn-delete-note {
   background: none;
   border: none;
@@ -428,8 +469,15 @@
   opacity: 0.7;
 }
 
+.btn-edit-note:hover,
 .btn-delete-note:hover {
   opacity: 1;
+}
+
+.note-updated {
+  font-size: 11px;
+  color: #999;
+  font-style: italic;
 }
 
 .note-next {
