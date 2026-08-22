@@ -59,6 +59,7 @@ export default function Pipeline() {
   const PROCESS_STATUS_OPTIONS = ['Login', 'Sanction', 'Hold', 'Disbursed'];
 
   const [deals, setDeals] = useState(mockDeals);
+  const [leads, setLeads] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [showDigi, setShowDigi] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(null);
@@ -129,6 +130,7 @@ export default function Pipeline() {
           const leadsData = await getLeads(token);
           if (Array.isArray(leadsData)) {
             leadsById = leadsData.reduce((acc, lead) => ({ ...acc, [lead.id]: lead }), {});
+            setLeads(leadsData);
           }
         } catch (leadsError) {
           console.error('Error fetching leads for deal names:', leadsError);
@@ -215,102 +217,76 @@ export default function Pipeline() {
         <button className="btn-primary" onClick={() => setShowForm(true)}>+ New Deal</button>
       </div>
 
-      {/* Kanban Board */}
-      <div className="kanban-board">
-        {STAGES.map(stage => (
-          <div key={stage} className="kanban-column">
-            <h3>{stage} ({getDealsByStage(stage).length})</h3>
-            <div className="deals-list">
-              {getDealsByStage(stage).map(deal => {
-                const loanInfo = getLoanProductInfo(deal.loanProduct);
-                return (
-                  <div key={deal.id} className="deal-card">
-                    <div className="card-title">
-                      <strong>{deal.name}</strong>
-                      <span className="close">×</span>
-                    </div>
-
-                    <div className="deal-phone">📱 {deal.phone}</div>
-
-                    <div className="deal-info">
-                      <p>{deal.company}</p>
-                      <div className="deal-status">
-                        <span className={`status-badge stage-${stage.toLowerCase()}`}>{stage}</span>
-                        <span className={`loan-badge`}>{loanInfo?.icon} {deal.loanProduct}</span>
-                      </div>
-                    </div>
-
-                    <div className="deal-value">
-                      <div>₹{deal.value}K</div>
-                      <div>{deal.probability}%</div>
-                    </div>
-
-                    <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${deal.probability}%` }}></div>
-                    </div>
-
-                    <button
-                      className="digi-btn"
-                      onClick={() => handleDigiLocker(deal)}
-                    >
-                      🔐 DigiLocker
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+      <div className="pipeline-overview">
+        {/* Funnel summary */}
+        <div className="funnel-panel">
+          <div className="funnel-card funnel-new">
+            <h3>New Leads ({leads.filter((l) => l.status === 'New').length})</h3>
+            <p>Fresh contacts imported</p>
           </div>
-        ))}
-      </div>
+          <div className="funnel-card funnel-contacted">
+            <h3>Contacted ({leads.filter((l) => l.status === 'Contacted').length})</h3>
+            <p>Initial outreach completed</p>
+          </div>
+          <div className="funnel-card funnel-interested">
+            <h3>Interested ({leads.filter((l) => l.status === 'Interested').length})</h3>
+            <p>Follow-up scheduled</p>
+          </div>
+          <div className="funnel-card funnel-proposal">
+            <h3>Proposal ({getDealsByStage('Proposal').length})</h3>
+            <p>Awaiting decision</p>
+          </div>
+        </div>
 
-      {/* Sales Pipeline Table */}
-      <div className="loan-processing-section">
-        <h2>Sales Pipeline</h2>
-        <div className="pipeline-table-wrapper">
-          <table className="pipeline-table">
-            <thead>
-              <tr>
-                <th>Folder</th>
-                <th>Client</th>
-                <th>Amount</th>
-                <th>Type of Loan</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deals.map((deal) => {
-                const loanInfo = getLoanProductInfo(deal.loanProduct);
-                return (
-                  <tr key={deal.id}>
-                    <td>
-                      <button
-                        type="button"
-                        className="folder-icon-btn"
-                        onClick={() => handleDigiLocker(deal)}
-                        title="Open DigiLocker"
-                      >
-                        <FolderIcon />
-                      </button>
-                    </td>
-                    <td className="pipeline-client-name">{deal.name}</td>
-                    <td>₹{deal.value}K</td>
-                    <td>{loanInfo?.icon} {loanInfo?.name}</td>
-                    <td>
-                      <select
-                        className={`process-status-select status-${(deal.processStatus || 'Login').toLowerCase()}`}
-                        value={deal.processStatus || 'Login'}
-                        onChange={(e) => handleProcessStatusChange(deal.id, e.target.value)}
-                      >
-                        {PROCESS_STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {/* Sales Pipeline Table */}
+        <div className="loan-processing-section">
+          <h2>Sales Pipeline</h2>
+          <div className="pipeline-table-wrapper">
+            <table className="pipeline-table">
+              <thead>
+                <tr>
+                  <th>Folder</th>
+                  <th>Client</th>
+                  <th>Amount</th>
+                  <th>Type of Loan</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deals.map((deal) => {
+                  const loanInfo = getLoanProductInfo(deal.loanProduct);
+                  return (
+                    <tr key={deal.id}>
+                      <td>
+                        <button
+                          type="button"
+                          className="folder-icon-btn"
+                          onClick={() => handleDigiLocker(deal)}
+                          title="Open DigiLocker"
+                        >
+                          <FolderIcon />
+                        </button>
+                      </td>
+                      <td className="pipeline-client-name">{deal.name}</td>
+                      <td>₹{deal.value}K</td>
+                      <td>{loanInfo?.icon} {loanInfo?.name}</td>
+                      <td>
+                        <select
+                          className={`process-status-select status-${(deal.processStatus || 'Login').toLowerCase()}`}
+                          value={deal.processStatus || 'Login'}
+                          onChange={(e) => handleProcessStatusChange(deal.id, e.target.value)}
+                        >
+                          {PROCESS_STATUS_OPTIONS.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
