@@ -4,7 +4,7 @@
 
 .dashboard-container h1 {
   font-size: 28px;
-  color: #2c3e50;
+  color: var(--text-heading);
   margin-bottom: 30px;
 }
 
@@ -16,7 +16,7 @@
 }
 
 .kpi-card {
-  background-color: white;
+  background-color: var(--bg-surface);
   border-radius: 8px;
   padding: 25px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #e3f2fd;
+  background-color: var(--border-subtle);
   border-radius: 8px;
 }
 
@@ -49,7 +49,7 @@
 
 .kpi-content h3 {
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   margin: 0 0 8px 0;
   font-weight: 600;
   text-transform: uppercase;
@@ -58,12 +58,12 @@
 .kpi-value {
   font-size: 28px;
   font-weight: 700;
-  color: #2c3e50;
+  color: var(--text-heading);
   margin: 0;
 }
 
 .dashboard-section {
-  background-color: white;
+  background-color: var(--bg-surface);
   border-radius: 8px;
   padding: 25px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -71,10 +71,10 @@
 
 .dashboard-section h2 {
   font-size: 18px;
-  color: #2c3e50;
+  color: var(--text-heading);
   margin: 0 0 20px 0;
   padding-bottom: 15px;
-  border-bottom: 2px solid #f5f7fa;
+  border-bottom: 2px solid var(--bg-page);
 }
 
 .leads-table {
@@ -83,27 +83,28 @@
 }
 
 .leads-table thead {
-  background-color: #f8f9fa;
-  border-bottom: 2px solid #e9ecef;
+  background-color: var(--bg-subtle-alt);
+  border-bottom: 2px solid var(--border-neutral-alt);
 }
 
 .leads-table th {
   padding: 15px;
   text-align: left;
   font-weight: 600;
-  color: #2c3e50;
+  color: var(--text-heading);
   font-size: 13px;
   text-transform: uppercase;
 }
 
 .leads-table td {
   padding: 15px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--border-neutral-alt);
   font-size: 14px;
+  color: var(--text-primary);
 }
 
 .leads-table tbody tr:hover {
-  background-color: #f8f9fa;
+  background-color: var(--bg-subtle-alt);
 }
 
 .leads-table .status-badge {
@@ -113,7 +114,7 @@
   font-size: 12px;
   font-weight: 600;
   text-transform: capitalize;
-  background-color: #e3f2fd;
+  background-color: var(--border-subtle);
   color: #1976d2;
 }
 
@@ -125,7 +126,7 @@
 }
 
 .growth-card {
-  background-color: white;
+  background-color: var(--bg-surface);
   border-radius: 8px;
   padding: 25px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -133,7 +134,7 @@
 
 .growth-title {
   font-size: 14px;
-  color: #888;
+  color: var(--text-secondary);
   margin-bottom: 12px;
 }
 
@@ -153,9 +154,9 @@
 .chart-panel .chart-placeholder {
   padding: 60px 20px;
   text-align: center;
-  color: #999;
+  color: var(--text-muted);
   font-size: 14px;
-  background: #f5faff;
+  background: var(--bg-subtle);
   border-radius: 8px;
 }
 
@@ -166,15 +167,15 @@
 }
 
 .stage-card {
-  background: #f5faff;
-  border: 1px solid #e3f2fd;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 20px;
 }
 
 .stage-label {
   font-size: 12px;
-  color: #888;
+  color: var(--text-secondary);
   font-weight: 600;
   letter-spacing: 0.3px;
   margin-bottom: 10px;
@@ -200,8 +201,8 @@
 }
 
 .pipeline-status-card {
-  background: white;
-  border: 1px solid #e3f2fd;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 20px;
 }
@@ -209,7 +210,7 @@
 .pipeline-status-card h3 {
   margin: 0 0 12px 0;
   font-size: 16px;
-  color: #2c3e50;
+  color: var(--text-heading);
   padding-bottom: 12px;
   border-bottom: 2px solid #1976d2;
   display: inline-block;
@@ -223,13 +224,13 @@
 }
 
 .pipeline-status-row span {
-  color: #888;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
 .pipeline-status-row strong {
   font-size: 20px;
-  color: #2c3e50;
+  color: var(--text-heading);
 }
 
 @media (max-width: 768px) {

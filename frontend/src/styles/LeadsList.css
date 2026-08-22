@@ -11,7 +11,7 @@
 
 .leads-header h1 {
   font-size: 28px;
-  color: #2c3e50;
+  color: var(--text-heading);
   margin: 0;
 }
 
@@ -53,7 +53,8 @@
 }
 
 .modal-content {
-  background-color: white;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
   border-radius: 8px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
   max-width: 500px;
@@ -67,13 +68,13 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--border-neutral-alt);
 }
 
 .modal-header h2 {
   margin: 0;
   font-size: 18px;
-  color: #2c3e50;
+  color: var(--text-heading);
 }
 
 .modal-close {
@@ -81,12 +82,12 @@
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #999;
+  color: var(--text-muted);
   transition: color 0.3s ease;
 }
 
 .modal-close:hover {
-  color: #333;
+  color: var(--text-primary);
 }
 
 .form-group {
@@ -102,7 +103,7 @@
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #2c3e50;
+  color: var(--text-heading);
   font-size: 14px;
 }
 
@@ -110,10 +111,12 @@
 .form-group textarea {
   width: 100%;
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-neutral);
   border-radius: 6px;
   font-size: 14px;
   font-family: inherit;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .form-group input:focus,
@@ -127,7 +130,7 @@
   display: flex;
   gap: 10px;
   padding: 20px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid var(--border-neutral-alt);
 }
 
 .modal-actions button {
@@ -151,7 +154,7 @@
 
 .no-data {
   text-align: center;
-  color: #999;
+  color: var(--text-muted);
   padding: 40px;
   font-size: 16px;
 }
@@ -164,8 +167,8 @@
 }
 
 .lead-row {
-  background: white;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-neutral);
   border-radius: 8px;
   transition: box-shadow 0.2s ease;
 }
@@ -197,7 +200,7 @@
 .expand-arrow {
   display: inline-block;
   font-size: 11px;
-  color: #999;
+  color: var(--text-muted);
   transition: transform 0.2s ease;
 }
 
@@ -208,7 +211,7 @@
 .lead-name {
   font-weight: 600;
   font-size: 15px;
-  color: #2c3e50;
+  color: var(--text-heading);
 }
 
 .status-select-compact {
@@ -225,7 +228,7 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   flex: 0 0 auto;
   white-space: nowrap;
-  background-color: #e3f2fd;
+  background-color: var(--border-subtle);
   color: #1976d2;
 }
 
@@ -240,7 +243,7 @@
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 6px 20px;
   padding: 0 14px 14px 42px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-neutral);
   margin-top: 2px;
   padding-top: 12px;
 }
@@ -248,7 +251,7 @@
 .lead-row-details p {
   margin: 0;
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .lead-row-actions .btn-action {
@@ -349,7 +352,7 @@
 
 .voice-note-hint {
   font-size: 12px;
-  color: #999;
+  color: var(--text-muted);
 }
 
 .voice-playback {
@@ -360,24 +363,24 @@
 .notes-history {
   margin: 0 20px 20px 20px;
   padding-top: 20px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid var(--border-neutral-alt);
 }
 
 .notes-history h4 {
   margin: 0 0 12px 0;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .no-notes {
-  color: #999;
+  color: var(--text-muted);
   font-size: 14px;
   padding: 0;
   text-align: left;
 }
 
 .note-entry {
-  background: #f7f7fb;
-  border: 1px solid #e6e6f0;
+  background: var(--bg-subtle-alt);
+  border: 1px solid var(--border-neutral-alt);
   border-radius: 8px;
   padding: 12px 14px;
   margin-bottom: 12px;
@@ -394,7 +397,7 @@
   align-items: center;
   font-weight: 600;
   font-size: 13px;
-  color: #444;
+  color: var(--text-primary);
 }
 
 .note-entry-actions {
@@ -426,13 +429,13 @@
 .note-transcript {
   margin: 8px 0;
   font-size: 14px;
-  color: #333;
+  color: var(--text-primary);
   white-space: pre-wrap;
 }
 
 .note-updated {
   font-size: 11px;
-  color: #999;
+  color: var(--text-muted);
   font-style: italic;
 }
 

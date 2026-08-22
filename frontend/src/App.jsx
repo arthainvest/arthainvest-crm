@@ -11,6 +11,7 @@ import Reports from './components/Reports';
 import Integrations from './components/Integrations';
 import Settings from './components/Settings';
 import Navigation from './components/Navigation';
+import { applyTheme, getStoredTheme } from './utils/theme';
 import './App.css';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    applyTheme(getStoredTheme());
     const token = localStorage.getItem('token');
     setIsLoggedIn(!!token);
     setLoading(false);

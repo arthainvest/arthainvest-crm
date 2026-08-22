@@ -17,7 +17,7 @@
 }
 
 .kanban-column {
-  background: #f5f5f5;
+  background: var(--bg-subtle-alt);
   border-radius: 8px;
   padding: 15px;
   min-height: 600px;
@@ -25,7 +25,7 @@
 
 .kanban-column h3 {
   margin-top: 0;
-  color: #333;
+  color: var(--text-primary);
   font-size: 16px;
 }
 
@@ -36,8 +36,8 @@
 }
 
 .deal-card {
-  background: white;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-neutral);
   border-radius: 6px;
   padding: 15px;
   cursor: move;
@@ -57,12 +57,12 @@
 }
 
 .card-title strong {
-  color: #333;
+  color: var(--text-primary);
 }
 
 .close {
   cursor: pointer;
-  color: #999;
+  color: var(--text-muted);
   font-size: 21px;
 }
 
@@ -71,18 +71,18 @@
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #999;
+  color: var(--text-muted);
 }
 
 .deal-phone {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
 .deal-info {
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
   margin-bottom: 10px;
 }
 
@@ -102,8 +102,8 @@
 }
 
 .deal-status .status-badge.stage-new {
-  background: #e0e0e0;
-  color: #333;
+  background: var(--border-neutral);
+  color: var(--text-primary);
 }
 
 .deal-status .status-badge.stage-qualified {
@@ -142,7 +142,7 @@
 .digi-modal .progress-bar {
   width: 100%;
   height: 6px;
-  background: #e0e0e0;
+  background: var(--border-neutral);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 10px;
@@ -192,8 +192,10 @@
 .form-group input,
 .form-group select {
   padding: 10px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--border-neutral);
   border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .digi-modal {
@@ -232,8 +234,9 @@
   align-items: center;
   gap: 10px;
   padding: 10px;
-  background: #f5f5f5;
+  background: var(--bg-subtle-alt);
   border-radius: 4px;
+  color: var(--text-primary);
 }
 
 .document-item input {
@@ -246,7 +249,7 @@
 
 .digi-modal .progress-text {
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   margin-top: 10px;
 }
 
@@ -281,8 +284,8 @@
 }
 
 .loan-processing-section {
-  background: white;
-  border: 1px solid #bbdefb;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
   border-radius: 8px;
   padding: 20px;
   margin-top: 25px;
@@ -304,7 +307,7 @@
 }
 
 .pipeline-table thead {
-  background-color: #e3f2fd;
+  background-color: var(--border-subtle);
 }
 
 .pipeline-table th {
@@ -319,19 +322,19 @@
 
 .pipeline-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid #e3f2fd;
+  border-bottom: 1px solid var(--border-subtle);
   font-size: 14px;
-  color: #333;
+  color: var(--text-primary);
   vertical-align: middle;
 }
 
 .pipeline-table tbody tr:hover {
-  background-color: #f5faff;
+  background-color: var(--bg-subtle);
 }
 
 .pipeline-client-name {
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .folder-icon-btn {
@@ -354,7 +357,7 @@
   padding: 5px 24px 5px 10px;
   border-radius: 20px;
   border: 1px solid #90caf9;
-  background-color: #e3f2fd;
+  background-color: var(--border-subtle);
   color: #1976d2;
   font-size: 12px;
   font-weight: 600;

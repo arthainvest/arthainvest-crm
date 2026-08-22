@@ -192,6 +192,8 @@ export default function Contacts() {
     if (contact.phone) {
       const url = `https://wa.me/${contact.phone.replace(/\D/g, '')}`;
       window.open(url, '_blank');
+    } else {
+      alert('No phone number available');
     }
   };
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../services/api';
+import { applyTheme } from '../utils/theme';
 import '../styles/Settings.css';
 
 const defaultSettings = {
@@ -54,6 +55,9 @@ export default function Settings() {
       const mapped = fromApi(data);
       setSettings(mapped);
       setSavedSettings(mapped);
+      // The backend's saved preference is authoritative once loaded - it may differ from
+      // whatever localStorage had at app boot (e.g. changed from another session).
+      applyTheme(mapped.theme);
     } catch (error) {
       console.error('Error fetching settings:', error);
     }
@@ -61,11 +65,14 @@ export default function Settings() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    const nextValue = type === 'checkbox' ? checked : value;
     setSettings({
       ...settings,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: nextValue
     });
     setSaved(false);
+    // Live preview: apply immediately, not just on Save. Cancel Changes reverts it below.
+    if (name === 'theme') applyTheme(nextValue);
   };
 
   const handleSave = async () => {
@@ -74,6 +81,7 @@ export default function Settings() {
       const mapped = fromApi(data);
       setSettings(mapped);
       setSavedSettings(mapped);
+      applyTheme(mapped.theme);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
@@ -84,6 +92,7 @@ export default function Settings() {
 
   const handleCancel = () => {
     setSettings(savedSettings);
+    applyTheme(savedSettings.theme);
     setSaved(false);
   };
 

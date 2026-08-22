@@ -224,6 +224,8 @@ export default function LeadsList() {
     if (lead.phone) {
       const url = `https://wa.me/${lead.phone.replace(/\D/g, '')}`;
       window.open(url, '_blank');
+    } else {
+      alert('No phone number available');
     }
   };
 
