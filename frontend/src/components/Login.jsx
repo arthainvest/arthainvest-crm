@@ -83,7 +83,7 @@ export default function Login({ onLoginSuccess }) {
         <div className="login-footer">
           <p>Test Credentials:</p>
           <p><strong>Username:</strong> testuser</p>
-          <p><strong>Password:</strong> TestPass123</p>
+          <p><strong>Password:</strong> 12345</p>
         </div>
       </div>
     </div>

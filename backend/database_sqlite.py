@@ -104,9 +104,9 @@ def init_db():
 
         conn.commit()
 
-        # Insert test user (testuser/TestPass123 - must match Login.jsx displayed hint)
+        # Insert test user (testuser/12345 - must match Login.jsx displayed hint)
         from auth import hash_password
-        hashed_password = hash_password("TestPass123")
+        hashed_password = hash_password("12345")
         cursor.execute("""
             INSERT INTO users (username, email, password, role, full_name, is_active)
             VALUES (?, ?, ?, ?, ?, ?)
