@@ -324,19 +324,25 @@ async def get_deals(stage: str = Query(None), token: str = Query(None)):
 
     return deals
 
+VALID_STAGES = ['new', 'qualified', 'proposal', 'negotiation', 'closed']
+
 @app.post("/api/deals", response_model=DealResponse)
 async def create_deal(deal: DealCreate, token: str = Query(None)):
     """Create new deal"""
     current_user = get_current_user(token)
 
+    stage = (deal.stage or 'new').lower()
+    if stage not in VALID_STAGES:
+        raise HTTPException(status_code=400, detail=f"Invalid stage. Must be one of {VALID_STAGES}")
+
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO deals (lead_id, deal_value, probability, owner_id)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO deals (lead_id, deal_value, probability, loan_product, stage, owner_id)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (deal.lead_id, deal.deal_value, deal.probability, current_user['user_id'])
+            (deal.lead_id, deal.deal_value, deal.probability, deal.loan_product, stage, current_user['user_id'])
         )
         conn.commit()
         deal_id = cursor.lastrowid
@@ -351,10 +357,8 @@ async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
     """Move deal to different stage (Kanban drag-drop)"""
     get_current_user(token)
 
-    valid_stages = ['new', 'qualified', 'proposal', 'negotiation', 'closed']
-
-    if move.stage not in valid_stages:
-        raise HTTPException(status_code=400, detail=f"Invalid stage. Must be one of {valid_stages}")
+    if move.stage not in VALID_STAGES:
+        raise HTTPException(status_code=400, detail=f"Invalid stage. Must be one of {VALID_STAGES}")
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -374,6 +378,18 @@ async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
         raise HTTPException(status_code=404, detail="Deal not found")
 
     return dict(updated_deal)
+
+@app.delete("/api/deals/{deal_id}")
+async def delete_deal(deal_id: int, token: str = Query(None)):
+    """Delete a deal"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM deals WHERE id = ?", (deal_id,))
+        conn.commit()
+
+    return {"message": "Deal deleted"}
 
 # ============= ANALYTICS ENDPOINTS =============
 

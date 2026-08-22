@@ -75,6 +75,7 @@ def init_db():
                 deal_value REAL,
                 stage TEXT DEFAULT 'new',
                 probability REAL,
+                loan_product TEXT DEFAULT 'LAP',
                 expected_close_date DATE,
                 owner_id INTEGER,
                 notes TEXT,
@@ -84,6 +85,15 @@ def init_db():
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
+
+        # CREATE TABLE IF NOT EXISTS only applies to brand-new databases - a database that
+        # already has a `deals` table from before this column existed needs it added
+        # explicitly. SQLite raises "duplicate column name" if it's already there, which is
+        # the expected/safe outcome on every startup after the first.
+        try:
+            cursor.execute("ALTER TABLE deals ADD COLUMN loan_product TEXT DEFAULT 'LAP'")
+        except sqlite3.OperationalError:
+            pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS activity_log (

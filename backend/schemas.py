@@ -63,6 +63,8 @@ class DealCreate(BaseModel):
     lead_id: int
     deal_value: float
     probability: float = 0.5
+    loan_product: str = "LAP"  # LAP, OD, CC, Home, Business, Project
+    stage: Optional[str] = None  # new, qualified, proposal, negotiation, closed - defaults to 'new'
 
 class DealMove(BaseModel):
     stage: str  # new, qualified, proposal, negotiation, closed
@@ -73,6 +75,7 @@ class DealResponse(BaseModel):
     deal_value: float
     stage: str
     probability: float
+    loan_product: str
     expected_close_date: Optional[datetime]
     created_at: datetime
 

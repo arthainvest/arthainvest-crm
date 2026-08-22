@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDeals, getLeads } from '../services/api';
+import { getDeals, getLeads, createDeal, createLead } from '../services/api';
 import '../styles/Pipeline.css';
 
 const FolderIcon = () => (
@@ -97,11 +97,11 @@ export default function Pipeline() {
 
   const token = localStorage.getItem('token');
 
-  // Backend deals only carry {id, lead_id, deal_value, stage, probability, expected_close_date,
-  // created_at} - no name/company/phone/loanProduct/processStatus, stage is lowercase, and
-  // probability is a 0-1 fraction. leadsById fills in the display fields from the matching lead
-  // (fetched separately, since /api/deals doesn't join lead data). Normalize into the shape the
-  // rest of this component expects.
+  // Backend deals carry {id, lead_id, deal_value, stage, probability, loan_product,
+  // expected_close_date, created_at} - no name/company/phone/processStatus, stage is lowercase,
+  // and probability is a 0-1 fraction. leadsById fills in the display fields from the matching
+  // lead (fetched separately, since /api/deals doesn't join lead data). Normalize into the shape
+  // the rest of this component expects.
   const normalizeDeal = (d, leadsById) => {
     const lead = leadsById?.[d.lead_id];
     return {
@@ -110,7 +110,7 @@ export default function Pipeline() {
       company: d.company || lead?.company || '—',
       value: d.value ?? Math.round((d.deal_value ?? 0) / 1000),
       phone: d.phone || lead?.phone || '—',
-      loanProduct: d.loanProduct || lead?.product || 'LAP',
+      loanProduct: d.loan_product || d.loanProduct || lead?.product || 'LAP',
       stage: STAGES.find((s) => s.toLowerCase() === String(d.stage).toLowerCase()) || 'New',
       probability: d.probability > 1 ? Math.round(d.probability) : Math.round((d.probability ?? 0) * 100),
       processStatus: d.processStatus || 'Login'
@@ -145,14 +145,24 @@ export default function Pipeline() {
     }
   };
 
-  const handleAddDeal = () => {
-    if (formData.name && formData.company && formData.value) {
-      const newDeal = {
-        id: deals.length + 1,
-        ...formData,
-        value: parseInt(formData.value)
-      };
-      setDeals([...deals, newDeal]);
+  const handleAddDeal = async () => {
+    if (!formData.name || !formData.company || !formData.value) return;
+
+    try {
+      // Deals are always attached to a lead on the backend - creating one here first, then
+      // the deal against it, matches how a genuinely new client actually enters the pipeline.
+      const newLead = await createLead(token, {
+        name: formData.name,
+        company: formData.company,
+        phone: formData.phone
+      });
+      await createDeal(token, {
+        lead_id: newLead.id,
+        deal_value: parseInt(formData.value) * 1000,
+        probability: Number(formData.probability) / 100,
+        loan_product: formData.loanProduct,
+        stage: formData.stage
+      });
       setFormData({
         name: '',
         company: '',
@@ -164,6 +174,10 @@ export default function Pipeline() {
         description: ''
       });
       setShowForm(false);
+      fetchDeals();
+    } catch (error) {
+      console.error('Error creating deal:', error);
+      alert('Failed to create deal. Please try again.');
     }
   };
 
