@@ -15,6 +15,38 @@ const WhatsAppIcon = () => (
 const emptyContactForm = { name: '', company: '', email: '', phone: '', city: '' };
 const emptyNoteDraft = { callDateTime: '', nextConversation: '', transcript: '' };
 
+// A naive line.split(',') breaks on quoted fields containing commas (e.g. "Doe, John") or
+// escaped quotes ("Say ""hi"""). This walks the line char-by-char tracking quote state instead.
+const parseCSVLine = (line) => {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',') {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+};
+
 export default function Contacts() {
   const [contacts, setContacts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -88,9 +120,9 @@ export default function Contacts() {
           alert('CSV file appears to be empty or missing data rows.');
           return;
         }
-        const headers = rows[0].split(',').map((h) => h.trim().toLowerCase().replace(/"/g, ''));
+        const headers = parseCSVLine(rows[0]).map((h) => h.toLowerCase());
         const imported = rows.slice(1).map((row) => {
-          const cols = row.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+          const cols = parseCSVLine(row);
           const obj = {};
           headers.forEach((h, i) => { obj[h] = cols[i] || ''; });
           return {
