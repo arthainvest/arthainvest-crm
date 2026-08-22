@@ -256,8 +256,8 @@
   margin-top: 20px;
 }
 
-.btn-primary,
-.btn-secondary {
+.pipeline-container .btn-primary,
+.pipeline-container .btn-secondary {
   padding: 10px 20px;
   border: none;
   border-radius: 4px;
@@ -265,15 +265,19 @@
   font-weight: 500;
 }
 
-.btn-primary {
+.pipeline-container .btn-primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   flex: 1;
 }
 
-.btn-secondary {
+.pipeline-container .btn-secondary {
   background: #f0f0f0;
   color: #333;
+}
+
+.pipeline-container .pipeline-header .btn-primary {
+  flex: none;
 }
 
 .loan-processing-section {

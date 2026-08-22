@@ -19,8 +19,8 @@
   align-items: center;
 }
 
-.contacts-header-actions .btn-primary,
-.contacts-header-actions .btn-secondary {
+.contacts-container .contacts-header-actions .btn-primary,
+.contacts-container .contacts-header-actions .btn-secondary {
   flex: none;
 }
 
@@ -258,7 +258,7 @@
   margin-top: 20px;
 }
 
-.btn-primary, .btn-secondary {
+.contacts-container .btn-primary, .contacts-container .btn-secondary {
   padding: 10px 20px;
   border: none;
   border-radius: 4px;
@@ -267,12 +267,12 @@
   flex: 1;
 }
 
-.btn-primary {
+.contacts-container .btn-primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
 }
 
-.btn-secondary {
+.contacts-container .btn-secondary {
   background: #f0f0f0;
   color: #333;
 }

@@ -21,7 +21,7 @@
   align-items: center;
 }
 
-.btn-primary {
+.leads-container .btn-primary {
   background-color: #667eea;
   color: white;
   padding: 10px 20px;
@@ -33,7 +33,7 @@
   transition: all 0.3s ease;
 }
 
-.btn-primary:hover {
+.leads-container .btn-primary:hover {
   background-color: #5568d3;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
@@ -140,12 +140,12 @@
   transition: all 0.3s ease;
 }
 
-.btn-secondary {
+.leads-container .btn-secondary {
   background-color: #e0e0e0;
   color: #333;
 }
 
-.btn-secondary:hover {
+.leads-container .btn-secondary:hover {
   background-color: #d0d0d0;
 }
 
