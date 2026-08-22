@@ -13,6 +13,17 @@
   margin: 0;
 }
 
+.contacts-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.contacts-header-actions .btn-primary,
+.contacts-header-actions .btn-secondary {
+  flex: none;
+}
+
 .search-bar {
   margin-bottom: 30px;
 }

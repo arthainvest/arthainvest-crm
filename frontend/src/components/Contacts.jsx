@@ -33,6 +33,11 @@ export default function Contacts() {
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
 
+  // Role-based Import/Export
+  const userRole = (localStorage.getItem('role') || 'employee').toLowerCase();
+  const canExport = userRole === 'admin';
+  const importInputRef = useRef(null);
+
   useEffect(() => {
     fetchContacts();
   }, []);
@@ -51,6 +56,65 @@ export default function Contacts() {
       console.error('Error fetching contacts:', error);
       setContacts(mockContactsData);
     }
+  };
+
+  const handleImportClick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result;
+        const rows = text.split(/\r?\n/).filter((r) => r.trim().length > 0);
+        if (rows.length < 2) {
+          alert('CSV file appears to be empty or missing data rows.');
+          return;
+        }
+        const headers = rows[0].split(',').map((h) => h.trim().toLowerCase().replace(/"/g, ''));
+        const imported = rows.slice(1).map((row, idx) => {
+          const cols = row.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+          const obj = {};
+          headers.forEach((h, i) => { obj[h] = cols[i] || ''; });
+          return {
+            id: Date.now() + idx,
+            name: obj.name || 'Unnamed Contact',
+            company: obj.company || '',
+            email: obj.email || '',
+            phone: obj.phone || '',
+            city: obj.city || obj['city/area'] || '',
+            score: obj.score || ''
+          };
+        });
+        setContacts((prev) => [...prev, ...imported]);
+        alert(`Imported ${imported.length} contact(s) successfully.`);
+      } catch (err) {
+        alert('Failed to parse CSV file: ' + err.message);
+      } finally {
+        e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['Name', 'Company', 'Email', 'Phone', 'City/Area', 'Score'];
+    const rows = displayContacts.map((c) => [c.name, c.company || '', c.email || '', c.phone || '', c.city || '', c.score ?? '']);
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `contacts-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleCall = (contact) => {
@@ -212,7 +276,20 @@ export default function Contacts() {
     <div className="contacts-container">
       <div className="contacts-header">
         <h1>Contacts</h1>
-        <button className="btn-primary" onClick={() => setShowForm(true)}>+ Add Contact</button>
+        <div className="contacts-header-actions">
+          <input
+            type="file"
+            accept=".csv"
+            ref={importInputRef}
+            onChange={handleImportFile}
+            style={{ display: 'none' }}
+          />
+          <button className="btn-secondary" onClick={handleImportClick}>📥 Import</button>
+          {canExport && (
+            <button className="btn-secondary" onClick={handleExportCSV}>📤 Export</button>
+          )}
+          <button className="btn-primary" onClick={() => setShowForm(true)}>+ Add Contact</button>
+        </div>
       </div>
 
       <div className="search-bar">
