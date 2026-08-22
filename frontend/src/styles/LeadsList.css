@@ -262,6 +262,16 @@
   color: #00695c;
 }
 
+.status-select-compact.status-document-pending {
+  background-color: #fff8e1;
+  color: #f57f17;
+}
+
+.status-select-compact.status-in-process {
+  background-color: #e1f5fe;
+  color: #0277bd;
+}
+
 .lead-row-actions {
   display: flex;
   gap: 6px;
@@ -292,6 +302,9 @@
   cursor: pointer;
   font-size: 15px;
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-action.call {
@@ -311,11 +324,6 @@
 
 .btn-action.notes {
   background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
-  color: white;
-}
-
-.btn-action.delete {
-  background: linear-gradient(135deg, #F44336 0%, #D32F2F 100%);
   color: white;
 }
 
