@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getCallsList, createCall, deleteCall } from '../services/api';
 import '../styles/Calls.css';
 
-const emptyCallForm = { name: '', phone: '', minutes: '', seconds: '', type: 'Outbound', outcome: '', call_date: new Date().toISOString().slice(0, 10) };
+const emptyCallForm = { name: '', phone: '', minutes: '', seconds: '', type: 'Outbound', outcome: '', call_date: '' };
 
 export default function Calls() {
   const [calls, setCalls] = useState([]);
@@ -39,7 +39,7 @@ export default function Calls() {
   }
 
   const handleLogCallClick = () => {
-    setCallForm(emptyCallForm);
+    setCallForm({ ...emptyCallForm, call_date: new Date().toISOString().slice(0, 10) });
     setShowForm(true);
   };
 
@@ -181,7 +181,11 @@ export default function Calls() {
                       min="0"
                       max="59"
                       value={callForm.seconds}
-                      onChange={(e) => setCallForm({ ...callForm, seconds: e.target.value })}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const clamped = raw === '' ? '' : Math.min(59, Math.max(0, Number(raw) || 0));
+                        setCallForm({ ...callForm, seconds: clamped });
+                      }}
                     />
                   </div>
                 </div>

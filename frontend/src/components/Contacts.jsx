@@ -104,18 +104,26 @@ export default function Contacts() {
         });
 
         let created = 0;
+        let failed = 0;
         for (const row of imported) {
-          const { score, ...contactData } = row;
-          const newContact = await createContact(token, contactData);
-          if (score !== null && !Number.isNaN(score)) {
-            await updateContact(token, newContact.id, { score });
+          try {
+            const { score, ...contactData } = row;
+            const newContact = await createContact(token, contactData);
+            if (score !== null && !Number.isNaN(score)) {
+              await updateContact(token, newContact.id, { score });
+            }
+            created++;
+          } catch (rowErr) {
+            console.error('Error importing row:', row, rowErr);
+            failed++;
           }
-          created++;
         }
         await fetchContacts();
-        alert(`Imported ${created} contact(s) successfully.`);
+        alert(failed > 0
+          ? `Imported ${created} contact(s). ${failed} row(s) failed - check the console for details.`
+          : `Imported ${created} contact(s) successfully.`);
       } catch (err) {
-        alert('Failed to import CSV file: ' + err.message);
+        alert('Failed to parse CSV file: ' + err.message);
       } finally {
         e.target.value = '';
       }
@@ -242,7 +250,14 @@ export default function Contacts() {
     setShowNotes(false);
   };
 
+  // Local recordings use blob: URLs, which the browser won't release until explicitly revoked
+  // or the page unloads - revoke before dropping our only reference to one.
+  const revokeIfLocalBlob = (url) => {
+    if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+  };
+
   const resetNoteDraft = () => {
+    revokeIfLocalBlob(draftAudioUrl);
     setNoteDraft({
       callDateTime: new Date().toISOString().slice(0, 16),
       nextConversation: '',
@@ -254,6 +269,7 @@ export default function Contacts() {
   };
 
   const handleEditNote = (note) => {
+    revokeIfLocalBlob(draftAudioUrl);
     setNoteDraft({
       callDateTime: note.call_datetime || '',
       nextConversation: note.next_conversation || '',
@@ -277,6 +293,7 @@ export default function Contacts() {
       const recorder = new MediaRecorder(stream);
       recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
       recorder.onstop = () => {
+        revokeIfLocalBlob(draftAudioUrl);
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         draftAudioBlobRef.current = blob;
         setDraftAudioUrl(URL.createObjectURL(blob));

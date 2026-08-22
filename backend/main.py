@@ -838,8 +838,13 @@ async def upload_note_audio(contact_id: int, note_id: int, token: str = Query(No
 
     with get_db() as conn:
         cursor = conn.cursor()
+        # Deliberately not touching updated_at here: saveNote() on the frontend always calls
+        # createContactNote/updateContactNote first (which sets updated_at correctly for genuine
+        # edits) and only then uploads the recording, including for a brand-new note that has a
+        # voice note attached at creation time. Bumping updated_at again here would make a note's
+        # very first save falsely show an "Edited" badge in the notes history.
         cursor.execute(
-            "UPDATE contact_notes SET audio_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "UPDATE contact_notes SET audio_url = ? WHERE id = ?",
             (audio_url, note_id)
         )
         conn.commit()
