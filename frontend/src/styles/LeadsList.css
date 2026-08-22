@@ -225,51 +225,8 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   flex: 0 0 auto;
   white-space: nowrap;
-}
-
-.status-select-compact.status-new {
   background-color: #e3f2fd;
   color: #1976d2;
-}
-
-.status-select-compact.status-contacted {
-  background-color: #ede7f6;
-  color: #5e35b1;
-}
-
-.status-select-compact.status-interested {
-  background-color: #e8f5e9;
-  color: #2e7d32;
-}
-
-.status-select-compact.status-not-interested {
-  background-color: #eceff1;
-  color: #546e7a;
-}
-
-.status-select-compact.status-cibil-issue {
-  background-color: #fff3e0;
-  color: #e65100;
-}
-
-.status-select-compact.status-lost-to-competition {
-  background-color: #ffebee;
-  color: #c62828;
-}
-
-.status-select-compact.status-qualified {
-  background-color: #e0f2f1;
-  color: #00695c;
-}
-
-.status-select-compact.status-document-pending {
-  background-color: #fff8e1;
-  color: #f57f17;
-}
-
-.status-select-compact.status-in-process {
-  background-color: #e1f5fe;
-  color: #0277bd;
 }
 
 .lead-row-actions {
@@ -303,7 +260,7 @@
   background: transparent;
   border-radius: 0;
   cursor: pointer;
-  font-size: 21px;
+  font-size: 18px;
   font-weight: normal;
   transition: transform 0.2s ease;
   display: inline-flex;
