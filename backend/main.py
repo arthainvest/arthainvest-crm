@@ -10,7 +10,10 @@ from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
     LeadCreate, LeadUpdate, LeadResponse,
-    DealCreate, DealMove, DealResponse
+    DealCreate, DealMove, DealResponse,
+    CampaignCreate, CampaignUpdate, CampaignResponse,
+    IntegrationToggle, IntegrationResponse,
+    SettingsUpdate, SettingsResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -58,6 +61,14 @@ def get_current_user(token: str = None):
         raise HTTPException(status_code=401, detail="Invalid token")
 
     return user_data
+
+def campaign_row_to_dict(row):
+    """Attach computed engagement/progress to a raw campaign row"""
+    c = dict(row)
+    recipients = c.get('recipients') or 0
+    c['engagement'] = round((c.get('clicks') or 0) / recipients * 100) if recipients else 0
+    c['progress'] = 100 if c.get('status') == 'Completed' else (round((c.get('opens') or 0) / recipients * 100) if recipients else 0)
+    return c
 
 # ============= HEALTH CHECK =============
 
@@ -374,6 +385,230 @@ async def get_conversion_rate(token: str = Query(None)):
         "total_deals": total_deals,
         "conversion_rate": round(conversion_rate, 2)
     }
+
+@app.get("/api/analytics/sales")
+async def get_sales_analytics(token: str = Query(None)):
+    """Get sales report metrics, computed from real deals/leads data"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) as count, COALESCE(SUM(deal_value), 0) as total FROM deals WHERE stage = 'closed'")
+        closed = cursor.fetchone()
+        closed_count = closed['count']
+        total_revenue = closed['total']
+
+        cursor.execute("SELECT COUNT(*) as count FROM deals")
+        total_deals = cursor.fetchone()['count']
+
+        cursor.execute("SELECT AVG(deal_value) as avg_value FROM deals")
+        avg_deal_row = cursor.fetchone()
+        avg_deal_value = avg_deal_row['avg_value'] or 0
+
+    win_rate = round((closed_count / total_deals * 100), 1) if total_deals > 0 else 0
+
+    return {
+        "total_revenue": total_revenue,
+        "deals_closed": closed_count,
+        "win_rate": win_rate,
+        "avg_deal_value": round(avg_deal_value)
+    }
+
+# ============= CAMPAIGNS ENDPOINTS =============
+
+@app.get("/api/campaigns", response_model=list[CampaignResponse])
+async def get_campaigns(token: str = Query(None)):
+    """Get all marketing campaigns"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM campaigns ORDER BY created_at DESC")
+        campaigns = [campaign_row_to_dict(row) for row in cursor.fetchall()]
+
+    return campaigns
+
+@app.post("/api/campaigns", response_model=CampaignResponse)
+async def create_campaign(campaign: CampaignCreate, token: str = Query(None)):
+    """Create a new marketing campaign"""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO campaigns (name, type, status, recipients, opens, clicks, created_by)
+            VALUES (?, ?, ?, ?, 0, 0, ?)
+            """,
+            (campaign.name, campaign.type, campaign.status, campaign.recipients, current_user['user_id'])
+        )
+        conn.commit()
+        campaign_id = cursor.lastrowid
+
+        cursor.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,))
+        new_campaign = cursor.fetchone()
+
+    return campaign_row_to_dict(new_campaign)
+
+@app.put("/api/campaigns/{campaign_id}", response_model=CampaignResponse)
+async def update_campaign(campaign_id: int, campaign: CampaignUpdate, token: str = Query(None)):
+    """Update a marketing campaign"""
+    get_current_user(token)
+
+    updates = []
+    values = []
+
+    for field in ['name', 'type', 'status', 'recipients', 'opens', 'clicks']:
+        value = getattr(campaign, field)
+        if value is not None:
+            updates.append(f"{field} = ?")
+            values.append(value)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(campaign_id)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE campaigns SET {', '.join(updates)} WHERE id = ?", values)
+        conn.commit()
+
+        cursor.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,))
+        updated_campaign = cursor.fetchone()
+
+    if not updated_campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    return campaign_row_to_dict(updated_campaign)
+
+@app.delete("/api/campaigns/{campaign_id}")
+async def delete_campaign(campaign_id: int, token: str = Query(None)):
+    """Delete a marketing campaign"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
+        conn.commit()
+
+    return {"message": "Campaign deleted"}
+
+# ============= INTEGRATIONS ENDPOINTS =============
+
+@app.get("/api/integrations", response_model=list[IntegrationResponse])
+async def get_integrations(token: str = Query(None)):
+    """Get all integrations and their connection status"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM integrations ORDER BY id")
+        integrations = [dict(row) for row in cursor.fetchall()]
+
+    for i in integrations:
+        i['connected'] = bool(i['connected'])
+
+    return integrations
+
+@app.put("/api/integrations/{integration_id}/toggle", response_model=IntegrationResponse)
+async def toggle_integration(integration_id: int, toggle: IntegrationToggle, token: str = Query(None)):
+    """Connect or disconnect an integration"""
+    get_current_user(token)
+
+    last_sync = 'now' if toggle.connected else 'never'
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE integrations SET connected = ?, last_sync = ? WHERE id = ?",
+            (1 if toggle.connected else 0, last_sync, integration_id)
+        )
+        conn.commit()
+
+        cursor.execute("SELECT * FROM integrations WHERE id = ?", (integration_id,))
+        updated = cursor.fetchone()
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Integration not found")
+
+    result = dict(updated)
+    result['connected'] = bool(result['connected'])
+    return result
+
+# ============= SETTINGS ENDPOINTS =============
+
+@app.get("/api/settings", response_model=SettingsResponse)
+async def get_settings(token: str = Query(None)):
+    """Get the current user's settings, creating a default row if none exists yet"""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
+        settings = cursor.fetchone()
+
+        if not settings:
+            cursor.execute("SELECT full_name, email FROM users WHERE id = ?", (current_user['user_id'],))
+            user = cursor.fetchone()
+            cursor.execute(
+                """
+                INSERT INTO user_settings (user_id, full_name, email)
+                VALUES (?, ?, ?)
+                """,
+                (current_user['user_id'], user['full_name'] if user else '', user['email'] if user else '')
+            )
+            conn.commit()
+            cursor.execute("SELECT * FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
+            settings = cursor.fetchone()
+
+    result = dict(settings)
+    result['notifications'] = bool(result['notifications'])
+    result['email_notifications'] = bool(result['email_notifications'])
+    result['sms_notifications'] = bool(result['sms_notifications'])
+    return result
+
+@app.put("/api/settings", response_model=SettingsResponse)
+async def update_settings(settings: SettingsUpdate, token: str = Query(None)):
+    """Update the current user's settings (creates the row if it doesn't exist yet)"""
+    current_user = get_current_user(token)
+
+    field_map = {
+        'full_name': settings.full_name,
+        'email': settings.email,
+        'phone': settings.phone,
+        'company': settings.company,
+        'timezone': settings.timezone,
+        'theme': settings.theme,
+        'notifications': None if settings.notifications is None else int(settings.notifications),
+        'email_notifications': None if settings.email_notifications is None else int(settings.email_notifications),
+        'sms_notifications': None if settings.sms_notifications is None else int(settings.sms_notifications),
+    }
+    updates = [(k, v) for k, v in field_map.items() if v is not None]
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
+        exists = cursor.fetchone()
+
+        if not exists:
+            cursor.execute("INSERT INTO user_settings (user_id) VALUES (?)", (current_user['user_id'],))
+
+        if updates:
+            set_clause = ', '.join(f"{k} = ?" for k, _ in updates)
+            values = [v for _, v in updates] + [current_user['user_id']]
+            cursor.execute(f"UPDATE user_settings SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", values)
+
+        conn.commit()
+        cursor.execute("SELECT * FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
+        result = dict(cursor.fetchone())
+
+    result['notifications'] = bool(result['notifications'])
+    result['email_notifications'] = bool(result['email_notifications'])
+    result['sms_notifications'] = bool(result['sms_notifications'])
+    return result
 
 # Run the app
 if __name__ == "__main__":

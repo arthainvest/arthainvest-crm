@@ -21,3 +21,22 @@
 .campaign-actions { display: flex; gap: 10px; }
 .btn-small { padding: 6px 12px; border: 1px solid #90caf9; background: white; color: #1976d2; border-radius: 4px; cursor: pointer; font-size: 12px; }
 .btn-small.delete { color: #1976d2; border-color: #90caf9; }
+.no-data { text-align: center; color: #999; padding: 40px; font-size: 16px; }
+
+.marketing-container .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.marketing-container .modal-content { background: white; border-radius: 8px; width: 90%; max-width: 480px; max-height: 80vh; overflow-y: auto; }
+.marketing-container .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid #e3f2fd; }
+.marketing-container .modal-header h2 { margin: 0; font-size: 18px; }
+.marketing-container .btn-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #999; }
+.marketing-container .modal-body { padding: 20px; }
+.marketing-container .form-group { margin-bottom: 15px; }
+.marketing-container .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+.marketing-container .form-group input,
+.marketing-container .form-group select { width: 100%; padding: 10px; border: 1px solid #e3f2fd; border-radius: 4px; font-family: inherit; font-size: 14px; }
+.marketing-container .form-group input:focus,
+.marketing-container .form-group select:focus { outline: none; border-color: #1976d2; }
+.marketing-container .modal-actions { display: flex; gap: 10px; padding: 20px; border-top: 1px solid #e3f2fd; }
+.marketing-container .modal-actions .btn-primary,
+.marketing-container .modal-actions .btn-secondary { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
+.marketing-container .modal-actions .btn-primary { background: #1976d2; color: white; }
+.marketing-container .modal-actions .btn-secondary { background: #e3f2fd; color: #1976d2; }

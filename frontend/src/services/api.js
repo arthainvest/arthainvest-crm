@@ -81,4 +81,51 @@ export const getConversionRate = async (token) => {
   return response.data;
 };
 
+export const getSalesAnalytics = async (token) => {
+  const response = await api.get(`/api/analytics/sales?token=${token}`);
+  return response.data;
+};
+
+// Campaigns
+export const getCampaigns = async (token) => {
+  const response = await api.get(`/api/campaigns?token=${token}`);
+  return response.data;
+};
+
+export const createCampaign = async (token, campaignData) => {
+  const response = await api.post(`/api/campaigns?token=${token}`, campaignData);
+  return response.data;
+};
+
+export const updateCampaign = async (token, id, campaignData) => {
+  const response = await api.put(`/api/campaigns/${id}?token=${token}`, campaignData);
+  return response.data;
+};
+
+export const deleteCampaign = async (token, id) => {
+  await api.delete(`/api/campaigns/${id}?token=${token}`);
+};
+
+// Integrations
+export const getIntegrations = async (token) => {
+  const response = await api.get(`/api/integrations?token=${token}`);
+  return response.data;
+};
+
+export const toggleIntegration = async (token, id, connected) => {
+  const response = await api.put(`/api/integrations/${id}/toggle?token=${token}`, { connected });
+  return response.data;
+};
+
+// Settings
+export const getSettings = async (token) => {
+  const response = await api.get(`/api/settings?token=${token}`);
+  return response.data;
+};
+
+export const updateSettings = async (token, settingsData) => {
+  const response = await api.put(`/api/settings?token=${token}`, settingsData);
+  return response.data;
+};
+
 export default api;

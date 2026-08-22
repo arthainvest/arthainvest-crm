@@ -36,6 +36,9 @@ def init_db():
         cursor.execute("DROP TABLE IF EXISTS activity_log")
         cursor.execute("DROP TABLE IF EXISTS deals")
         cursor.execute("DROP TABLE IF EXISTS leads")
+        cursor.execute("DROP TABLE IF EXISTS campaigns")
+        cursor.execute("DROP TABLE IF EXISTS integrations")
+        cursor.execute("DROP TABLE IF EXISTS user_settings")
         cursor.execute("DROP TABLE IF EXISTS users")
 
         # Create tables
@@ -102,6 +105,50 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE campaigns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                type TEXT DEFAULT 'Email',
+                status TEXT DEFAULT 'Active',
+                recipients INTEGER DEFAULT 0,
+                opens INTEGER DEFAULT 0,
+                clicks INTEGER DEFAULT 0,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE integrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                logo TEXT,
+                description TEXT,
+                connected INTEGER DEFAULT 0,
+                last_sync TEXT DEFAULT 'never'
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE user_settings (
+                user_id INTEGER PRIMARY KEY,
+                full_name TEXT,
+                email TEXT,
+                phone TEXT,
+                company TEXT,
+                timezone TEXT DEFAULT 'IST',
+                theme TEXT DEFAULT 'light',
+                notifications INTEGER DEFAULT 1,
+                email_notifications INTEGER DEFAULT 1,
+                sms_notifications INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
         conn.commit()
 
         # Insert test user (testuser/12345 - must match Login.jsx displayed hint)
@@ -152,8 +199,50 @@ def init_db():
             VALUES (?, ?, ?, ?, ?)
         """, (4, 120000, 'negotiation', 0.8, 1))
 
+        # Insert sample campaigns
+        cursor.execute("""
+            INSERT INTO campaigns (name, type, status, recipients, opens, clicks, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Insurance Awareness', 'Email', 'Active', 3000, 1200, 450, 1))
+        cursor.execute("""
+            INSERT INTO campaigns (name, type, status, recipients, opens, clicks, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Health Insurance Promotion', 'WhatsApp', 'Completed', 2500, 2000, 800, 1))
+        cursor.execute("""
+            INSERT INTO campaigns (name, type, status, recipients, opens, clicks, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Q3 Product Launch', 'Email', 'Completed', 1200, 600, 180, 1))
+
+        # Insert integrations catalog
+        cursor.execute("""
+            INSERT INTO integrations (name, logo, description, connected, last_sync)
+            VALUES (?, ?, ?, ?, ?)
+        """, ('Gmail', '📧', 'Sync emails and contacts from Gmail', 1, '2 hours ago'))
+        cursor.execute("""
+            INSERT INTO integrations (name, logo, description, connected, last_sync)
+            VALUES (?, ?, ?, ?, ?)
+        """, ('Google Calendar', '📅', 'Sync meetings and schedule', 1, '5 mins ago'))
+        cursor.execute("""
+            INSERT INTO integrations (name, logo, description, connected, last_sync)
+            VALUES (?, ?, ?, ?, ?)
+        """, ('Zapier', '⚡', 'Connect with 1000+ apps via Zapier', 1, '3 days ago'))
+        cursor.execute("""
+            INSERT INTO integrations (name, logo, description, connected, last_sync)
+            VALUES (?, ?, ?, ?, ?)
+        """, ('Slack', '💬', 'Send notifications to Slack', 0, 'never'))
+        cursor.execute("""
+            INSERT INTO integrations (name, logo, description, connected, last_sync)
+            VALUES (?, ?, ?, ?, ?)
+        """, ('HubSpot', '🎯', 'Two-way sync with HubSpot', 1, '5 mins ago'))
+
+        # Insert default settings for the test user
+        cursor.execute("""
+            INSERT INTO user_settings (user_id, full_name, email, phone, company, timezone, theme, notifications, email_notifications, sms_notifications)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (1, 'Test User', 'test@example.com', '+91-9876543210', '', 'IST', 'light', 1, 1, 0))
+
         conn.commit()
         cursor.close()
         print("[OK] SQLite database initialized successfully!")
         print("[OK] Test user created: testuser / password")
-        print("[OK] Sample leads and deals added!")
+        print("[OK] Sample leads, deals, campaigns, integrations and settings added!")

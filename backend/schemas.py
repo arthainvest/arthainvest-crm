@@ -76,6 +76,69 @@ class DealResponse(BaseModel):
     expected_close_date: Optional[datetime]
     created_at: datetime
 
+# Campaign Schemas
+class CampaignCreate(BaseModel):
+    name: str
+    type: str = "Email"
+    status: str = "Active"
+    recipients: int = 0
+
+class CampaignUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    status: Optional[str] = None
+    recipients: Optional[int] = None
+    opens: Optional[int] = None
+    clicks: Optional[int] = None
+
+class CampaignResponse(BaseModel):
+    id: int
+    name: str
+    type: str
+    status: str
+    recipients: int
+    opens: int
+    clicks: int
+    engagement: int
+    progress: int
+    created_at: datetime
+    updated_at: datetime
+
+# Integration Schemas
+class IntegrationToggle(BaseModel):
+    connected: bool
+
+class IntegrationResponse(BaseModel):
+    id: int
+    name: str
+    logo: Optional[str]
+    description: Optional[str]
+    connected: bool
+    last_sync: str
+
+# Settings Schemas
+class SettingsUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    timezone: Optional[str] = None
+    theme: Optional[str] = None
+    notifications: Optional[bool] = None
+    email_notifications: Optional[bool] = None
+    sms_notifications: Optional[bool] = None
+
+class SettingsResponse(BaseModel):
+    full_name: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    company: Optional[str]
+    timezone: str
+    theme: str
+    notifications: bool
+    email_notifications: bool
+    sms_notifications: bool
+
 # Token
 class Token(BaseModel):
     access_token: str

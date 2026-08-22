@@ -1,8 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { getSalesAnalytics } from '../services/api';
 import '../styles/Reports.css';
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('sales');
+  const [salesData, setSalesData] = useState(null);
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    getSalesAnalytics(token)
+      .then(setSalesData)
+      .catch((error) => console.error('Error fetching sales analytics:', error));
+  }, [token]);
 
   const reportTabs = [
     { id: 'sales', label: 'Sales', icon: '📊' },
@@ -10,13 +19,20 @@ export default function Reports() {
     { id: 'calls', label: 'Calls', icon: '☎️' }
   ];
 
-  const salesMetrics = [
-    { label: 'Total Revenue', value: '₹5,25,000' },
-    { label: 'Deals Closed', value: '8' },
-    { label: 'Win Rate', value: '68%' },
-    { label: 'Avg Deal Size', value: '₹65,625' }
+  // Real data from /api/analytics/sales, computed from actual leads/deals.
+  const salesMetrics = salesData ? [
+    { label: 'Total Revenue', value: `₹${salesData.total_revenue.toLocaleString('en-IN')}` },
+    { label: 'Deals Closed', value: String(salesData.deals_closed) },
+    { label: 'Win Rate', value: `${salesData.win_rate}%` },
+    { label: 'Avg Deal Size', value: `₹${salesData.avg_deal_value.toLocaleString('en-IN')}` }
+  ] : [
+    { label: 'Total Revenue', value: '…' },
+    { label: 'Deals Closed', value: '…' },
+    { label: 'Win Rate', value: '…' },
+    { label: 'Avg Deal Size', value: '…' }
   ];
 
+  // Contacts/Calls have no backing data model on the backend yet, so these stay illustrative mock values.
   const contactMetrics = [
     { label: 'Total Contacts', value: '127' },
     { label: 'Active Contacts', value: '85' },

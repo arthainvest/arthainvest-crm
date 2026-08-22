@@ -1,26 +1,44 @@
 import React, { useState, useEffect } from 'react';
+import { getIntegrations, toggleIntegration } from '../services/api';
 import '../styles/Integrations.css';
 
 export default function Integrations() {
   const [integrations, setIntegrations] = useState([]);
+  const token = localStorage.getItem('token');
 
   useEffect(() => {
-    setIntegrations(mockIntegrations);
+    fetchIntegrations();
   }, []);
 
-  const toggleIntegration = (id) => {
-    setIntegrations(integrations.map(int =>
-      int.id === id
-        ? { ...int, connected: !int.connected, lastSync: !int.connected ? 'now' : 'never' }
-        : int
+  const fetchIntegrations = async () => {
+    try {
+      const data = await getIntegrations(token);
+      setIntegrations(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching integrations:', error);
+    }
+  };
+
+  const handleToggle = async (integration) => {
+    const nextConnected = !integration.connected;
+    // Optimistic update, reverted below if the request fails
+    setIntegrations((prev) => prev.map((i) =>
+      i.id === integration.id ? { ...i, connected: nextConnected, last_sync: nextConnected ? 'now' : 'never' } : i
     ));
+    try {
+      const updated = await toggleIntegration(token, integration.id, nextConnected);
+      setIntegrations((prev) => prev.map((i) => (i.id === integration.id ? updated : i)));
+    } catch (error) {
+      console.error('Error toggling integration:', error);
+      setIntegrations((prev) => prev.map((i) => (i.id === integration.id ? integration : i)));
+      alert('Failed to update integration. Please try again.');
+    }
   };
 
   return (
     <div className="integrations-container">
       <div className="integrations-header">
         <h1>Integrations</h1>
-        <button className="btn-primary">+ Add Integration</button>
       </div>
 
       <p className="integrations-subtitle">Connect your favorite tools to ArthaInvest CRM</p>
@@ -43,17 +61,16 @@ export default function Integrations() {
             </div>
 
             {integration.connected && (
-              <p className="last-sync">Last sync: {integration.lastSync}</p>
+              <p className="last-sync">Last sync: {integration.last_sync}</p>
             )}
 
             <div className="integration-actions">
               <button
                 className={`btn-action ${integration.connected ? 'disconnect' : 'connect'}`}
-                onClick={() => toggleIntegration(integration.id)}
+                onClick={() => handleToggle(integration)}
               >
                 {integration.connected ? 'Disconnect' : 'Connect'}
               </button>
-              <button className="btn-action configure">Configure</button>
             </div>
           </div>
         ))}
@@ -61,46 +78,3 @@ export default function Integrations() {
     </div>
   );
 }
-
-const mockIntegrations = [
-  {
-    id: 1,
-    name: 'Gmail',
-    logo: '📧',
-    description: 'Sync emails and contacts from Gmail',
-    connected: true,
-    lastSync: '2 hours ago'
-  },
-  {
-    id: 2,
-    name: 'Google Calendar',
-    logo: '📅',
-    description: 'Sync meetings and schedule',
-    connected: true,
-    lastSync: '5 mins ago'
-  },
-  {
-    id: 3,
-    name: 'Zapier',
-    logo: '⚡',
-    description: 'Connect with 1000+ apps via Zapier',
-    connected: true,
-    lastSync: '3 days ago'
-  },
-  {
-    id: 4,
-    name: 'Slack',
-    logo: '💬',
-    description: 'Send notifications to Slack',
-    connected: false,
-    lastSync: 'never'
-  },
-  {
-    id: 5,
-    name: 'HubSpot',
-    logo: '🎯',
-    description: 'Two-way sync with HubSpot',
-    connected: true,
-    lastSync: '5 mins ago'
-  }
-];

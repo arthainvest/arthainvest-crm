@@ -1,20 +1,63 @@
 import React, { useState, useEffect } from 'react';
+import { getSettings, updateSettings } from '../services/api';
 import '../styles/Settings.css';
 
-export default function Settings() {
-  const [settings, setSettings] = useState({
-    fullName: 'Test User',
-    email: 'testuser@example.com',
-    phone: '+91-9876543210',
-    company: '',
-    timezone: 'IST',
-    theme: 'light',
-    notifications: true,
-    emailNotifications: true,
-    smsNotifications: false
-  });
+const defaultSettings = {
+  fullName: '',
+  email: '',
+  phone: '',
+  company: '',
+  timezone: 'IST',
+  theme: 'light',
+  notifications: true,
+  emailNotifications: true,
+  smsNotifications: false
+};
 
+const fromApi = (s) => ({
+  fullName: s.full_name || '',
+  email: s.email || '',
+  phone: s.phone || '',
+  company: s.company || '',
+  timezone: s.timezone,
+  theme: s.theme,
+  notifications: s.notifications,
+  emailNotifications: s.email_notifications,
+  smsNotifications: s.sms_notifications
+});
+
+const toApi = (s) => ({
+  full_name: s.fullName,
+  email: s.email,
+  phone: s.phone,
+  company: s.company,
+  timezone: s.timezone,
+  theme: s.theme,
+  notifications: s.notifications,
+  email_notifications: s.emailNotifications,
+  sms_notifications: s.smsNotifications
+});
+
+export default function Settings() {
+  const [settings, setSettings] = useState(defaultSettings);
+  const [savedSettings, setSavedSettings] = useState(defaultSettings);
   const [saved, setSaved] = useState(false);
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const data = await getSettings(token);
+      const mapped = fromApi(data);
+      setSettings(mapped);
+      setSavedSettings(mapped);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -25,9 +68,23 @@ export default function Settings() {
     setSaved(false);
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const handleSave = async () => {
+    try {
+      const data = await updateSettings(token, toApi(settings));
+      const mapped = fromApi(data);
+      setSettings(mapped);
+      setSavedSettings(mapped);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert('Failed to save settings. Please try again.');
+    }
+  };
+
+  const handleCancel = () => {
+    setSettings(savedSettings);
+    setSaved(false);
   };
 
   return (
@@ -87,10 +144,10 @@ export default function Settings() {
           <div className="form-group">
             <label>Timezone</label>
             <select name="timezone" value={settings.timezone} onChange={handleChange}>
-              <option>IST (India Standard Time)</option>
-              <option>UTC</option>
-              <option>EST</option>
-              <option>PST</option>
+              <option value="IST">IST (India Standard Time)</option>
+              <option value="UTC">UTC</option>
+              <option value="EST">EST</option>
+              <option value="PST">PST</option>
             </select>
           </div>
 
@@ -147,7 +204,7 @@ export default function Settings() {
           <button className="btn-primary" onClick={handleSave}>
             💾 Save Settings
           </button>
-          <button className="btn-secondary">Cancel Changes</button>
+          <button className="btn-secondary" onClick={handleCancel}>Cancel Changes</button>
           {saved && <span className="save-message">✓ Settings saved!</span>}
         </div>
       </div>
