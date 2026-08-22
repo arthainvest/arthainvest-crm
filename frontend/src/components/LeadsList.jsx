@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   getLeads, createLead, updateLead,
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
-  uploadLeadNoteAudio, API_URL
+  uploadLeadNoteAudio, API_URL, dialCall, aiSuggestLeadFollowup
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/LeadsList.css';
@@ -81,6 +81,8 @@ export default function LeadsList() {
   // Notes & voice-note state
   const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState([]);
+  const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
   const [noteDraft, setNoteDraft] = useState({ callDateTime: '', nextConversation: '', transcript: '' });
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -220,12 +222,23 @@ export default function LeadsList() {
     URL.revokeObjectURL(url);
   };
 
-  const handleCall = (lead) => {
-    if (lead.phone) {
-      window.location.href = `tel:${lead.phone}`;
-    } else {
+  const handleCall = async (lead) => {
+    if (!lead.phone) {
       alert('No phone number available');
+      return;
     }
+    // Try a real Twilio click-to-call first (rings the agent, then bridges to the lead);
+    // falls back to a plain tel: link when Twilio isn't configured on the server.
+    try {
+      const result = await dialCall(token, lead.phone);
+      if (result.configured) {
+        alert(result.message);
+        return;
+      }
+    } catch (error) {
+      console.error('Error placing Twilio call:', error);
+    }
+    window.location.href = `tel:${lead.phone}`;
   };
 
   const handleWhatsApp = (lead) => {
@@ -273,6 +286,7 @@ export default function LeadsList() {
     setSelectedLead(lead);
     resetNoteDraft();
     setIsRecording(false);
+    setAiSuggestion(null);
     setShowNotes(true);
     try {
       const data = await getLeadNotes(token, lead.id);
@@ -280,6 +294,21 @@ export default function LeadsList() {
     } catch (error) {
       console.error('Error fetching notes:', error);
       setNotes([]);
+    }
+  };
+
+  const handleAiSuggest = async () => {
+    if (!selectedLead) return;
+    setAiLoading(true);
+    setAiSuggestion(null);
+    try {
+      const result = await aiSuggestLeadFollowup(token, selectedLead.id);
+      setAiSuggestion(result.suggestion || result.message);
+    } catch (error) {
+      console.error('Error getting AI suggestion:', error);
+      setAiSuggestion('Failed to get a suggestion. Please try again.');
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -682,7 +711,15 @@ export default function LeadsList() {
             </div>
 
             <div className="notes-history">
-              <h4>History ({notes.length})</h4>
+              <div className="notes-history-header">
+                <h4>History ({notes.length})</h4>
+                <button type="button" className="btn-ai-suggest" onClick={handleAiSuggest} disabled={aiLoading}>
+                  {aiLoading ? '✨ Thinking…' : '✨ AI Suggest Follow-up'}
+                </button>
+              </div>
+              {aiSuggestion && (
+                <div className="ai-suggestion">{aiSuggestion}</div>
+              )}
               {notes.length === 0 ? (
                 <p className="no-notes">No notes yet for this lead.</p>
               ) : (

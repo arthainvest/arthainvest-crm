@@ -27,6 +27,29 @@ def execute_query(query, params=None, fetch=False):
         cursor.close()
         return result
 
+def _ensure_integrations_catalog(cursor, conn):
+    """Insert any catalog integration that doesn't exist yet, by name. Runs on every startup
+    (not just first-run seeding) so an integration added after a database was already seeded
+    still appears, without duplicating rows on restart."""
+    catalog = [
+        ('Gmail', '📧', 'Sync emails and contacts from Gmail', 1, '2 hours ago'),
+        ('Google Calendar', '📅', 'Sync meetings and schedule', 1, '5 mins ago'),
+        ('Zapier', '⚡', 'Connect with 1000+ apps via Zapier', 1, '3 days ago'),
+        ('Slack', '💬', 'Send notifications to Slack', 0, 'never'),
+        ('HubSpot', '🎯', 'Two-way sync with HubSpot', 1, '5 mins ago'),
+        ('Twilio', '📞', 'Click-to-call and SMS via Twilio', 0, 'never'),
+        ('Claude AI', '✨', 'AI-drafted follow-ups and note summaries', 0, 'never'),
+        ('LinkedIn', '💼', 'Sync leads and posts from LinkedIn', 0, 'never'),
+    ]
+    existing = {row['name'] for row in cursor.execute("SELECT name FROM integrations").fetchall()}
+    for name, logo, description, connected, last_sync in catalog:
+        if name not in existing:
+            cursor.execute(
+                "INSERT INTO integrations (name, logo, description, connected, last_sync) VALUES (?, ?, ?, ?, ?)",
+                (name, logo, description, connected, last_sync)
+            )
+    conn.commit()
+
 def init_db():
     """Create the schema if it doesn't exist yet, then seed demo data only on a genuinely
     empty database (first run). Never drops or touches existing tables/rows - this runs on
@@ -213,6 +236,10 @@ def init_db():
 
         conn.commit()
 
+        # Runs on every startup regardless of seed state (unlike the demo-data block below),
+        # so a catalog entry added after a database was already seeded still shows up.
+        _ensure_integrations_catalog(cursor, conn)
+
         # Schema is in place. Only seed demo data into a genuinely empty database (first run
         # ever) - never on a restart of a database that already has real users/data in it.
         cursor.execute("SELECT COUNT(*) as count FROM users")
@@ -287,28 +314,6 @@ def init_db():
             INSERT INTO campaigns (name, type, status, recipients, opens, clicks, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Q3 Product Launch', 'Email', 'Completed', 1200, 600, 180, 1))
-
-        # Insert integrations catalog
-        cursor.execute("""
-            INSERT INTO integrations (name, logo, description, connected, last_sync)
-            VALUES (?, ?, ?, ?, ?)
-        """, ('Gmail', '📧', 'Sync emails and contacts from Gmail', 1, '2 hours ago'))
-        cursor.execute("""
-            INSERT INTO integrations (name, logo, description, connected, last_sync)
-            VALUES (?, ?, ?, ?, ?)
-        """, ('Google Calendar', '📅', 'Sync meetings and schedule', 1, '5 mins ago'))
-        cursor.execute("""
-            INSERT INTO integrations (name, logo, description, connected, last_sync)
-            VALUES (?, ?, ?, ?, ?)
-        """, ('Zapier', '⚡', 'Connect with 1000+ apps via Zapier', 1, '3 days ago'))
-        cursor.execute("""
-            INSERT INTO integrations (name, logo, description, connected, last_sync)
-            VALUES (?, ?, ?, ?, ?)
-        """, ('Slack', '💬', 'Send notifications to Slack', 0, 'never'))
-        cursor.execute("""
-            INSERT INTO integrations (name, logo, description, connected, last_sync)
-            VALUES (?, ?, ?, ?, ?)
-        """, ('HubSpot', '🎯', 'Two-way sync with HubSpot', 1, '5 mins ago'))
 
         # Insert default settings for the test user
         cursor.execute("""

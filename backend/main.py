@@ -19,7 +19,8 @@ from schemas import (
     ContactCreate, ContactUpdate, ContactResponse,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
-    CallCreate, CallResponse
+    CallCreate, CallResponse,
+    DialRequest, DialResponse, AISummaryResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -881,6 +882,23 @@ async def upload_note_audio(contact_id: int, note_id: int, token: str = Query(No
 
     return dict(updated_note)
 
+@app.post("/api/contacts/{contact_id}/ai-suggest", response_model=AISummaryResponse)
+async def ai_suggest_contact_followup(contact_id: int, token: str = Query(None)):
+    """AI-drafted follow-up suggestion from a contact's note history, via Claude"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM contacts WHERE id = ?", (contact_id,))
+        contact = cursor.fetchone()
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        cursor.execute("SELECT * FROM contact_notes WHERE contact_id = ? ORDER BY created_at DESC", (contact_id,))
+        notes = [dict(row) for row in cursor.fetchall()]
+
+    return _generate_ai_suggestion(contact['name'], notes)
+
 def _delete_audio_file(audio_url):
     """Best-effort removal of a previously uploaded note recording"""
     try:
@@ -890,6 +908,41 @@ def _delete_audio_file(audio_url):
             os.remove(file_path)
     except OSError as e:
         print(f"[WARN] Could not remove audio file {audio_url}: {e}")
+
+def _generate_ai_suggestion(person_name, notes):
+    """Draft a follow-up suggestion from a contact/lead's note history via Claude. Requires
+    ANTHROPIC_API_KEY - returns configured=False (not an error) when it isn't set, so the
+    frontend can show a clear "not set up" message instead of a generic failure."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return AISummaryResponse(configured=False, message="Claude AI is not configured on this server.")
+
+    transcripts = [n['transcript'] for n in notes if n.get('transcript')]
+    if not transcripts:
+        return AISummaryResponse(configured=True, message="No notes yet to summarize.", suggestion=None)
+
+    history = "\n".join(f"- {t}" for t in transcripts)
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=300,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"You are a sales assistant for an insurance/loan CRM. Here is the call "
+                    f"note history for {person_name}:\n{history}\n\n"
+                    "In 2-3 short sentences, suggest what the next follow-up conversation "
+                    "should cover. Be specific and actionable, not generic."
+                )
+            }]
+        )
+        suggestion = "".join(block.text for block in response.content if hasattr(block, 'text')).strip()
+        return AISummaryResponse(configured=True, message="Suggestion generated.", suggestion=suggestion)
+    except Exception as e:
+        return AISummaryResponse(configured=True, message=f"Claude request failed: {str(e)}")
 
 # ============= LEAD NOTES ENDPOINTS =============
 
@@ -1016,6 +1069,23 @@ async def upload_lead_note_audio(lead_id: int, note_id: int, token: str = Query(
 
     return dict(updated_note)
 
+@app.post("/api/leads/{lead_id}/ai-suggest", response_model=AISummaryResponse)
+async def ai_suggest_lead_followup(lead_id: int, token: str = Query(None)):
+    """AI-drafted follow-up suggestion from a lead's note history, via Claude"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM leads WHERE id = ?", (lead_id,))
+        lead = cursor.fetchone()
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+
+        cursor.execute("SELECT * FROM lead_notes WHERE lead_id = ? ORDER BY created_at DESC", (lead_id,))
+        notes = [dict(row) for row in cursor.fetchall()]
+
+    return _generate_ai_suggestion(lead['name'], notes)
+
 # ============= CALLS ENDPOINTS =============
 
 @app.get("/api/calls", response_model=list[CallResponse])
@@ -1063,6 +1133,50 @@ async def delete_call(call_id: int, token: str = Query(None)):
         conn.commit()
 
     return {"message": "Call deleted"}
+
+@app.post("/api/calls/dial", response_model=DialResponse)
+async def dial_call(dial: DialRequest, token: str = Query(None)):
+    """Click-to-call via Twilio: rings the agent's own phone first, then bridges the call to
+    the customer's number once the agent answers. Requires TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER (a Twilio-owned number) to be set, plus the
+    agent's own phone number saved in Settings - without those, returns configured=False so
+    the frontend can fall back to a plain tel: link instead of erroring."""
+    current_user = get_current_user(token)
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_FROM_NUMBER")
+
+    if not (account_sid and auth_token and from_number):
+        return DialResponse(configured=False, message="Twilio is not configured on this server.")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT phone FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
+        row = cursor.fetchone()
+
+    agent_number = row['phone'] if row else None
+    if not agent_number:
+        return DialResponse(
+            configured=False,
+            message="Add your own phone number in Settings first - Twilio calls you there, then connects you to the customer."
+        )
+
+    try:
+        from twilio.rest import Client
+        from twilio.base.exceptions import TwilioRestException
+
+        client = Client(account_sid, auth_token)
+        call = client.calls.create(
+            to=agent_number,
+            from_=from_number,
+            twiml=f'<Response><Dial callerId="{from_number}">{dial.to}</Dial></Response>'
+        )
+        return DialResponse(configured=True, message=f"Calling you at {agent_number} now.", call_sid=call.sid)
+    except TwilioRestException as e:
+        return DialResponse(configured=True, message=f"Twilio couldn't place the call: {e.msg}")
+    except Exception as e:
+        return DialResponse(configured=True, message=f"Call failed: {str(e)}")
 
 # ============= MORE ANALYTICS ENDPOINTS =============
 

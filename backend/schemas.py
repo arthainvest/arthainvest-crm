@@ -231,6 +231,21 @@ class CallResponse(BaseModel):
     call_date: Optional[str]
     created_at: datetime
 
+# Twilio click-to-call
+class DialRequest(BaseModel):
+    to: str  # customer's phone number to connect the agent to
+
+class DialResponse(BaseModel):
+    configured: bool
+    message: str
+    call_sid: Optional[str] = None
+
+# Claude AI note assistant
+class AISummaryResponse(BaseModel):
+    configured: bool
+    message: str
+    suggestion: Optional[str] = None
+
 # Token
 class Token(BaseModel):
     access_token: str

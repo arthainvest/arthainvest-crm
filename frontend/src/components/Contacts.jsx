@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   getContactsList, createContact, updateContact, deleteContact,
   getContactNotes, createContactNote, updateContactNote, deleteContactNote,
-  uploadNoteAudio, API_URL
+  uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup
 } from '../services/api';
 import '../styles/Contacts.css';
 
@@ -72,6 +72,8 @@ export default function Contacts() {
   // Notes & voice-note state
   const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState([]);
+  const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
   const [noteDraft, setNoteDraft] = useState(emptyNoteDraft);
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -180,12 +182,23 @@ export default function Contacts() {
     URL.revokeObjectURL(url);
   };
 
-  const handleCall = (contact) => {
-    if (contact.phone) {
-      window.location.href = `tel:${contact.phone}`;
-    } else {
+  const handleCall = async (contact) => {
+    if (!contact.phone) {
       alert('No phone number available');
+      return;
     }
+    // Try a real Twilio click-to-call first (rings the agent, then bridges to the contact);
+    // falls back to a plain tel: link when Twilio isn't configured on the server.
+    try {
+      const result = await dialCall(token, contact.phone);
+      if (result.configured) {
+        alert(result.message);
+        return;
+      }
+    } catch (error) {
+      console.error('Error placing Twilio call:', error);
+    }
+    window.location.href = `tel:${contact.phone}`;
   };
 
   const handleWhatsApp = (contact) => {
@@ -269,6 +282,7 @@ export default function Contacts() {
     setSelectedContact(contact);
     resetNoteDraft();
     setIsRecording(false);
+    setAiSuggestion(null);
     setShowNotes(true);
     try {
       const data = await getContactNotes(token, contact.id);
@@ -276,6 +290,21 @@ export default function Contacts() {
     } catch (error) {
       console.error('Error fetching notes:', error);
       setNotes([]);
+    }
+  };
+
+  const handleAiSuggest = async () => {
+    if (!selectedContact) return;
+    setAiLoading(true);
+    setAiSuggestion(null);
+    try {
+      const result = await aiSuggestContactFollowup(token, selectedContact.id);
+      setAiSuggestion(result.suggestion || result.message);
+    } catch (error) {
+      console.error('Error getting AI suggestion:', error);
+      setAiSuggestion('Failed to get a suggestion. Please try again.');
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -718,7 +747,15 @@ export default function Contacts() {
               </div>
 
               <div className="notes-history">
-                <h4>History ({notes.length})</h4>
+                <div className="notes-history-header">
+                  <h4>History ({notes.length})</h4>
+                  <button type="button" className="btn-ai-suggest" onClick={handleAiSuggest} disabled={aiLoading}>
+                    {aiLoading ? '✨ Thinking…' : '✨ AI Suggest Follow-up'}
+                  </button>
+                </div>
+                {aiSuggestion && (
+                  <div className="ai-suggestion">{aiSuggestion}</div>
+                )}
                 {notes.length === 0 ? (
                   <p className="no-notes">No notes yet for this contact.</p>
                 ) : (

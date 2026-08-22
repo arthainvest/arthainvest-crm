@@ -225,6 +225,23 @@ export const deleteCall = async (token, id) => {
   await api.delete(`/api/calls/${id}?token=${token}`);
 };
 
+// Twilio click-to-call
+export const dialCall = async (token, to) => {
+  const response = await api.post(`/api/calls/dial?token=${token}`, { to });
+  return response.data;
+};
+
+// Claude AI note assistant
+export const aiSuggestContactFollowup = async (token, contactId) => {
+  const response = await api.post(`/api/contacts/${contactId}/ai-suggest?token=${token}`);
+  return response.data;
+};
+
+export const aiSuggestLeadFollowup = async (token, leadId) => {
+  const response = await api.post(`/api/leads/${leadId}/ai-suggest?token=${token}`);
+  return response.data;
+};
+
 // More analytics
 export const getContactsAnalytics = async (token) => {
   const response = await api.get(`/api/analytics/contacts?token=${token}`);
