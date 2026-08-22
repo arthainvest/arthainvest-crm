@@ -298,9 +298,10 @@
   width: 32px;
   height: 32px;
   border: none;
+  background: transparent;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 17px;
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
@@ -308,26 +309,23 @@
 }
 
 .btn-action.call {
-  background: linear-gradient(135deg, #00d084 0%, #00c853 100%);
-  color: white;
+  color: #00c853;
 }
 
 .btn-action.email {
-  background: linear-gradient(135deg, #FF9100 0%, #F57C00 100%);
-  color: white;
+  color: #F57C00;
 }
 
 .btn-action.whatsapp {
-  background: linear-gradient(135deg, #25D366 0%, #20BA58 100%);
-  color: white;
+  color: #25D366;
 }
 
 .btn-action.notes {
-  background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
-  color: white;
+  color: #388E3C;
 }
 
 .btn-action:hover {
+  background: #f2f2f2;
   transform: scale(1.1);
 }
 
