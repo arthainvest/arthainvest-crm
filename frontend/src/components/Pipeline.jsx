@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/Pipeline.css';
 
+const FolderIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+  </svg>
+);
+
 export default function Pipeline() {
   const mockDeals = [
     {
@@ -242,76 +248,58 @@ export default function Pipeline() {
       {/* Loan Processing Tracker */}
       <div className="loan-processing-section">
         <h2>Loan Processing</h2>
-        <div className="loan-processing-table-wrap">
-          <table className="loan-processing-table">
-            <thead>
-              <tr>
-                <th></th>
-                <th>Client</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Login</th>
-                <th>Sanction</th>
-                <th>Disbursed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deals.map((deal) => (
-                <tr key={deal.id}>
-                  <td>
-                    <button
-                      type="button"
-                      className="folder-icon-btn"
-                      onClick={() => handleDigiLocker(deal)}
-                      title="Open DigiLocker"
-                    >
-                      📁
-                    </button>
-                  </td>
-                  <td>{deal.name}</td>
-                  <td>₹{deal.value}K</td>
-                  <td>
-                    <select
-                      className="process-status-select"
-                      value={deal.processStatus || 'In Progress'}
-                      onChange={(e) => handleProcessStatusChange(deal.id, e.target.value)}
-                    >
-                      {PROCESS_STATUS_OPTIONS.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="milestone-cell">
-                    <button
-                      type="button"
-                      className={`milestone-check ${deal.milestones?.login ? 'done' : ''}`}
-                      onClick={() => handleMilestoneToggle(deal.id, 'login')}
-                    >
-                      {deal.milestones?.login ? '✓' : '–'}
-                    </button>
-                  </td>
-                  <td className="milestone-cell">
-                    <button
-                      type="button"
-                      className={`milestone-check ${deal.milestones?.sanction ? 'done' : ''}`}
-                      onClick={() => handleMilestoneToggle(deal.id, 'sanction')}
-                    >
-                      {deal.milestones?.sanction ? '✓' : '–'}
-                    </button>
-                  </td>
-                  <td className="milestone-cell">
-                    <button
-                      type="button"
-                      className={`milestone-check ${deal.milestones?.disbursed ? 'done' : ''}`}
-                      onClick={() => handleMilestoneToggle(deal.id, 'disbursed')}
-                    >
-                      {deal.milestones?.disbursed ? '✓' : '–'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="loan-rows">
+          {deals.map((deal) => (
+            <div key={deal.id} className="loan-row">
+              <button
+                type="button"
+                className="folder-icon-btn"
+                onClick={() => handleDigiLocker(deal)}
+                title="Open DigiLocker"
+              >
+                <FolderIcon />
+              </button>
+
+              <div className="loan-row-client">
+                <span className="loan-client-name">{deal.name}</span>
+                <span className="loan-client-amount">₹{deal.value}K</span>
+              </div>
+
+              <select
+                className="process-status-select"
+                value={deal.processStatus || 'In Progress'}
+                onChange={(e) => handleProcessStatusChange(deal.id, e.target.value)}
+              >
+                {PROCESS_STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+
+              <div className="milestones-inline">
+                <button
+                  type="button"
+                  className={`milestone-pill ${deal.milestones?.login ? 'done' : ''}`}
+                  onClick={() => handleMilestoneToggle(deal.id, 'login')}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  className={`milestone-pill ${deal.milestones?.sanction ? 'done' : ''}`}
+                  onClick={() => handleMilestoneToggle(deal.id, 'sanction')}
+                >
+                  Sanction
+                </button>
+                <button
+                  type="button"
+                  className={`milestone-pill ${deal.milestones?.disbursed ? 'done' : ''}`}
+                  onClick={() => handleMilestoneToggle(deal.id, 'disbursed')}
+                >
+                  Disbursed
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

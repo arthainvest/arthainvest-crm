@@ -278,7 +278,7 @@
 
 .loan-processing-section {
   background: white;
-  border: 1px solid #e0e0e0;
+  border: 1px solid #bbdefb;
   border-radius: 8px;
   padding: 20px;
   margin-top: 25px;
@@ -287,94 +287,103 @@
 .loan-processing-section h2 {
   margin: 0 0 15px 0;
   font-size: 18px;
-  color: #333;
+  color: #1976d2;
 }
 
-.loan-processing-table-wrap {
-  overflow-x: auto;
+.loan-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.loan-processing-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.loan-processing-table th {
-  text-align: left;
-  padding: 10px 12px;
-  color: #888;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  border-bottom: 2px solid #eee;
-  white-space: nowrap;
-}
-
-.loan-processing-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid #f0f0f0;
-  color: #333;
+.loan-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  background: white;
+  border: 1px solid #e3f2fd;
+  border-radius: 6px;
+  flex-wrap: wrap;
 }
 
 .folder-icon-btn {
   background: transparent;
   border: none;
   cursor: pointer;
-  font-size: 17px;
+  color: #1976d2;
   padding: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   transition: transform 0.2s ease;
+  flex: 0 0 auto;
 }
 
 .folder-icon-btn:hover {
   transform: scale(1.15);
 }
 
+.loan-row-client {
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  flex: 1 1 140px;
+}
+
+.loan-client-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+}
+
+.loan-client-amount {
+  font-size: 12px;
+  color: #1976d2;
+}
+
 .process-status-select {
   padding: 5px 24px 5px 10px;
-  border-radius: 4px;
-  border: 1px solid #dcdcdc;
-  background-color: #f5f6f7;
-  color: #444;
+  border-radius: 20px;
+  border: 1px solid #90caf9;
+  background-color: #e3f2fd;
+  color: #1976d2;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
   background-repeat: no-repeat;
   background-position: right 8px center;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231976d2' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  flex: 0 0 auto;
 }
 
-.milestone-cell {
-  text-align: center;
+.milestones-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
 }
 
-.milestone-check {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 1px solid #ddd;
-  background: #fafafa;
-  color: #aaa;
-  font-size: 13px;
-  font-weight: 700;
+.milestone-pill {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid #90caf9;
+  background: white;
+  color: #90caf9;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   transition: all 0.2s ease;
 }
 
-.milestone-check.done {
-  background: #eef6f0;
-  border-color: #b7d9c1;
-  color: #4a8f63;
+.milestone-pill.done {
+  background: #1976d2;
+  border-color: #1976d2;
+  color: white;
 }
 
-.milestone-check:hover {
-  transform: scale(1.1);
+.milestone-pill:hover {
+  transform: scale(1.05);
 }
