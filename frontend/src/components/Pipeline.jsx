@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDeals } from '../services/api';
+import { getDeals, getLeads } from '../services/api';
 import '../styles/Pipeline.css';
 
 const FolderIcon = () => (
@@ -98,18 +98,23 @@ export default function Pipeline() {
 
   // Backend deals only carry {id, lead_id, deal_value, stage, probability, expected_close_date,
   // created_at} - no name/company/phone/loanProduct/processStatus, stage is lowercase, and
-  // probability is a 0-1 fraction. Normalize into the shape the rest of this component expects.
-  const normalizeDeal = (d) => ({
-    id: d.id,
-    name: d.name || `Lead #${d.lead_id}`,
-    company: d.company || '—',
-    value: d.value ?? Math.round((d.deal_value ?? 0) / 1000),
-    phone: d.phone || '—',
-    loanProduct: d.loanProduct || 'LAP',
-    stage: STAGES.find((s) => s.toLowerCase() === String(d.stage).toLowerCase()) || 'New',
-    probability: d.probability > 1 ? Math.round(d.probability) : Math.round((d.probability ?? 0) * 100),
-    processStatus: d.processStatus || 'Login'
-  });
+  // probability is a 0-1 fraction. leadsById fills in the display fields from the matching lead
+  // (fetched separately, since /api/deals doesn't join lead data). Normalize into the shape the
+  // rest of this component expects.
+  const normalizeDeal = (d, leadsById) => {
+    const lead = leadsById?.[d.lead_id];
+    return {
+      id: d.id,
+      name: d.name || lead?.name || `Lead #${d.lead_id}`,
+      company: d.company || lead?.company || '—',
+      value: d.value ?? Math.round((d.deal_value ?? 0) / 1000),
+      phone: d.phone || lead?.phone || '—',
+      loanProduct: d.loanProduct || lead?.product || 'LAP',
+      stage: STAGES.find((s) => s.toLowerCase() === String(d.stage).toLowerCase()) || 'New',
+      probability: d.probability > 1 ? Math.round(d.probability) : Math.round((d.probability ?? 0) * 100),
+      processStatus: d.processStatus || 'Login'
+    };
+  };
 
   useEffect(() => {
     fetchDeals();
@@ -117,9 +122,18 @@ export default function Pipeline() {
 
   const fetchDeals = async () => {
     try {
-      const data = await getDeals(token);
-      if (Array.isArray(data) && data.length > 0) {
-        setDeals(data.map(normalizeDeal));
+      const dealsData = await getDeals(token);
+      if (Array.isArray(dealsData) && dealsData.length > 0) {
+        let leadsById = {};
+        try {
+          const leadsData = await getLeads(token);
+          if (Array.isArray(leadsData)) {
+            leadsById = leadsData.reduce((acc, lead) => ({ ...acc, [lead.id]: lead }), {});
+          }
+        } catch (leadsError) {
+          console.error('Error fetching leads for deal names:', leadsError);
+        }
+        setDeals(dealsData.map((d) => normalizeDeal(d, leadsById)));
       } else {
         setDeals(mockDeals);
       }
