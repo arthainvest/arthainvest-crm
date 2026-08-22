@@ -1,5 +1,6 @@
 .reports-container { padding: 20px; }
 .reports-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+.reports-header .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; flex: none; }
 .tab-navigation { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid #e0e0e0; }
 .tab-btn { padding: 10px 20px; background: none; border: none; cursor: pointer; font-weight: 500; color: #999; border-bottom: 3px solid transparent; transition: all 0.2s ease; }
 .tab-btn.active { color: #667eea; border-bottom-color: #667eea; }

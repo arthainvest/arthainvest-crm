@@ -1,5 +1,6 @@
 .integrations-container { padding: 20px; }
 .integrations-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.integrations-header .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; flex: none; }
 .integrations-subtitle { color: #999; margin-bottom: 30px; }
 .integrations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
 .integration-card { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; }
