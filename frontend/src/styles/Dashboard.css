@@ -20,7 +20,7 @@
   border-radius: 8px;
   padding: 25px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid #667eea;
+  border-left: 4px solid #1976d2;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f5f7fa;
+  background-color: #e3f2fd;
   border-radius: 8px;
 }
 
@@ -113,31 +113,8 @@
   font-size: 12px;
   font-weight: 600;
   text-transform: capitalize;
-}
-
-.leads-table .status-badge.new {
   background-color: #e3f2fd;
   color: #1976d2;
-}
-
-.leads-table .status-badge.qualified {
-  background-color: #e8f5e9;
-  color: #388e3c;
-}
-
-.leads-table .status-badge.proposal {
-  background-color: #fff3e0;
-  color: #f57c00;
-}
-
-.leads-table .status-badge.negotiation {
-  background-color: #fce4ec;
-  color: #c2185b;
-}
-
-.leads-table .status-badge.closed {
-  background-color: #f3e5f5;
-  color: #7b1fa2;
 }
 
 .growth-grid {
@@ -163,13 +140,13 @@
 .growth-value {
   font-size: 32px;
   font-weight: 700;
-  color: #1a3fd6;
+  color: #1976d2;
   margin-bottom: 8px;
 }
 
 .growth-trend {
   font-size: 13px;
-  color: #22b573;
+  color: #1976d2;
   font-weight: 500;
 }
 
@@ -178,7 +155,7 @@
   text-align: center;
   color: #999;
   font-size: 14px;
-  background: #fafbfc;
+  background: #f5faff;
   border-radius: 8px;
 }
 
@@ -189,8 +166,8 @@
 }
 
 .stage-card {
-  background: #fafbfc;
-  border: 1px solid #eef0f3;
+  background: #f5faff;
+  border: 1px solid #e3f2fd;
   border-radius: 8px;
   padding: 20px;
 }
@@ -206,13 +183,13 @@
 .stage-count {
   font-size: 28px;
   font-weight: 700;
-  color: #1a3fd6;
+  color: #1976d2;
   margin-bottom: 6px;
 }
 
 .stage-value {
   font-size: 14px;
-  color: #22b573;
+  color: #1976d2;
   font-weight: 600;
 }
 
@@ -224,7 +201,7 @@
 
 .pipeline-status-card {
   background: white;
-  border: 1px solid #eef0f3;
+  border: 1px solid #e3f2fd;
   border-radius: 8px;
   padding: 20px;
 }
@@ -234,7 +211,7 @@
   font-size: 16px;
   color: #2c3e50;
   padding-bottom: 12px;
-  border-bottom: 2px solid #1a3fd6;
+  border-bottom: 2px solid #1976d2;
   display: inline-block;
 }
 

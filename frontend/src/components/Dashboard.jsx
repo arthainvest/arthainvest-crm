@@ -131,25 +131,25 @@ export default function Dashboard() {
           title="Total Leads"
           value={displayAnalytics.total_leads}
           icon="📊"
-          color="#3498db"
+          color="#1976d2"
         />
         <KPICard
           title="Qualified Leads"
           value={displayAnalytics.qualified_leads}
           icon="✓"
-          color="#2ecc71"
+          color="#1976d2"
         />
         <KPICard
           title="Active Deals"
           value={displayAnalytics.active_deals}
           icon="💼"
-          color="#f39c12"
+          color="#1976d2"
         />
         <KPICard
           title="Closed Deals"
           value={displayAnalytics.closed_deals}
           icon="🎯"
-          color="#e74c3c"
+          color="#1976d2"
         />
       </div>
 

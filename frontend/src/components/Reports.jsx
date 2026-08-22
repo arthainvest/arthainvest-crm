@@ -70,7 +70,7 @@ export default function Reports() {
       <div className="chart-container">
         <h3>Performance Trend</h3>
         <p className="placeholder">📈 Chart visualization - Integration with Chart.js pending</p>
-        <div style={{ height: '300px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: '8px', opacity: 0.1 }}></div>
+        <div style={{ height: '300px', background: '#1976d2', borderRadius: '8px', opacity: 0.1 }}></div>
       </div>
 
       <div className="report-controls">
