@@ -129,7 +129,7 @@ export default function Calls() {
                 <td><strong>{call.name}</strong></td>
                 <td>{call.phone}</td>
                 <td>{call.duration}</td>
-                <td><span className={`badge-${call.type.toLowerCase()}`}>{call.type}</span></td>
+                <td><span className={`badge-${(call.type || '').toLowerCase()}`}>{call.type || 'Unknown'}</span></td>
                 <td>{call.outcome}</td>
                 <td>{call.date}</td>
                 <td>

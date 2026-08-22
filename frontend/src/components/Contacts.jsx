@@ -353,8 +353,8 @@ export default function Contacts() {
 
   const filteredContacts = (displayContacts && displayContacts.length > 0) ?
     displayContacts.filter(c =>
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchTerm.toLowerCase())
+      (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
     ) : mockContactsData;
 
   return (

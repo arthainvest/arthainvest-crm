@@ -158,7 +158,7 @@ export default function Pipeline() {
 
   const getDocumentProgress = (dealId) => {
     const docs = uploadedDocs[dealId] || {};
-    const total = LOAN_DOCUMENTS[selectedDeal.loanProduct].length;
+    const total = (LOAN_DOCUMENTS[selectedDeal.loanProduct] || []).length;
     const completed = Object.values(docs).filter(v => v).length;
     return { completed, total, percentage: Math.round((completed / total) * 100) };
   };
@@ -398,9 +398,9 @@ export default function Pipeline() {
               </div>
 
               <div className="digi-section">
-                <h4>Required Documents ({LOAN_DOCUMENTS[selectedDeal.loanProduct].length})</h4>
+                <h4>Required Documents ({(LOAN_DOCUMENTS[selectedDeal.loanProduct] || []).length})</h4>
                 <div className="documents-list">
-                  {LOAN_DOCUMENTS[selectedDeal.loanProduct].map((doc, idx) => (
+                  {(LOAN_DOCUMENTS[selectedDeal.loanProduct] || []).map((doc, idx) => (
                     <div key={idx} className="document-item">
                       <input
                         type="checkbox"
