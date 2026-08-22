@@ -183,6 +183,7 @@ class ContactNoteResponse(BaseModel):
     call_datetime: Optional[str]
     next_conversation: Optional[str]
     transcript: Optional[str]
+    audio_url: Optional[str]
     created_at: datetime
     updated_at: datetime
 

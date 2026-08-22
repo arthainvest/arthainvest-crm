@@ -175,6 +175,7 @@ def init_db():
                 call_datetime TEXT,
                 next_conversation TEXT,
                 transcript TEXT,
+                audio_url TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (contact_id) REFERENCES contacts(id)

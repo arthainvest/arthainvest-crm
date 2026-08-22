@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   getContactsList, createContact, updateContact, deleteContact,
-  getContactNotes, createContactNote, updateContactNote, deleteContactNote
+  getContactNotes, createContactNote, updateContactNote, deleteContactNote,
+  uploadNoteAudio, API_URL
 } from '../services/api';
 import '../styles/Contacts.css';
 
@@ -47,6 +48,7 @@ export default function Contacts() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
+  const draftAudioBlobRef = useRef(null);
 
   // Role-based Import/Export
   const userRole = (localStorage.getItem('role') || 'employee').toLowerCase();
@@ -247,6 +249,7 @@ export default function Contacts() {
       transcript: ''
     });
     setDraftAudioUrl(null);
+    draftAudioBlobRef.current = null;
     setEditingNoteId(null);
   };
 
@@ -256,7 +259,10 @@ export default function Contacts() {
       nextConversation: note.next_conversation || '',
       transcript: note.transcript || ''
     });
-    setDraftAudioUrl(null);
+    // Load the previously saved recording for playback; a fresh recording (if the user makes
+    // one) replaces it on save via draftAudioBlobRef, which stays null until that happens.
+    setDraftAudioUrl(note.audio_url ? `${API_URL}${note.audio_url}` : null);
+    draftAudioBlobRef.current = null;
     setEditingNoteId(note.id);
   };
 
@@ -272,6 +278,7 @@ export default function Contacts() {
       recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
       recorder.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        draftAudioBlobRef.current = blob;
         setDraftAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());
       };
@@ -325,11 +332,14 @@ export default function Contacts() {
     };
 
     try {
-      if (editingNoteId) {
-        await updateContactNote(token, selectedContact.id, editingNoteId, payload);
-      } else {
-        await createContactNote(token, selectedContact.id, payload);
+      const savedNote = editingNoteId
+        ? await updateContactNote(token, selectedContact.id, editingNoteId, payload)
+        : await createContactNote(token, selectedContact.id, payload);
+
+      if (draftAudioBlobRef.current) {
+        await uploadNoteAudio(token, selectedContact.id, savedNote.id, draftAudioBlobRef.current);
       }
+
       const data = await getContactNotes(token, selectedContact.id);
       setNotes(Array.isArray(data) ? data : []);
       resetNoteDraft();
@@ -674,6 +684,9 @@ export default function Contacts() {
                         <div className="note-next">⏭️ Next: {new Date(note.next_conversation).toLocaleString()}</div>
                       )}
                       {note.transcript && <p className="note-transcript">{note.transcript}</p>}
+                      {note.audio_url && (
+                        <audio controls src={`${API_URL}${note.audio_url}`} className="voice-playback" />
+                      )}
                       {note.updated_at && note.updated_at !== note.created_at && (
                         <div className="note-updated">Edited {new Date(note.updated_at).toLocaleString()}</div>
                       )}

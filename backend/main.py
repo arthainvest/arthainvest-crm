@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import sqlite3
 from typing import List
 import os
+import uuid
 from dotenv import load_dotenv
 
 from database_sqlite import get_db, init_db
@@ -31,6 +33,13 @@ async def lifespan(app: FastAPI):
         print("[OK] SQLite database ready!")
     except Exception as e:
         print(f"[ERROR] Database error: {e}")
+    try:
+        # The DB is fully reset on every startup, so clear stale recordings that
+        # no note in the fresh DB references, keeping the two in sync.
+        for f in os.listdir(UPLOADS_DIR):
+            os.remove(os.path.join(UPLOADS_DIR, f))
+    except Exception as e:
+        print(f"[WARN] Could not clear uploads directory: {e}")
     yield
     # Shutdown
     print("[OK] Server shutting down")
@@ -51,6 +60,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve uploaded voice-note audio files
+UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "uploads", "notes")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "uploads")), name="uploads")
 
 # ============= HELPER FUNCTIONS =============
 
@@ -700,9 +714,14 @@ async def delete_contact(contact_id: int, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT audio_url FROM contact_notes WHERE contact_id = ? AND audio_url IS NOT NULL", (contact_id,))
+        audio_urls = [row['audio_url'] for row in cursor.fetchall()]
         cursor.execute("DELETE FROM contact_notes WHERE contact_id = ?", (contact_id,))
         cursor.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
         conn.commit()
+
+    for audio_url in audio_urls:
+        _delete_audio_file(audio_url)
 
     return {"message": "Contact deleted"}
 
@@ -783,10 +802,61 @@ async def delete_contact_note(contact_id: int, note_id: int, token: str = Query(
 
     with get_db() as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT audio_url FROM contact_notes WHERE id = ? AND contact_id = ?", (note_id, contact_id))
+        existing = cursor.fetchone()
         cursor.execute("DELETE FROM contact_notes WHERE id = ? AND contact_id = ?", (note_id, contact_id))
         conn.commit()
 
+    if existing and existing['audio_url']:
+        _delete_audio_file(existing['audio_url'])
+
     return {"message": "Note deleted"}
+
+@app.post("/api/contacts/{contact_id}/notes/{note_id}/audio", response_model=ContactNoteResponse)
+async def upload_note_audio(contact_id: int, note_id: int, token: str = Query(None), audio: UploadFile = File(...)):
+    """Attach a recorded voice note to a note, replacing any previous recording"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT audio_url FROM contact_notes WHERE id = ? AND contact_id = ?", (note_id, contact_id))
+        existing = cursor.fetchone()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    if existing['audio_url']:
+        _delete_audio_file(existing['audio_url'])
+
+    ext = os.path.splitext(audio.filename or '')[1] or '.webm'
+    filename = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(UPLOADS_DIR, filename)
+    with open(file_path, 'wb') as f:
+        f.write(await audio.read())
+
+    audio_url = f"/uploads/notes/{filename}"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE contact_notes SET audio_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (audio_url, note_id)
+        )
+        conn.commit()
+        cursor.execute("SELECT * FROM contact_notes WHERE id = ?", (note_id,))
+        updated_note = cursor.fetchone()
+
+    return dict(updated_note)
+
+def _delete_audio_file(audio_url):
+    """Best-effort removal of a previously uploaded note recording"""
+    try:
+        filename = os.path.basename(audio_url)
+        file_path = os.path.join(UPLOADS_DIR, filename)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+    except OSError as e:
+        print(f"[WARN] Could not remove audio file {audio_url}: {e}")
 
 # ============= CALLS ENDPOINTS =============
 

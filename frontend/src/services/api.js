@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // Create axios instance
 const api = axios.create({
@@ -166,6 +166,17 @@ export const updateContactNote = async (token, contactId, noteId, noteData) => {
 
 export const deleteContactNote = async (token, contactId, noteId) => {
   await api.delete(`/api/contacts/${contactId}/notes/${noteId}?token=${token}`);
+};
+
+export const uploadNoteAudio = async (token, contactId, noteId, audioBlob) => {
+  const formData = new FormData();
+  formData.append('audio', audioBlob, 'recording.webm');
+  const response = await api.post(
+    `/api/contacts/${contactId}/notes/${noteId}/audio?token=${token}`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
 };
 
 // Calls
