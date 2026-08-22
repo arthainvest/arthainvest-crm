@@ -275,3 +275,106 @@
   background: #f0f0f0;
   color: #333;
 }
+
+.loan-processing-section {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 25px;
+}
+
+.loan-processing-section h2 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.loan-processing-table-wrap {
+  overflow-x: auto;
+}
+
+.loan-processing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.loan-processing-table th {
+  text-align: left;
+  padding: 10px 12px;
+  color: #888;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-bottom: 2px solid #eee;
+  white-space: nowrap;
+}
+
+.loan-processing-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #333;
+}
+
+.folder-icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 17px;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.folder-icon-btn:hover {
+  transform: scale(1.15);
+}
+
+.process-status-select {
+  padding: 5px 24px 5px 10px;
+  border-radius: 4px;
+  border: 1px solid #dcdcdc;
+  background-color: #f5f6f7;
+  color: #444;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+.milestone-cell {
+  text-align: center;
+}
+
+.milestone-check {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid #ddd;
+  background: #fafafa;
+  color: #aaa;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.milestone-check.done {
+  background: #eef6f0;
+  border-color: #b7d9c1;
+  color: #4a8f63;
+}
+
+.milestone-check:hover {
+  transform: scale(1.1);
+}

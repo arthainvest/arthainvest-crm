@@ -11,7 +11,9 @@ export default function Pipeline() {
       phone: '+91-9876543210',
       loanProduct: 'LAP',
       stage: 'New',
-      probability: 30
+      probability: 30,
+      processStatus: 'In Progress',
+      milestones: { login: true, sanction: false, disbursed: false }
     },
     {
       id: 2,
@@ -21,7 +23,9 @@ export default function Pipeline() {
       phone: '+91-9876543211',
       loanProduct: 'Business',
       stage: 'Qualified',
-      probability: 50
+      probability: 50,
+      processStatus: 'On Hold',
+      milestones: { login: true, sanction: false, disbursed: false }
     },
     {
       id: 3,
@@ -31,7 +35,9 @@ export default function Pipeline() {
       phone: '+91-9876543212',
       loanProduct: 'Home',
       stage: 'Proposal',
-      probability: 70
+      probability: 70,
+      processStatus: 'In Progress',
+      milestones: { login: true, sanction: true, disbursed: false }
     },
     {
       id: 4,
@@ -41,9 +47,13 @@ export default function Pipeline() {
       phone: '+91-9876543213',
       loanProduct: 'Project',
       stage: 'Negotiation',
-      probability: 60
+      probability: 60,
+      processStatus: 'Disbursed',
+      milestones: { login: true, sanction: true, disbursed: true }
     }
   ];
+
+  const PROCESS_STATUS_OPTIONS = ['In Progress', 'On Hold', 'Disbursed', 'Rejected'];
 
   const [deals, setDeals] = useState(mockDeals);
   const [showForm, setShowForm] = useState(false);
@@ -151,6 +161,18 @@ export default function Pipeline() {
     return { completed, total, percentage: Math.round((completed / total) * 100) };
   };
 
+  const handleMilestoneToggle = (dealId, milestone) => {
+    setDeals((prev) => prev.map((d) =>
+      d.id === dealId
+        ? { ...d, milestones: { ...(d.milestones || {}), [milestone]: !d.milestones?.[milestone] } }
+        : d
+    ));
+  };
+
+  const handleProcessStatusChange = (dealId, newStatus) => {
+    setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, processStatus: newStatus } : d)));
+  };
+
   const getDealsByStage = (stage) => {
     if (!deals || !Array.isArray(deals)) {
       return mockDeals.filter(d => d.stage === stage);
@@ -215,6 +237,82 @@ export default function Pipeline() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Loan Processing Tracker */}
+      <div className="loan-processing-section">
+        <h2>Loan Processing</h2>
+        <div className="loan-processing-table-wrap">
+          <table className="loan-processing-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Client</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Login</th>
+                <th>Sanction</th>
+                <th>Disbursed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deals.map((deal) => (
+                <tr key={deal.id}>
+                  <td>
+                    <button
+                      type="button"
+                      className="folder-icon-btn"
+                      onClick={() => handleDigiLocker(deal)}
+                      title="Open DigiLocker"
+                    >
+                      📁
+                    </button>
+                  </td>
+                  <td>{deal.name}</td>
+                  <td>₹{deal.value}K</td>
+                  <td>
+                    <select
+                      className="process-status-select"
+                      value={deal.processStatus || 'In Progress'}
+                      onChange={(e) => handleProcessStatusChange(deal.id, e.target.value)}
+                    >
+                      {PROCESS_STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="milestone-cell">
+                    <button
+                      type="button"
+                      className={`milestone-check ${deal.milestones?.login ? 'done' : ''}`}
+                      onClick={() => handleMilestoneToggle(deal.id, 'login')}
+                    >
+                      {deal.milestones?.login ? '✓' : '–'}
+                    </button>
+                  </td>
+                  <td className="milestone-cell">
+                    <button
+                      type="button"
+                      className={`milestone-check ${deal.milestones?.sanction ? 'done' : ''}`}
+                      onClick={() => handleMilestoneToggle(deal.id, 'sanction')}
+                    >
+                      {deal.milestones?.sanction ? '✓' : '–'}
+                    </button>
+                  </td>
+                  <td className="milestone-cell">
+                    <button
+                      type="button"
+                      className={`milestone-check ${deal.milestones?.disbursed ? 'done' : ''}`}
+                      onClick={() => handleMilestoneToggle(deal.id, 'disbursed')}
+                    >
+                      {deal.milestones?.disbursed ? '✓' : '–'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Add Deal Form */}
