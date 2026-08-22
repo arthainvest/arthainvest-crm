@@ -1,26 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import '../styles/Contacts.css';
 
 export default function Contacts() {
   // Mock data
   const mockContactsData = [
-    { id: 1, name: 'Neha Singh', company: 'Tech Startup', email: 'neha@techstartup.com', phone: '+91-9876543210', score: 85, tier: 'Premium' },
-    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', email: 'vikram@techpark.com', phone: '+91-9876543211', score: 72, tier: 'Gold' },
-    { id: 3, name: 'Anjali Desai', company: 'Retail Chain', email: 'anjali@retail.com', phone: '+91-9876543212', score: 65, tier: 'Silver' },
-    { id: 4, name: 'Amit Patel', company: 'Manufacturing', email: 'amit@mfg.com', phone: '+91-9876543213', score: 58, tier: 'Silver' },
-    { id: 5, name: 'Priya Kapoor', company: 'Digital Ventures', email: 'priya@digital.com', phone: '+91-9876543214', score: 80, tier: 'Premium' }
+    { id: 1, name: 'Neha Singh', company: 'Tech Startup', email: 'neha@techstartup.com', phone: '+91-9876543210', score: 85, city: 'Mumbai, Andheri West' },
+    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', email: 'vikram@techpark.com', phone: '+91-9876543211', score: 72, city: 'Bangalore, Whitefield' },
+    { id: 3, name: 'Anjali Desai', company: 'Retail Chain', email: 'anjali@retail.com', phone: '+91-9876543212', score: 65, city: 'Pune, Kothrud' },
+    { id: 4, name: 'Amit Patel', company: 'Manufacturing', email: 'amit@mfg.com', phone: '+91-9876543213', score: 58, city: 'Ahmedabad, Naroda' },
+    { id: 5, name: 'Priya Kapoor', company: 'Digital Ventures', email: 'priya@digital.com', phone: '+91-9876543214', score: 80, city: 'Delhi, Connaught Place' }
   ];
 
   const [contacts, setContacts] = useState(mockContactsData);
   const [showForm, setShowForm] = useState(false);
   const [showCommunication, setShowCommunication] = useState(false);
   const [showDigi, setShowDigi] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const [communicationTab, setCommunicationTab] = useState('message');
   const [selectedContact, setSelectedContact] = useState(null);
   const [message, setMessage] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Notes & voice-note state
+  const [contactNotes, setContactNotes] = useState({});
+  const [noteDraft, setNoteDraft] = useState({ callDateTime: '', nextConversation: '', transcript: '' });
+  const [isRecording, setIsRecording] = useState(false);
+  const [draftAudioUrl, setDraftAudioUrl] = useState(null);
+  const [speechSupported] = useState(() => !!(window.SpeechRecognition || window.webkitSpeechRecognition));
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recognitionRef = useRef(null);
 
   useEffect(() => {
     fetchContacts();
@@ -72,6 +83,103 @@ export default function Contacts() {
   const handleDigi = (contact) => {
     setSelectedContact(contact);
     setShowDigi(true);
+  };
+
+  const handleNotes = (contact) => {
+    setSelectedContact(contact);
+    setNoteDraft({
+      callDateTime: new Date().toISOString().slice(0, 16),
+      nextConversation: '',
+      transcript: ''
+    });
+    setDraftAudioUrl(null);
+    setIsRecording(false);
+    setShowNotes(true);
+  };
+
+  const closeNotes = () => {
+    if (isRecording) stopRecording();
+    setShowNotes(false);
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setDraftAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-IN';
+        let finalTranscript = '';
+        recognition.onresult = (event) => {
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const text = event.results[i][0].transcript;
+            if (event.results[i].isFinal) finalTranscript += text + ' ';
+            else interim += text;
+          }
+          setNoteDraft((prev) => ({ ...prev, transcript: (finalTranscript + interim).trim() }));
+        };
+        recognition.onerror = (e) => console.error('Speech recognition error:', e.error);
+        recognition.start();
+        recognitionRef.current = recognition;
+      }
+    } catch (err) {
+      alert('Microphone access denied or unavailable: ' + err.message);
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setIsRecording(false);
+  };
+
+  const saveNote = () => {
+    if (!selectedContact) return;
+    if (!noteDraft.transcript.trim() && !draftAudioUrl) {
+      alert('Add a transcript note or record a voice note before saving.');
+      return;
+    }
+    const entry = {
+      id: Date.now(),
+      callDateTime: noteDraft.callDateTime,
+      nextConversation: noteDraft.nextConversation,
+      transcript: noteDraft.transcript.trim(),
+      audioUrl: draftAudioUrl,
+      createdAt: new Date().toLocaleString()
+    };
+    setContactNotes((prev) => ({
+      ...prev,
+      [selectedContact.id]: [entry, ...(prev[selectedContact.id] || [])]
+    }));
+    setNoteDraft({
+      callDateTime: new Date().toISOString().slice(0, 16),
+      nextConversation: '',
+      transcript: ''
+    });
+    setDraftAudioUrl(null);
+  };
+
+  const deleteNote = (contactId, noteId) => {
+    setContactNotes((prev) => ({
+      ...prev,
+      [contactId]: (prev[contactId] || []).filter((n) => n.id !== noteId)
+    }));
   };
 
   const sendMessage = () => {
@@ -128,7 +236,7 @@ export default function Contacts() {
               <p><strong>Company:</strong> {contact.company}</p>
               <p><strong>Email:</strong> {contact.email}</p>
               <p><strong>Phone:</strong> {contact.phone}</p>
-              <p><strong>Tier:</strong> <span className={`tier-${contact.tier.toLowerCase()}`}>{contact.tier}</span></p>
+              <p><strong>City/Area:</strong> 📍 {contact.city}</p>
             </div>
 
             <div className="action-buttons">
@@ -137,7 +245,7 @@ export default function Contacts() {
               <button className="btn-action email" onClick={() => handleEmail(contact)} title="Send Email">📧</button>
               <button className="btn-action whatsapp" onClick={() => handleWhatsApp(contact)} title="WhatsApp">📱</button>
               <button className="btn-action digilocker" onClick={() => handleDigi(contact)} title="DigiLocker">🔐</button>
-              <button className="btn-action edit" onClick={() => alert('Edit feature coming')}>✏️</button>
+              <button className="btn-action notes" onClick={() => handleNotes(contact)} title="Notes & Follow-up">📝</button>
               <button className="btn-action delete" onClick={() => alert('Delete feature coming')}>🗑️</button>
             </div>
           </div>
@@ -249,54 +357,94 @@ export default function Contacts() {
           </div>
         </div>
       )}
+
+      {/* Notes & Follow-up Modal */}
+      {showNotes && selectedContact && (
+        <div className="modal-overlay" onClick={closeNotes}>
+          <div className="modal-content notes-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>📝 Notes & Follow-up - {selectedContact.name}</h2>
+              <button className="btn-close" onClick={closeNotes}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="notes-form">
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Call Date &amp; Time</label>
+                    <input
+                      type="datetime-local"
+                      value={noteDraft.callDateTime}
+                      onChange={(e) => setNoteDraft({ ...noteDraft, callDateTime: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Next Conversation</label>
+                    <input
+                      type="datetime-local"
+                      value={noteDraft.nextConversation}
+                      onChange={(e) => setNoteDraft({ ...noteDraft, nextConversation: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Notes / AI Transcript</label>
+                  <textarea
+                    rows="5"
+                    placeholder={speechSupported ? 'Type notes, or record a voice note to auto-transcribe...' : 'Type notes here...'}
+                    value={noteDraft.transcript}
+                    onChange={(e) => setNoteDraft({ ...noteDraft, transcript: e.target.value })}
+                  />
+                </div>
+
+                <div className="voice-note-controls">
+                  {!isRecording ? (
+                    <button type="button" className="btn-record" onClick={startRecording}>
+                      🎙️ Start Voice Note
+                    </button>
+                  ) : (
+                    <button type="button" className="btn-record recording" onClick={stopRecording}>
+                      <span className="rec-dot">●</span> Stop Recording
+                    </button>
+                  )}
+                  {!speechSupported && (
+                    <span className="voice-note-hint">AI live transcription needs Chrome/Edge - recording still works.</span>
+                  )}
+                  {draftAudioUrl && (
+                    <audio controls src={draftAudioUrl} className="voice-playback" />
+                  )}
+                </div>
+
+                <div className="modal-actions">
+                  <button className="btn-primary" onClick={saveNote}>💾 Save Note</button>
+                </div>
+              </div>
+
+              <div className="notes-history">
+                <h4>History ({(contactNotes[selectedContact.id] || []).length})</h4>
+                {(contactNotes[selectedContact.id] || []).length === 0 ? (
+                  <p className="no-notes">No notes yet for this contact.</p>
+                ) : (
+                  (contactNotes[selectedContact.id] || []).map((note) => (
+                    <div key={note.id} className="note-entry">
+                      <div className="note-entry-header">
+                        <span>📞 {note.callDateTime ? new Date(note.callDateTime).toLocaleString() : '—'}</span>
+                        <button className="btn-delete-note" onClick={() => deleteNote(selectedContact.id, note.id)}>🗑️</button>
+                      </div>
+                      {note.nextConversation && (
+                        <div className="note-next">⏭️ Next: {new Date(note.nextConversation).toLocaleString()}</div>
+                      )}
+                      {note.transcript && <p className="note-transcript">{note.transcript}</p>}
+                      {note.audioUrl && <audio controls src={note.audioUrl} className="voice-playback" />}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-const mockContacts = [
-  {
-    id: 1,
-    name: 'Neha Singh',
-    company: 'Tech Startup',
-    email: 'neha@techstartup.com',
-    phone: '+91-9876543210',
-    score: 85,
-    tier: 'Premium'
-  },
-  {
-    id: 2,
-    name: 'Vikram Reddy',
-    company: 'Tech Park',
-    email: 'vikram@techpark.com',
-    phone: '+91-9876543211',
-    score: 72,
-    tier: 'Gold'
-  },
-  {
-    id: 3,
-    name: 'Anjali Desai',
-    company: 'Retail Chain',
-    email: 'anjali@retail.com',
-    phone: '+91-9876543212',
-    score: 65,
-    tier: 'Silver'
-  },
-  {
-    id: 4,
-    name: 'Amit Patel',
-    company: 'Manufacturing',
-    email: 'amit@mfg.com',
-    phone: '+91-9876543213',
-    score: 58,
-    tier: 'Silver'
-  },
-  {
-    id: 5,
-    name: 'Priya Kapoor',
-    company: 'Digital Ventures',
-    email: 'priya@digital.com',
-    phone: '+91-9876543214',
-    score: 80,
-    tier: 'Premium'
-  }
-];
