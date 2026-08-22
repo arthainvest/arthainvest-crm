@@ -28,21 +28,20 @@ export default function LeadsList() {
   });
   const token = localStorage.getItem('token');
 
-  // Communication modal state
-  const [showCommunication, setShowCommunication] = useState(false);
-  const [communicationTab, setCommunicationTab] = useState('message');
+  // Expand/collapse per-lead details
+  const [expandedLeads, setExpandedLeads] = useState({});
+
+  // Email modal state
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
-  const [message, setMessage] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
-
-  // DigiLocker modal state
-  const [showDigi, setShowDigi] = useState(false);
 
   // Notes & voice-note state
   const [showNotes, setShowNotes] = useState(false);
   const [leadNotes, setLeadNotes] = useState({});
   const [noteDraft, setNoteDraft] = useState({ callDateTime: '', nextConversation: '', transcript: '' });
+  const [editingNoteId, setEditingNoteId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [draftAudioUrl, setDraftAudioUrl] = useState(null);
   const [speechSupported] = useState(() => !!(window.SpeechRecognition || window.webkitSpeechRecognition));
@@ -109,6 +108,10 @@ export default function LeadsList() {
 
   const handleStatusChange = (leadId, newStatus) => {
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l)));
+  };
+
+  const toggleExpand = (leadId) => {
+    setExpandedLeads((prev) => ({ ...prev, [leadId]: !prev[leadId] }));
   };
 
   const handleImportClick = () => {
@@ -185,24 +188,9 @@ export default function LeadsList() {
     }
   };
 
-  const handleMessage = (lead) => {
-    setSelectedLead(lead);
-    setCommunicationTab('message');
-    setShowCommunication(true);
-  };
-
   const handleEmail = (lead) => {
     setSelectedLead(lead);
-    setCommunicationTab('email');
-    setShowCommunication(true);
-  };
-
-  const sendMessage = () => {
-    if (message.trim()) {
-      alert(`Message sent to ${selectedLead.name}: ${message}`);
-      setMessage('');
-      setShowCommunication(false);
-    }
+    setShowEmailModal(true);
   };
 
   const sendEmail = () => {
@@ -210,23 +198,23 @@ export default function LeadsList() {
       window.location.href = `mailto:${selectedLead.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
       setEmailSubject('');
       setEmailBody('');
-      setShowCommunication(false);
+      setShowEmailModal(false);
     }
   };
 
-  const handleDigi = (lead) => {
-    setSelectedLead(lead);
-    setShowDigi(true);
-  };
-
-  const handleNotes = (lead) => {
-    setSelectedLead(lead);
+  const resetNoteDraft = () => {
     setNoteDraft({
       callDateTime: new Date().toISOString().slice(0, 16),
       nextConversation: '',
       transcript: ''
     });
     setDraftAudioUrl(null);
+    setEditingNoteId(null);
+  };
+
+  const handleNotes = (lead) => {
+    setSelectedLead(lead);
+    resetNoteDraft();
     setIsRecording(false);
     setShowNotes(true);
   };
@@ -234,6 +222,20 @@ export default function LeadsList() {
   const closeNotes = () => {
     if (isRecording) stopRecording();
     setShowNotes(false);
+  };
+
+  const handleEditNote = (note) => {
+    setNoteDraft({
+      callDateTime: note.callDateTime || '',
+      nextConversation: note.nextConversation || '',
+      transcript: note.transcript || ''
+    });
+    setDraftAudioUrl(note.audioUrl || null);
+    setEditingNoteId(note.id);
+  };
+
+  const cancelEditNote = () => {
+    resetNoteDraft();
   };
 
   const startRecording = async () => {
@@ -289,24 +291,39 @@ export default function LeadsList() {
       alert('Add a transcript note or record a voice note before saving.');
       return;
     }
-    const entry = {
-      id: Date.now(),
-      callDateTime: noteDraft.callDateTime,
-      nextConversation: noteDraft.nextConversation,
-      transcript: noteDraft.transcript.trim(),
-      audioUrl: draftAudioUrl,
-      createdAt: new Date().toLocaleString()
-    };
-    setLeadNotes((prev) => ({
-      ...prev,
-      [selectedLead.id]: [entry, ...(prev[selectedLead.id] || [])]
-    }));
-    setNoteDraft({
-      callDateTime: new Date().toISOString().slice(0, 16),
-      nextConversation: '',
-      transcript: ''
-    });
-    setDraftAudioUrl(null);
+
+    if (editingNoteId) {
+      setLeadNotes((prev) => ({
+        ...prev,
+        [selectedLead.id]: (prev[selectedLead.id] || []).map((n) =>
+          n.id === editingNoteId
+            ? {
+                ...n,
+                callDateTime: noteDraft.callDateTime,
+                nextConversation: noteDraft.nextConversation,
+                transcript: noteDraft.transcript.trim(),
+                audioUrl: draftAudioUrl,
+                updatedAt: new Date().toLocaleString()
+              }
+            : n
+        )
+      }));
+    } else {
+      const entry = {
+        id: Date.now(),
+        callDateTime: noteDraft.callDateTime,
+        nextConversation: noteDraft.nextConversation,
+        transcript: noteDraft.transcript.trim(),
+        audioUrl: draftAudioUrl,
+        createdAt: new Date().toLocaleString()
+      };
+      setLeadNotes((prev) => ({
+        ...prev,
+        [selectedLead.id]: [entry, ...(prev[selectedLead.id] || [])]
+      }));
+    }
+
+    resetNoteDraft();
   };
 
   const deleteNote = (leadId, noteId) => {
@@ -314,6 +331,7 @@ export default function LeadsList() {
       ...prev,
       [leadId]: (prev[leadId] || []).filter((n) => n.id !== noteId)
     }));
+    if (editingNoteId === noteId) resetNoteDraft();
   };
 
   const displayLeads = (leads && leads.length > 0) ? leads : mockLeads;
@@ -442,151 +460,87 @@ export default function LeadsList() {
       )}
 
       {displayLeads && displayLeads.length > 0 ? (
-        <div className="leads-grid">
-          {displayLeads.map((lead) => (
-            <div key={lead.id} className="lead-card">
-              <div className="card-header">
-                <h3>{lead.name}</h3>
-                <span className="score-badge">{lead.ai_score || '-'}%</span>
-              </div>
+        <div className="leads-list">
+          {displayLeads.map((lead) => {
+            const isExpanded = !!expandedLeads[lead.id];
+            return (
+              <div key={lead.id} className="lead-row">
+                <div className="lead-row-main">
+                  <button
+                    type="button"
+                    className="lead-name-toggle"
+                    onClick={() => toggleExpand(lead.id)}
+                    title={isExpanded ? 'Hide details' : 'Show details'}
+                  >
+                    <span className={`expand-arrow ${isExpanded ? 'open' : ''}`}>▸</span>
+                    <span className="lead-name">{lead.name}</span>
+                  </button>
 
-              <div className="card-info">
-                <p><strong>Company:</strong> {lead.company || '-'}</p>
-                <p><strong>Email:</strong> {lead.email || '-'}</p>
-                <p><strong>Phone:</strong> {lead.phone || '-'}</p>
-              </div>
+                  <select
+                    className={`status-select-compact status-${statusClass(lead.status)}`}
+                    value={lead.status}
+                    onChange={(e) => handleStatusChange(lead.id, e.target.value)}
+                  >
+                    {STATUS_OPTIONS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
 
-              <div className="status-row">
-                <label>Status</label>
-                <select
-                  className={`status-select status-${statusClass(lead.status)}`}
-                  value={lead.status}
-                  onChange={(e) => handleStatusChange(lead.id, e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
+                  <div className="lead-row-actions">
+                    <button className="btn-action call" onClick={() => handleCall(lead)} title="Click to Call">☎️</button>
+                    <button className="btn-action whatsapp" onClick={() => handleWhatsApp(lead)} title="WhatsApp">📱</button>
+                    <button className="btn-action email" onClick={() => handleEmail(lead)} title="Send Email">📧</button>
+                    <button className="btn-action notes" onClick={() => handleNotes(lead)} title="Notes & Follow-up">📝</button>
+                    <button className="btn-action delete" onClick={() => handleDeleteLead(lead.id)} title="Delete">🗑️</button>
+                  </div>
+                </div>
 
-              <div className="action-buttons">
-                <button className="btn-action call" onClick={() => handleCall(lead)} title="Click to Call">☎️</button>
-                <button className="btn-action message" onClick={() => handleMessage(lead)} title="Direct Message">💬</button>
-                <button className="btn-action email" onClick={() => handleEmail(lead)} title="Send Email">📧</button>
-                <button className="btn-action whatsapp" onClick={() => handleWhatsApp(lead)} title="WhatsApp">📱</button>
-                <button className="btn-action digilocker" onClick={() => handleDigi(lead)} title="DigiLocker">🔐</button>
-                <button className="btn-action notes" onClick={() => handleNotes(lead)} title="Notes & Follow-up">📝</button>
-                <button className="btn-action delete" onClick={() => handleDeleteLead(lead.id)} title="Delete">🗑️</button>
+                {isExpanded && (
+                  <div className="lead-row-details">
+                    <p><strong>Company:</strong> {lead.company || '-'}</p>
+                    <p><strong>Email:</strong> {lead.email || '-'}</p>
+                    <p><strong>Phone:</strong> {lead.phone || '-'}</p>
+                    <p><strong>Score:</strong> {lead.ai_score || '-'}%</p>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <p className="no-data">No leads yet. Create your first lead!</p>
       )}
 
-      {/* Communication Modal */}
-      {showCommunication && selectedLead && (
-        <div className="modal-overlay" onClick={() => setShowCommunication(false)}>
+      {/* Email Modal */}
+      {showEmailModal && selectedLead && (
+        <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{communicationTab === 'message' ? 'Send Message' : 'Send Email'} to {selectedLead.name}</h2>
-              <button className="modal-close" onClick={() => setShowCommunication(false)}>✕</button>
+              <h2>Send Email to {selectedLead.name}</h2>
+              <button className="modal-close" onClick={() => setShowEmailModal(false)}>✕</button>
             </div>
 
-            {communicationTab === 'message' && (
-              <>
-                <div className="form-group">
-                  <label>Message</label>
-                  <textarea
-                    placeholder="Type your message..."
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    rows="6"
-                  />
-                </div>
-                <div className="modal-actions">
-                  <button className="btn-primary" onClick={sendMessage}>Send Message</button>
-                  <button className="btn-secondary" onClick={() => setShowCommunication(false)}>Cancel</button>
-                </div>
-              </>
-            )}
-
-            {communicationTab === 'email' && (
-              <>
-                <div className="form-group">
-                  <label>Subject</label>
-                  <input
-                    type="text"
-                    placeholder="Email subject..."
-                    value={emailSubject}
-                    onChange={(e) => setEmailSubject(e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Message</label>
-                  <textarea
-                    placeholder="Email body..."
-                    value={emailBody}
-                    onChange={(e) => setEmailBody(e.target.value)}
-                    rows="6"
-                  />
-                </div>
-                <div className="modal-actions">
-                  <button className="btn-primary" onClick={sendEmail}>Send Email</button>
-                  <button className="btn-secondary" onClick={() => setShowCommunication(false)}>Cancel</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* DigiLocker Modal */}
-      {showDigi && selectedLead && (
-        <div className="modal-overlay" onClick={() => setShowDigi(false)}>
-          <div className="modal-content digi-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>DigiLocker - Document Management</h2>
-              <button className="modal-close" onClick={() => setShowDigi(false)}>✕</button>
+            <div className="form-group">
+              <label>Subject</label>
+              <input
+                type="text"
+                placeholder="Email subject..."
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+              />
             </div>
-
-            <div className="digi-info">
-              <h3>{selectedLead.name}</h3>
-              <p>{selectedLead.company} | {selectedLead.email} | {selectedLead.phone}</p>
+            <div className="form-group">
+              <label>Message</label>
+              <textarea
+                placeholder="Email body..."
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                rows="6"
+              />
             </div>
-
-            <div className="digi-section">
-              <h4>Verified Documents</h4>
-              <div className="verified-docs">
-                <div className="doc-item">
-                  <input type="checkbox" defaultChecked /> PAN Card
-                </div>
-                <div className="doc-item">
-                  <input type="checkbox" defaultChecked /> Aadhar Card
-                </div>
-                <div className="doc-item">
-                  <input type="checkbox" /> Bank Statement
-                </div>
-                <div className="doc-item">
-                  <input type="checkbox" /> ITR (Income Tax Return)
-                </div>
-              </div>
-            </div>
-
-            <div className="digi-section">
-              <h4>Document Options</h4>
-              <div className="digi-options">
-                <button className="digi-btn">✓ Request from Aadhar</button>
-                <button className="digi-btn">✓ Request PAN</button>
-                <button className="digi-btn">📄 Upload Bank Statement</button>
-                <button className="digi-btn">📄 Upload ITR</button>
-              </div>
-            </div>
-
             <div className="modal-actions">
-              <button className="btn-primary">Submit to DigiLocker</button>
-              <button className="btn-secondary" onClick={() => setShowDigi(false)}>Close</button>
+              <button className="btn-primary" onClick={sendEmail}>Send Email</button>
+              <button className="btn-secondary" onClick={() => setShowEmailModal(false)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -650,7 +604,12 @@ export default function LeadsList() {
               </div>
 
               <div className="modal-actions">
-                <button className="btn-primary" onClick={saveNote}>💾 Save Note</button>
+                <button className="btn-primary" onClick={saveNote}>
+                  {editingNoteId ? '💾 Update Note' : '💾 Save Note'}
+                </button>
+                {editingNoteId && (
+                  <button className="btn-secondary" onClick={cancelEditNote}>Cancel Edit</button>
+                )}
               </div>
             </div>
 
@@ -660,16 +619,20 @@ export default function LeadsList() {
                 <p className="no-notes">No notes yet for this lead.</p>
               ) : (
                 (leadNotes[selectedLead.id] || []).map((note) => (
-                  <div key={note.id} className="note-entry">
+                  <div key={note.id} className={`note-entry ${editingNoteId === note.id ? 'editing' : ''}`}>
                     <div className="note-entry-header">
                       <span>📞 {note.callDateTime ? new Date(note.callDateTime).toLocaleString() : '—'}</span>
-                      <button className="btn-delete-note" onClick={() => deleteNote(selectedLead.id, note.id)}>🗑️</button>
+                      <div className="note-entry-actions">
+                        <button className="btn-edit-note" onClick={() => handleEditNote(note)} title="Edit">✏️</button>
+                        <button className="btn-delete-note" onClick={() => deleteNote(selectedLead.id, note.id)} title="Delete">🗑️</button>
+                      </div>
                     </div>
                     {note.nextConversation && (
                       <div className="note-next">⏭️ Next: {new Date(note.nextConversation).toLocaleString()}</div>
                     )}
                     {note.transcript && <p className="note-transcript">{note.transcript}</p>}
                     {note.audioUrl && <audio controls src={note.audioUrl} className="voice-playback" />}
+                    {note.updatedAt && <div className="note-updated">Edited {note.updatedAt}</div>}
                   </div>
                 ))
               )}
