@@ -63,7 +63,15 @@
 .close {
   cursor: pointer;
   color: #999;
-  font-size: 18px;
+  font-size: 21px;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
 }
 
 .deal-phone {
