@@ -187,6 +187,27 @@ class ContactNoteResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+# Lead Note Schemas
+class LeadNoteCreate(BaseModel):
+    call_datetime: Optional[str] = None
+    next_conversation: Optional[str] = None
+    transcript: str
+
+class LeadNoteUpdate(BaseModel):
+    call_datetime: Optional[str] = None
+    next_conversation: Optional[str] = None
+    transcript: Optional[str] = None
+
+class LeadNoteResponse(BaseModel):
+    id: int
+    lead_id: int
+    call_datetime: Optional[str]
+    next_conversation: Optional[str]
+    transcript: Optional[str]
+    audio_url: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
 # Call Schemas
 class CallCreate(BaseModel):
     name: str

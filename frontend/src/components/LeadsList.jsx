@@ -1,10 +1,46 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getLeads, createLead, updateLead } from '../services/api';
+import {
+  getLeads, createLead, updateLead,
+  getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
+  uploadLeadNoteAudio, API_URL
+} from '../services/api';
 import '../styles/LeadsList.css';
 
 const STATUS_OPTIONS = ['New', 'Contacted', 'Interested', 'Document Pending', 'In Process', 'Qualified', 'Not Interested', 'CIBIL Issue', 'Lost to Competition'];
 
 const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
+
+// A naive line.split(',') breaks on quoted fields containing commas (e.g. "Doe, John") or
+// escaped quotes ("Say ""hi"""). This walks the line char-by-char tracking quote state instead.
+const parseCSVLine = (line) => {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',') {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+};
 
 const WhatsAppIcon = () => (
   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -13,17 +49,8 @@ const WhatsAppIcon = () => (
 );
 
 export default function LeadsList() {
-  const mockLeads = [
-    { id: 1, name: 'Neha Singh', company: 'Startup Fund', email: 'neha@startup.com', phone: '+91-9876543210', status: 'New', ai_score: 85 },
-    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', email: 'vikram@techpark.com', phone: '+91-9876543211', status: 'Interested', ai_score: 72 },
-    { id: 3, name: 'Anjali Desai', company: 'Retail Chain', email: 'anjali@retail.com', phone: '+91-9876543212', status: 'Not Interested', ai_score: 65 },
-    { id: 4, name: 'Amit Patel', company: 'Manufacturing', email: 'amit@mfg.com', phone: '+91-9876543213', status: 'CIBIL Issue', ai_score: 58 },
-    { id: 5, name: 'Priya Kapoor', company: 'Digital Ventures', email: 'priya@digital.com', phone: '+91-9876543214', status: 'Lost to Competition', ai_score: 80 }
-  ];
-
-  const [leads, setLeads] = useState(mockLeads);
+  const [leads, setLeads] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     company: '',
@@ -45,7 +72,7 @@ export default function LeadsList() {
 
   // Notes & voice-note state
   const [showNotes, setShowNotes] = useState(false);
-  const [leadNotes, setLeadNotes] = useState({});
+  const [notes, setNotes] = useState([]);
   const [noteDraft, setNoteDraft] = useState({ callDateTime: '', nextConversation: '', transcript: '' });
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -54,6 +81,7 @@ export default function LeadsList() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
+  const draftAudioBlobRef = useRef(null);
 
   // Role-based Import/Export
   const userRole = (localStorage.getItem('role') || 'employee').toLowerCase();
@@ -67,16 +95,9 @@ export default function LeadsList() {
   const fetchLeads = async () => {
     try {
       const data = await getLeads(token);
-      if (Array.isArray(data) && data.length > 0) {
-        setLeads(data);
-      } else {
-        setLeads(mockLeads);
-      }
+      setLeads(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to fetch leads:', err);
-      setLeads(mockLeads);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -100,8 +121,19 @@ export default function LeadsList() {
     }
   };
 
-  const handleStatusChange = (leadId, newStatus) => {
+  const handleStatusChange = async (leadId, newStatus) => {
+    const previous = leads.find((l) => l.id === leadId);
+    // Optimistic update, reverted below if the request fails
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l)));
+    try {
+      await updateLead(token, leadId, { status: newStatus });
+    } catch (err) {
+      console.error('Failed to update lead status:', err);
+      if (previous) {
+        setLeads((prev) => prev.map((l) => (l.id === leadId ? previous : l)));
+      }
+      alert('Failed to update status. Please try again.');
+    }
   };
 
   const toggleExpand = (leadId) => {
@@ -116,7 +148,7 @@ export default function LeadsList() {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const text = event.target.result;
         const rows = text.split(/\r?\n/).filter((r) => r.trim().length > 0);
@@ -124,23 +156,36 @@ export default function LeadsList() {
           alert('CSV file appears to be empty or missing data rows.');
           return;
         }
-        const headers = rows[0].split(',').map((h) => h.trim().toLowerCase().replace(/"/g, ''));
-        const imported = rows.slice(1).map((row, idx) => {
-          const cols = row.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+        const headers = parseCSVLine(rows[0]).map((h) => h.toLowerCase());
+        const imported = rows.slice(1).map((row) => {
+          const cols = parseCSVLine(row);
           const obj = {};
           headers.forEach((h, i) => { obj[h] = cols[i] || ''; });
           return {
-            id: Date.now() + idx,
             name: obj.name || 'Unnamed Lead',
             company: obj.company || '',
             email: obj.email || '',
             phone: obj.phone || '',
-            status: STATUS_OPTIONS.includes(obj.status) ? obj.status : 'New',
-            ai_score: obj.score || obj.ai_score || ''
+            product: obj.product || '',
+            source: obj.source || ''
           };
         });
-        setLeads((prev) => [...prev, ...imported]);
-        alert(`Imported ${imported.length} lead(s) successfully.`);
+
+        let created = 0;
+        let failed = 0;
+        for (const row of imported) {
+          try {
+            await createLead(token, row);
+            created++;
+          } catch (rowErr) {
+            console.error('Error importing row:', row, rowErr);
+            failed++;
+          }
+        }
+        await fetchLeads();
+        alert(failed > 0
+          ? `Imported ${created} lead(s). ${failed} row(s) failed - check the console for details.`
+          : `Imported ${created} lead(s) successfully.`);
       } catch (err) {
         alert('Failed to parse CSV file: ' + err.message);
       } finally {
@@ -152,7 +197,7 @@ export default function LeadsList() {
 
   const handleExportCSV = () => {
     const headers = ['Name', 'Company', 'Email', 'Phone', 'Status', 'Score'];
-    const rows = displayLeads.map((l) => [l.name, l.company || '', l.email || '', l.phone || '', l.status || '', l.ai_score ?? '']);
+    const rows = leads.map((l) => [l.name, l.company || '', l.email || '', l.phone || '', l.status || '', l.ai_score ?? '']);
     const csvContent = [headers, ...rows]
       .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
       .join('\n');
@@ -196,21 +241,36 @@ export default function LeadsList() {
     }
   };
 
+  // Local recordings use blob: URLs, which the browser won't release until explicitly revoked
+  // or the page unloads - revoke before dropping our only reference to one.
+  const revokeIfLocalBlob = (url) => {
+    if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+  };
+
   const resetNoteDraft = () => {
+    revokeIfLocalBlob(draftAudioUrl);
     setNoteDraft({
       callDateTime: new Date().toISOString().slice(0, 16),
       nextConversation: '',
       transcript: ''
     });
     setDraftAudioUrl(null);
+    draftAudioBlobRef.current = null;
     setEditingNoteId(null);
   };
 
-  const handleNotes = (lead) => {
+  const handleNotes = async (lead) => {
     setSelectedLead(lead);
     resetNoteDraft();
     setIsRecording(false);
     setShowNotes(true);
+    try {
+      const data = await getLeadNotes(token, lead.id);
+      setNotes(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+      setNotes([]);
+    }
   };
 
   const closeNotes = () => {
@@ -219,12 +279,14 @@ export default function LeadsList() {
   };
 
   const handleEditNote = (note) => {
+    revokeIfLocalBlob(draftAudioUrl);
     setNoteDraft({
-      callDateTime: note.callDateTime || '',
-      nextConversation: note.nextConversation || '',
+      callDateTime: note.call_datetime || '',
+      nextConversation: note.next_conversation || '',
       transcript: note.transcript || ''
     });
-    setDraftAudioUrl(note.audioUrl || null);
+    setDraftAudioUrl(note.audio_url ? `${API_URL}${note.audio_url}` : null);
+    draftAudioBlobRef.current = null;
     setEditingNoteId(note.id);
   };
 
@@ -239,7 +301,9 @@ export default function LeadsList() {
       const recorder = new MediaRecorder(stream);
       recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
       recorder.onstop = () => {
+        revokeIfLocalBlob(draftAudioUrl);
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        draftAudioBlobRef.current = blob;
         setDraftAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());
       };
@@ -279,56 +343,47 @@ export default function LeadsList() {
     setIsRecording(false);
   };
 
-  const saveNote = () => {
+  const saveNote = async () => {
     if (!selectedLead) return;
     if (!noteDraft.transcript.trim() && !draftAudioUrl) {
       alert('Add a transcript note or record a voice note before saving.');
       return;
     }
 
-    if (editingNoteId) {
-      setLeadNotes((prev) => ({
-        ...prev,
-        [selectedLead.id]: (prev[selectedLead.id] || []).map((n) =>
-          n.id === editingNoteId
-            ? {
-                ...n,
-                callDateTime: noteDraft.callDateTime,
-                nextConversation: noteDraft.nextConversation,
-                transcript: noteDraft.transcript.trim(),
-                audioUrl: draftAudioUrl,
-                updatedAt: new Date().toLocaleString()
-              }
-            : n
-        )
-      }));
-    } else {
-      const entry = {
-        id: Date.now(),
-        callDateTime: noteDraft.callDateTime,
-        nextConversation: noteDraft.nextConversation,
-        transcript: noteDraft.transcript.trim(),
-        audioUrl: draftAudioUrl,
-        createdAt: new Date().toLocaleString()
-      };
-      setLeadNotes((prev) => ({
-        ...prev,
-        [selectedLead.id]: [entry, ...(prev[selectedLead.id] || [])]
-      }));
+    const payload = {
+      call_datetime: noteDraft.callDateTime || null,
+      next_conversation: noteDraft.nextConversation || null,
+      transcript: noteDraft.transcript.trim()
+    };
+
+    try {
+      const savedNote = editingNoteId
+        ? await updateLeadNote(token, selectedLead.id, editingNoteId, payload)
+        : await createLeadNote(token, selectedLead.id, payload);
+
+      if (draftAudioBlobRef.current) {
+        await uploadLeadNoteAudio(token, selectedLead.id, savedNote.id, draftAudioBlobRef.current);
+      }
+
+      const data = await getLeadNotes(token, selectedLead.id);
+      setNotes(Array.isArray(data) ? data : []);
+      resetNoteDraft();
+    } catch (error) {
+      console.error('Error saving note:', error);
+      alert('Failed to save note. Please try again.');
     }
-
-    resetNoteDraft();
   };
 
-  const deleteNote = (leadId, noteId) => {
-    setLeadNotes((prev) => ({
-      ...prev,
-      [leadId]: (prev[leadId] || []).filter((n) => n.id !== noteId)
-    }));
-    if (editingNoteId === noteId) resetNoteDraft();
+  const deleteNote = async (leadId, noteId) => {
+    try {
+      await deleteLeadNote(token, leadId, noteId);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      if (editingNoteId === noteId) resetNoteDraft();
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      alert('Failed to delete note. Please try again.');
+    }
   };
-
-  const displayLeads = (leads && leads.length > 0) ? leads : mockLeads;
 
   return (
     <div className="leads-container">
@@ -453,9 +508,9 @@ export default function LeadsList() {
         </div>
       )}
 
-      {displayLeads && displayLeads.length > 0 ? (
+      {leads.length > 0 ? (
         <div className="leads-list">
-          {displayLeads.map((lead) => {
+          {leads.map((lead) => {
             const isExpanded = !!expandedLeads[lead.id];
             return (
               <div key={lead.id} className="lead-row">
@@ -495,7 +550,9 @@ export default function LeadsList() {
                     <p><strong>Company:</strong> {lead.company || '-'}</p>
                     <p><strong>Email:</strong> {lead.email || '-'}</p>
                     <p><strong>Phone:</strong> {lead.phone || '-'}</p>
-                    <p><strong>Score:</strong> {lead.ai_score || '-'}%</p>
+                    <p><strong>Product:</strong> {lead.product || '-'}</p>
+                    <p><strong>Source:</strong> {lead.source || '-'}</p>
+                    <p><strong>Score:</strong> {lead.ai_score != null ? lead.ai_score : '-'}%</p>
                   </div>
                 )}
               </div>
@@ -609,25 +666,29 @@ export default function LeadsList() {
             </div>
 
             <div className="notes-history">
-              <h4>History ({(leadNotes[selectedLead.id] || []).length})</h4>
-              {(leadNotes[selectedLead.id] || []).length === 0 ? (
+              <h4>History ({notes.length})</h4>
+              {notes.length === 0 ? (
                 <p className="no-notes">No notes yet for this lead.</p>
               ) : (
-                (leadNotes[selectedLead.id] || []).map((note) => (
+                notes.map((note) => (
                   <div key={note.id} className={`note-entry ${editingNoteId === note.id ? 'editing' : ''}`}>
                     <div className="note-entry-header">
-                      <span>📞 {note.callDateTime ? new Date(note.callDateTime).toLocaleString() : '—'}</span>
+                      <span>📞 {note.call_datetime ? new Date(note.call_datetime).toLocaleString() : '—'}</span>
                       <div className="note-entry-actions">
                         <button className="btn-edit-note" onClick={() => handleEditNote(note)} title="Edit">✏️</button>
                         <button className="btn-delete-note" onClick={() => deleteNote(selectedLead.id, note.id)} title="Delete">🗑️</button>
                       </div>
                     </div>
-                    {note.nextConversation && (
-                      <div className="note-next">⏭️ Next: {new Date(note.nextConversation).toLocaleString()}</div>
+                    {note.next_conversation && (
+                      <div className="note-next">⏭️ Next: {new Date(note.next_conversation).toLocaleString()}</div>
                     )}
                     {note.transcript && <p className="note-transcript">{note.transcript}</p>}
-                    {note.audioUrl && <audio controls src={note.audioUrl} className="voice-playback" />}
-                    {note.updatedAt && <div className="note-updated">Edited {note.updatedAt}</div>}
+                    {note.audio_url && (
+                      <audio controls src={`${API_URL}${note.audio_url}`} className="voice-playback" />
+                    )}
+                    {note.updated_at && note.updated_at !== note.created_at && (
+                      <div className="note-updated">Edited {new Date(note.updated_at).toLocaleString()}</div>
+                    )}
                   </div>
                 ))
               )}

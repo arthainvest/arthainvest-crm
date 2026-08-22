@@ -50,6 +50,37 @@ export const deleteLead = async (token, id) => {
   await api.delete(`/api/leads/${id}?token=${token}`);
 };
 
+// Lead notes
+export const getLeadNotes = async (token, leadId) => {
+  const response = await api.get(`/api/leads/${leadId}/notes?token=${token}`);
+  return response.data;
+};
+
+export const createLeadNote = async (token, leadId, noteData) => {
+  const response = await api.post(`/api/leads/${leadId}/notes?token=${token}`, noteData);
+  return response.data;
+};
+
+export const updateLeadNote = async (token, leadId, noteId, noteData) => {
+  const response = await api.put(`/api/leads/${leadId}/notes/${noteId}?token=${token}`, noteData);
+  return response.data;
+};
+
+export const deleteLeadNote = async (token, leadId, noteId) => {
+  await api.delete(`/api/leads/${leadId}/notes/${noteId}?token=${token}`);
+};
+
+export const uploadLeadNoteAudio = async (token, leadId, noteId, audioBlob) => {
+  const formData = new FormData();
+  formData.append('audio', audioBlob, 'recording.webm');
+  const response = await api.post(
+    `/api/leads/${leadId}/notes/${noteId}/audio?token=${token}`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
+};
+
 // Deals
 export const getDeals = async (token, stage = null) => {
   const params = new URLSearchParams();

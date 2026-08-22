@@ -41,6 +41,7 @@ def init_db():
         cursor.execute("DROP TABLE IF EXISTS user_settings")
         cursor.execute("DROP TABLE IF EXISTS contact_notes")
         cursor.execute("DROP TABLE IF EXISTS contacts")
+        cursor.execute("DROP TABLE IF EXISTS lead_notes")
         cursor.execute("DROP TABLE IF EXISTS calls")
         cursor.execute("DROP TABLE IF EXISTS users")
 
@@ -183,6 +184,20 @@ def init_db():
         """)
 
         cursor.execute("""
+            CREATE TABLE lead_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id INTEGER NOT NULL,
+                call_datetime TEXT,
+                next_conversation TEXT,
+                transcript TEXT,
+                audio_url TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (lead_id) REFERENCES leads(id)
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE calls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -211,23 +226,23 @@ def init_db():
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, ('Neha Singh', 'StartUp Fund', 'neha@startup.com', '9876543210', 'new', 1))
+        """, ('Neha Singh', 'StartUp Fund', 'neha@startup.com', '9876543210', 'New', 1))
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, ('Vikram Reddy', 'Tech Park', 'vikram@techpark.com', '9876543211', 'new', 1))
+        """, ('Vikram Reddy', 'Tech Park', 'vikram@techpark.com', '9876543211', 'New', 1))
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, ('Anjali Desai', 'Retail Chain', 'anjali@retail.com', '9876543212', 'new', 1))
+        """, ('Anjali Desai', 'Retail Chain', 'anjali@retail.com', '9876543212', 'New', 1))
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, ('Amit Patel', 'Manufacturing', 'amit@mfg.com', '9876543213', 'new', 1))
+        """, ('Amit Patel', 'Manufacturing', 'amit@mfg.com', '9876543213', 'New', 1))
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, ('Priya Kapoor', 'Digital Ventures', 'priya@digital.com', '9876543214', 'new', 1))
+        """, ('Priya Kapoor', 'Digital Ventures', 'priya@digital.com', '9876543214', 'New', 1))
 
         # Insert sample deals
         cursor.execute("""

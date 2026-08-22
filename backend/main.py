@@ -18,6 +18,7 @@ from schemas import (
     SettingsUpdate, SettingsResponse,
     ContactCreate, ContactUpdate, ContactResponse,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
+    LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     CallCreate, CallResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
@@ -204,7 +205,7 @@ async def create_lead(lead: LeadCreate, token: str = Query(None)):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (lead.name, lead.company, lead.email, lead.phone, lead.product,
-             lead.source, current_user['user_id'], 'new')
+             lead.source, current_user['user_id'], 'New')
         )
         conn.commit()
         lead_id = cursor.lastrowid
@@ -288,8 +289,14 @@ async def delete_lead(lead_id: int, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT audio_url FROM lead_notes WHERE lead_id = ? AND audio_url IS NOT NULL", (lead_id,))
+        audio_urls = [row['audio_url'] for row in cursor.fetchall()]
+        cursor.execute("DELETE FROM lead_notes WHERE lead_id = ?", (lead_id,))
         cursor.execute("DELETE FROM leads WHERE id = ?", (lead_id,))
         conn.commit()
+
+    for audio_url in audio_urls:
+        _delete_audio_file(audio_url)
 
     return {"message": "Lead deleted"}
 
@@ -862,6 +869,131 @@ def _delete_audio_file(audio_url):
             os.remove(file_path)
     except OSError as e:
         print(f"[WARN] Could not remove audio file {audio_url}: {e}")
+
+# ============= LEAD NOTES ENDPOINTS =============
+
+@app.get("/api/leads/{lead_id}/notes", response_model=list[LeadNoteResponse])
+async def get_lead_notes(lead_id: int, token: str = Query(None)):
+    """Get all notes for a lead"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM lead_notes WHERE lead_id = ? ORDER BY created_at DESC", (lead_id,))
+        notes = [dict(row) for row in cursor.fetchall()]
+
+    return notes
+
+@app.post("/api/leads/{lead_id}/notes", response_model=LeadNoteResponse)
+async def create_lead_note(lead_id: int, note: LeadNoteCreate, token: str = Query(None)):
+    """Add a note to a lead"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO lead_notes (lead_id, call_datetime, next_conversation, transcript)
+            VALUES (?, ?, ?, ?)
+            """,
+            (lead_id, note.call_datetime, note.next_conversation, note.transcript)
+        )
+        conn.commit()
+        note_id = cursor.lastrowid
+
+        cursor.execute("SELECT * FROM lead_notes WHERE id = ?", (note_id,))
+        new_note = cursor.fetchone()
+
+    return dict(new_note)
+
+@app.put("/api/leads/{lead_id}/notes/{note_id}", response_model=LeadNoteResponse)
+async def update_lead_note(lead_id: int, note_id: int, note: LeadNoteUpdate, token: str = Query(None)):
+    """Update a lead note"""
+    get_current_user(token)
+
+    updates = []
+    values = []
+
+    for field in ['call_datetime', 'next_conversation', 'transcript']:
+        value = getattr(note, field)
+        if value is not None:
+            updates.append(f"{field} = ?")
+            values.append(value)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(note_id)
+    values.append(lead_id)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE lead_notes SET {', '.join(updates)} WHERE id = ? AND lead_id = ?", values)
+        conn.commit()
+
+        cursor.execute("SELECT * FROM lead_notes WHERE id = ?", (note_id,))
+        updated_note = cursor.fetchone()
+
+    if not updated_note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    return dict(updated_note)
+
+@app.delete("/api/leads/{lead_id}/notes/{note_id}")
+async def delete_lead_note(lead_id: int, note_id: int, token: str = Query(None)):
+    """Delete a lead note"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT audio_url FROM lead_notes WHERE id = ? AND lead_id = ?", (note_id, lead_id))
+        existing = cursor.fetchone()
+        cursor.execute("DELETE FROM lead_notes WHERE id = ? AND lead_id = ?", (note_id, lead_id))
+        conn.commit()
+
+    if existing and existing['audio_url']:
+        _delete_audio_file(existing['audio_url'])
+
+    return {"message": "Note deleted"}
+
+@app.post("/api/leads/{lead_id}/notes/{note_id}/audio", response_model=LeadNoteResponse)
+async def upload_lead_note_audio(lead_id: int, note_id: int, token: str = Query(None), audio: UploadFile = File(...)):
+    """Attach a recorded voice note to a lead note, replacing any previous recording"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT audio_url FROM lead_notes WHERE id = ? AND lead_id = ?", (note_id, lead_id))
+        existing = cursor.fetchone()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    if existing['audio_url']:
+        _delete_audio_file(existing['audio_url'])
+
+    ext = os.path.splitext(audio.filename or '')[1] or '.webm'
+    filename = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(UPLOADS_DIR, filename)
+    with open(file_path, 'wb') as f:
+        f.write(await audio.read())
+
+    audio_url = f"/uploads/notes/{filename}"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        # See the identical note on upload_note_audio() above: not touching updated_at here so a
+        # brand-new note saved with a voice note attached doesn't falsely show "Edited".
+        cursor.execute(
+            "UPDATE lead_notes SET audio_url = ? WHERE id = ?",
+            (audio_url, note_id)
+        )
+        conn.commit()
+        cursor.execute("SELECT * FROM lead_notes WHERE id = ?", (note_id,))
+        updated_note = cursor.fetchone()
+
+    return dict(updated_note)
 
 # ============= CALLS ENDPOINTS =============
 
