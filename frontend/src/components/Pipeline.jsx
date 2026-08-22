@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getDeals } from '../services/api';
 import '../styles/Pipeline.css';
 
 const FolderIcon = () => (
@@ -93,17 +94,32 @@ export default function Pipeline() {
 
   const STAGES = ['New', 'Qualified', 'Proposal', 'Negotiation', 'Closed'];
 
+  const token = localStorage.getItem('token');
+
+  // Backend deals only carry {id, lead_id, deal_value, stage, probability, expected_close_date,
+  // created_at} - no name/company/phone/loanProduct/processStatus, stage is lowercase, and
+  // probability is a 0-1 fraction. Normalize into the shape the rest of this component expects.
+  const normalizeDeal = (d) => ({
+    id: d.id,
+    name: d.name || `Lead #${d.lead_id}`,
+    company: d.company || '—',
+    value: d.value ?? Math.round((d.deal_value ?? 0) / 1000),
+    phone: d.phone || '—',
+    loanProduct: d.loanProduct || 'LAP',
+    stage: STAGES.find((s) => s.toLowerCase() === String(d.stage).toLowerCase()) || 'New',
+    probability: d.probability > 1 ? Math.round(d.probability) : Math.round((d.probability ?? 0) * 100),
+    processStatus: d.processStatus || 'Login'
+  });
+
   useEffect(() => {
     fetchDeals();
   }, []);
 
   const fetchDeals = async () => {
     try {
-      const response = await fetch('/api/pipeline');
-      if (!response.ok) throw new Error('API error');
-      const data = await response.json();
+      const data = await getDeals(token);
       if (Array.isArray(data) && data.length > 0) {
-        setDeals(data);
+        setDeals(data.map(normalizeDeal));
       } else {
         setDeals(mockDeals);
       }
