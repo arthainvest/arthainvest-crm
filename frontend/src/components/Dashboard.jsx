@@ -61,7 +61,7 @@ export default function Dashboard() {
       ]);
 
       if (analyticsData && leadsData) {
-        setAnalytics(analyticsData);
+        setAnalytics({ ...mockAnalytics, ...analyticsData });
         setRecentLeads(leadsData.slice(0, 5));
       } else {
         setAnalytics(mockAnalytics);
