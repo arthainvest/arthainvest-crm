@@ -131,65 +131,64 @@
   color: #666;
 }
 
-.btn-action {
-  width: 32px;
-  height: 32px;
+.contact-row-actions .btn-action {
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
+  padding: 4px;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
-  font-size: 17px;
-  transition: all 0.2s ease;
+  font-size: 21px;
+  font-weight: normal;
+  transition: transform 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.btn-action.call {
+.contact-row-actions .btn-action.call {
   color: #00c853;
 }
 
-.btn-action.email {
+.contact-row-actions .btn-action.email {
   color: #F57C00;
 }
 
-.btn-action.whatsapp {
+.contact-row-actions .btn-action.whatsapp {
   color: #25D366;
 }
 
-.btn-action.digilocker {
+.contact-row-actions .btn-action.digilocker {
   color: #9C27B0;
 }
 
-.btn-action.notes {
+.contact-row-actions .btn-action.notes {
   color: #388E3C;
 }
 
-.btn-action:hover {
-  background: #f2f2f2;
-  transform: scale(1.1);
+.contact-row-actions .btn-action:hover {
+  transform: scale(1.15);
 }
 
-.btn-corner {
-  width: 28px;
-  height: 28px;
+.contact-row-corner .btn-corner {
+  width: auto;
+  height: auto;
+  padding: 4px;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 16px;
   background: transparent;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.btn-corner.edit:hover {
-  background: #e3f2fd;
-}
-
-.btn-corner.delete:hover {
-  background: #ffebee;
+.contact-row-corner .btn-corner:hover {
+  transform: scale(1.15);
 }
 
 .modal-overlay {

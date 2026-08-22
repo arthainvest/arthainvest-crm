@@ -294,39 +294,41 @@
   color: #666;
 }
 
-.btn-action {
-  width: 32px;
-  height: 32px;
+.lead-row-actions .btn-action {
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
+  padding: 4px;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
-  font-size: 17px;
-  transition: all 0.2s ease;
+  font-size: 21px;
+  font-weight: normal;
+  transition: transform 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.btn-action.call {
+.lead-row-actions .btn-action.call {
   color: #00c853;
 }
 
-.btn-action.email {
+.lead-row-actions .btn-action.email {
   color: #F57C00;
 }
 
-.btn-action.whatsapp {
+.lead-row-actions .btn-action.whatsapp {
   color: #25D366;
 }
 
-.btn-action.notes {
+.lead-row-actions .btn-action.notes {
   color: #388E3C;
 }
 
-.btn-action:hover {
-  background: #f2f2f2;
-  transform: scale(1.1);
+.lead-row-actions .btn-action:hover {
+  transform: scale(1.15);
 }
 
 .notes-modal {
