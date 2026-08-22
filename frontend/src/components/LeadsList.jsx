@@ -4,6 +4,7 @@ import {
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
   uploadLeadNoteAudio, API_URL
 } from '../services/api';
+import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/LeadsList.css';
 
 const STATUS_OPTIONS = ['New', 'Contacted', 'Interested', 'Document Pending', 'In Process', 'Qualified', 'Not Interested', 'CIBIL Issue', 'Lost to Competition'];
@@ -40,6 +41,13 @@ const parseCSVLine = (line) => {
   }
   result.push(current.trim());
   return result;
+};
+
+// Older leads may have a free-text product value from before this was a dropdown -
+// fall back to showing it as-is rather than hiding data that's already there.
+const productLabel = (id) => {
+  const product = LOAN_PRODUCTS.find((p) => p.id === id);
+  return product ? `${product.icon} ${product.name}` : id;
 };
 
 const WhatsAppIcon = () => (
@@ -473,13 +481,19 @@ export default function LeadsList() {
 
               <div className="form-group">
                 <label>Product</label>
-                <input
-                  type="text"
+                <select
                   value={formData.product}
                   onChange={(e) =>
                     setFormData({ ...formData, product: e.target.value })
                   }
-                />
+                >
+                  <option value="">-- Select --</option>
+                  {LOAN_PRODUCTS.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.icon} {product.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group">
@@ -552,7 +566,7 @@ export default function LeadsList() {
                     <p><strong>Company:</strong> {lead.company || '-'}</p>
                     <p><strong>Email:</strong> {lead.email || '-'}</p>
                     <p><strong>Phone:</strong> {lead.phone || '-'}</p>
-                    <p><strong>Product:</strong> {lead.product || '-'}</p>
+                    <p><strong>Product:</strong> {lead.product ? productLabel(lead.product) : '-'}</p>
                     <p><strong>Source:</strong> {lead.source || '-'}</p>
                     <p><strong>Score:</strong> {lead.ai_score != null ? lead.ai_score : '-'}%</p>
                   </div>

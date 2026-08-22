@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getDeals, getLeads, createDeal, createLead } from '../services/api';
+import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Pipeline.css';
 
 const FolderIcon = () => (
@@ -74,15 +75,6 @@ export default function Pipeline() {
     probability: 30,
     description: ''
   });
-
-  const LOAN_PRODUCTS = [
-    { id: 'LAP', name: 'Loan Against Property', icon: '🏠', rate: '10-15%' },
-    { id: 'OD', name: 'Overdraft', icon: '💰', rate: '12-18%' },
-    { id: 'CC', name: 'Credit Card', icon: '💳', rate: '20-25%' },
-    { id: 'Home', name: 'Home Loan', icon: '🏡', rate: '7-10%' },
-    { id: 'Business', name: 'Business Loan', icon: '🏢', rate: '11-16%' },
-    { id: 'Project', name: 'Project Loan', icon: '🏗️', rate: '10-14%' }
-  ];
 
   const LOAN_DOCUMENTS = {
     LAP: ['PAN Card', 'Aadhar Card', 'Property Deed', 'Property Tax Receipt', 'Bank Statement', 'Income Proof', 'Identity Proof', 'Address Proof'],
