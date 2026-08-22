@@ -15,6 +15,12 @@
   margin: 0;
 }
 
+.leads-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .btn-primary {
   background-color: #667eea;
   color: white;
@@ -143,87 +149,117 @@
   background-color: #d0d0d0;
 }
 
-.leads-table {
-  width: 100%;
-  background-color: white;
+.leads-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.lead-card {
+  background: white;
+  border: 1px solid #e0e0e0;
   border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  border-collapse: collapse;
+  padding: 20px;
+  transition: all 0.3s ease;
 }
 
-.leads-table thead {
-  background-color: #f8f9fa;
-  border-bottom: 2px solid #e9ecef;
+.lead-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.leads-table th {
-  padding: 15px;
-  text-align: left;
-  font-weight: 600;
-  color: #2c3e50;
-  font-size: 13px;
-  text-transform: uppercase;
+.lead-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
 }
 
-.leads-table td {
-  padding: 15px;
-  border-bottom: 1px solid #e9ecef;
-  font-size: 14px;
+.lead-card .card-header h3 {
+  margin: 0;
+  font-size: 18px;
 }
 
-.leads-table tbody tr:hover {
-  background-color: #f8f9fa;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 6px 12px;
+.lead-card .score-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 12px;
   border-radius: 20px;
   font-size: 12px;
-  font-weight: 600;
-  text-transform: capitalize;
+  font-weight: bold;
 }
 
-.status-badge.new {
+.lead-card .card-info {
+  margin-bottom: 15px;
+}
+
+.lead-card .card-info p {
+  margin: 8px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.status-row {
+  margin-bottom: 15px;
+}
+
+.status-row label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.status-select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 20px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  padding-right: 30px;
+}
+
+.status-select.status-new {
   background-color: #e3f2fd;
   color: #1976d2;
 }
 
-.status-badge.qualified {
+.status-select.status-contacted {
+  background-color: #ede7f6;
+  color: #5e35b1;
+}
+
+.status-select.status-interested {
   background-color: #e8f5e9;
-  color: #388e3c;
+  color: #2e7d32;
 }
 
-.status-badge.proposal {
+.status-select.status-not-interested {
+  background-color: #eceff1;
+  color: #546e7a;
+}
+
+.status-select.status-cibil-issue {
   background-color: #fff3e0;
-  color: #f57c00;
+  color: #e65100;
 }
 
-.status-badge.negotiation {
-  background-color: #fce4ec;
-  color: #c2185b;
+.status-select.status-lost-to-competition {
+  background-color: #ffebee;
+  color: #c62828;
 }
 
-.status-badge.closed {
-  background-color: #f3e5f5;
-  color: #7b1fa2;
-}
-
-.btn-danger {
-  background-color: #e74c3c;
-  color: white;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.btn-danger:hover {
-  background-color: #c0392b;
+.status-select.status-qualified {
+  background-color: #e0f2f1;
+  color: #00695c;
 }
 
 .no-data {
@@ -277,6 +313,11 @@
 
 .btn-action.notes {
   background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+  color: white;
+}
+
+.btn-action.delete {
+  background: linear-gradient(135deg, #F44336 0%, #D32F2F 100%);
   color: white;
 }
 
@@ -493,16 +534,16 @@
     align-items: flex-start;
   }
 
+  .leads-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
   .modal-content {
     width: 95%;
   }
 
-  .leads-table {
-    font-size: 12px;
-  }
-
-  .leads-table th,
-  .leads-table td {
-    padding: 10px;
+  .leads-grid {
+    grid-template-columns: 1fr;
   }
 }

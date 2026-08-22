@@ -2,13 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getLeads, createLead, updateLead, deleteLead } from '../services/api';
 import '../styles/LeadsList.css';
 
+const STATUS_OPTIONS = ['New', 'Contacted', 'Interested', 'Not Interested', 'CIBIL Issue', 'Lost to Competition', 'Qualified'];
+
+const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
+
 export default function LeadsList() {
   const mockLeads = [
     { id: 1, name: 'Neha Singh', company: 'Startup Fund', email: 'neha@startup.com', phone: '+91-9876543210', status: 'New', ai_score: 85 },
-    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', email: 'vikram@techpark.com', phone: '+91-9876543211', status: 'Contacted', ai_score: 72 },
-    { id: 3, name: 'Anjali Desai', company: 'Retail Chain', email: 'anjali@retail.com', phone: '+91-9876543212', status: 'Interested', ai_score: 65 },
-    { id: 4, name: 'Amit Patel', company: 'Manufacturing', email: 'amit@mfg.com', phone: '+91-9876543213', status: 'Qualified', ai_score: 58 },
-    { id: 5, name: 'Priya Kapoor', company: 'Digital Ventures', email: 'priya@digital.com', phone: '+91-9876543214', status: 'New', ai_score: 80 }
+    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', email: 'vikram@techpark.com', phone: '+91-9876543211', status: 'Interested', ai_score: 72 },
+    { id: 3, name: 'Anjali Desai', company: 'Retail Chain', email: 'anjali@retail.com', phone: '+91-9876543212', status: 'Not Interested', ai_score: 65 },
+    { id: 4, name: 'Amit Patel', company: 'Manufacturing', email: 'amit@mfg.com', phone: '+91-9876543213', status: 'CIBIL Issue', ai_score: 58 },
+    { id: 5, name: 'Priya Kapoor', company: 'Digital Ventures', email: 'priya@digital.com', phone: '+91-9876543214', status: 'Lost to Competition', ai_score: 80 }
   ];
 
   const [leads, setLeads] = useState(mockLeads);
@@ -45,6 +49,11 @@ export default function LeadsList() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
+
+  // Role-based Import/Export
+  const userRole = (localStorage.getItem('role') || 'employee').toLowerCase();
+  const canExport = userRole === 'admin';
+  const importInputRef = useRef(null);
 
   useEffect(() => {
     fetchLeads();
@@ -96,6 +105,69 @@ export default function LeadsList() {
         alert('Error deleting lead');
       }
     }
+  };
+
+  const handleStatusChange = (leadId, newStatus) => {
+    setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l)));
+  };
+
+  const handleImportClick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result;
+        const rows = text.split(/\r?\n/).filter((r) => r.trim().length > 0);
+        if (rows.length < 2) {
+          alert('CSV file appears to be empty or missing data rows.');
+          return;
+        }
+        const headers = rows[0].split(',').map((h) => h.trim().toLowerCase().replace(/"/g, ''));
+        const imported = rows.slice(1).map((row, idx) => {
+          const cols = row.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+          const obj = {};
+          headers.forEach((h, i) => { obj[h] = cols[i] || ''; });
+          return {
+            id: Date.now() + idx,
+            name: obj.name || 'Unnamed Lead',
+            company: obj.company || '',
+            email: obj.email || '',
+            phone: obj.phone || '',
+            status: STATUS_OPTIONS.includes(obj.status) ? obj.status : 'New',
+            ai_score: obj.score || obj.ai_score || ''
+          };
+        });
+        setLeads((prev) => [...prev, ...imported]);
+        alert(`Imported ${imported.length} lead(s) successfully.`);
+      } catch (err) {
+        alert('Failed to parse CSV file: ' + err.message);
+      } finally {
+        e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['Name', 'Company', 'Email', 'Phone', 'Status', 'Score'];
+    const rows = displayLeads.map((l) => [l.name, l.company || '', l.email || '', l.phone || '', l.status || '', l.ai_score ?? '']);
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `leads-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleCall = (lead) => {
@@ -250,12 +322,25 @@ export default function LeadsList() {
     <div className="leads-container">
       <div className="leads-header">
         <h1>Leads</h1>
-        <button
-          className="btn-primary"
-          onClick={() => setShowModal(true)}
-        >
-          + New Lead
-        </button>
+        <div className="leads-header-actions">
+          <input
+            type="file"
+            accept=".csv"
+            ref={importInputRef}
+            onChange={handleImportFile}
+            style={{ display: 'none' }}
+          />
+          <button className="btn-secondary" onClick={handleImportClick}>📥 Import</button>
+          {canExport && (
+            <button className="btn-secondary" onClick={handleExportCSV}>📤 Export</button>
+          )}
+          <button
+            className="btn-primary"
+            onClick={() => setShowModal(true)}
+          >
+            + New Lead
+          </button>
+        </div>
       </div>
 
       {showModal && (
@@ -357,51 +442,45 @@ export default function LeadsList() {
       )}
 
       {displayLeads && displayLeads.length > 0 ? (
-        <table className="leads-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Company</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>Status</th>
-              <th>Score</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayLeads.map((lead) => (
-              <tr key={lead.id}>
-                <td>{lead.name}</td>
-                <td>{lead.company || '-'}</td>
-                <td>{lead.email || '-'}</td>
-                <td>{lead.phone || '-'}</td>
-                <td>
-                  <span className={`status-badge ${lead.status}`}>
-                    {lead.status}
-                  </span>
-                </td>
-                <td>{lead.ai_score || '-'}</td>
-                <td>
-                  <div className="action-buttons">
-                    <button className="btn-action call" onClick={() => handleCall(lead)} title="Click to Call">☎️</button>
-                    <button className="btn-action message" onClick={() => handleMessage(lead)} title="Direct Message">💬</button>
-                    <button className="btn-action email" onClick={() => handleEmail(lead)} title="Send Email">📧</button>
-                    <button className="btn-action whatsapp" onClick={() => handleWhatsApp(lead)} title="WhatsApp">📱</button>
-                    <button className="btn-action digilocker" onClick={() => handleDigi(lead)} title="DigiLocker">🔐</button>
-                    <button className="btn-action notes" onClick={() => handleNotes(lead)} title="Notes & Follow-up">📝</button>
-                    <button
-                      className="btn-danger"
-                      onClick={() => handleDeleteLead(lead.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="leads-grid">
+          {displayLeads.map((lead) => (
+            <div key={lead.id} className="lead-card">
+              <div className="card-header">
+                <h3>{lead.name}</h3>
+                <span className="score-badge">{lead.ai_score || '-'}%</span>
+              </div>
+
+              <div className="card-info">
+                <p><strong>Company:</strong> {lead.company || '-'}</p>
+                <p><strong>Email:</strong> {lead.email || '-'}</p>
+                <p><strong>Phone:</strong> {lead.phone || '-'}</p>
+              </div>
+
+              <div className="status-row">
+                <label>Status</label>
+                <select
+                  className={`status-select status-${statusClass(lead.status)}`}
+                  value={lead.status}
+                  onChange={(e) => handleStatusChange(lead.id, e.target.value)}
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="action-buttons">
+                <button className="btn-action call" onClick={() => handleCall(lead)} title="Click to Call">☎️</button>
+                <button className="btn-action message" onClick={() => handleMessage(lead)} title="Direct Message">💬</button>
+                <button className="btn-action email" onClick={() => handleEmail(lead)} title="Send Email">📧</button>
+                <button className="btn-action whatsapp" onClick={() => handleWhatsApp(lead)} title="WhatsApp">📱</button>
+                <button className="btn-action digilocker" onClick={() => handleDigi(lead)} title="DigiLocker">🔐</button>
+                <button className="btn-action notes" onClick={() => handleNotes(lead)} title="Notes & Follow-up">📝</button>
+                <button className="btn-action delete" onClick={() => handleDeleteLead(lead.id)} title="Delete">🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <p className="no-data">No leads yet. Create your first lead!</p>
       )}
