@@ -13,7 +13,10 @@ from schemas import (
     DealCreate, DealMove, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     IntegrationToggle, IntegrationResponse,
-    SettingsUpdate, SettingsResponse
+    SettingsUpdate, SettingsResponse,
+    ContactCreate, ContactUpdate, ContactResponse,
+    ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
+    CallCreate, CallResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -68,6 +71,17 @@ def campaign_row_to_dict(row):
     recipients = c.get('recipients') or 0
     c['engagement'] = round((c.get('clicks') or 0) / recipients * 100) if recipients else 0
     c['progress'] = 100 if c.get('status') == 'Completed' else (round((c.get('opens') or 0) / recipients * 100) if recipients else 0)
+    return c
+
+def format_duration(seconds):
+    """Format a duration in seconds as '5m 20s'"""
+    seconds = seconds or 0
+    minutes, secs = divmod(seconds, 60)
+    return f"{minutes}m {secs}s"
+
+def call_row_to_dict(row):
+    c = dict(row)
+    c['duration'] = format_duration(c.get('duration_seconds'))
     return c
 
 # ============= HEALTH CHECK =============
@@ -609,6 +623,297 @@ async def update_settings(settings: SettingsUpdate, token: str = Query(None)):
     result['email_notifications'] = bool(result['email_notifications'])
     result['sms_notifications'] = bool(result['sms_notifications'])
     return result
+
+# ============= CONTACTS ENDPOINTS =============
+
+@app.get("/api/contacts", response_model=list[ContactResponse])
+async def get_contacts(token: str = Query(None)):
+    """Get all contacts"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM contacts ORDER BY created_at DESC")
+        contacts = [dict(row) for row in cursor.fetchall()]
+
+    return contacts
+
+@app.post("/api/contacts", response_model=ContactResponse)
+async def create_contact(contact: ContactCreate, token: str = Query(None)):
+    """Create a new contact"""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO contacts (name, company, email, phone, city, created_by)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (contact.name, contact.company, contact.email, contact.phone, contact.city, current_user['user_id'])
+        )
+        conn.commit()
+        contact_id = cursor.lastrowid
+
+        cursor.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,))
+        new_contact = cursor.fetchone()
+
+    return dict(new_contact)
+
+@app.put("/api/contacts/{contact_id}", response_model=ContactResponse)
+async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Query(None)):
+    """Update a contact"""
+    get_current_user(token)
+
+    updates = []
+    values = []
+
+    for field in ['name', 'company', 'email', 'phone', 'city', 'score']:
+        value = getattr(contact, field)
+        if value is not None:
+            updates.append(f"{field} = ?")
+            values.append(value)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(contact_id)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE contacts SET {', '.join(updates)} WHERE id = ?", values)
+        conn.commit()
+
+        cursor.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,))
+        updated_contact = cursor.fetchone()
+
+    if not updated_contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    return dict(updated_contact)
+
+@app.delete("/api/contacts/{contact_id}")
+async def delete_contact(contact_id: int, token: str = Query(None)):
+    """Delete a contact"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM contact_notes WHERE contact_id = ?", (contact_id,))
+        cursor.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
+        conn.commit()
+
+    return {"message": "Contact deleted"}
+
+# ============= CONTACT NOTES ENDPOINTS =============
+
+@app.get("/api/contacts/{contact_id}/notes", response_model=list[ContactNoteResponse])
+async def get_contact_notes(contact_id: int, token: str = Query(None)):
+    """Get all notes for a contact"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM contact_notes WHERE contact_id = ? ORDER BY created_at DESC", (contact_id,))
+        notes = [dict(row) for row in cursor.fetchall()]
+
+    return notes
+
+@app.post("/api/contacts/{contact_id}/notes", response_model=ContactNoteResponse)
+async def create_contact_note(contact_id: int, note: ContactNoteCreate, token: str = Query(None)):
+    """Add a note to a contact"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO contact_notes (contact_id, call_datetime, next_conversation, transcript)
+            VALUES (?, ?, ?, ?)
+            """,
+            (contact_id, note.call_datetime, note.next_conversation, note.transcript)
+        )
+        conn.commit()
+        note_id = cursor.lastrowid
+
+        cursor.execute("SELECT * FROM contact_notes WHERE id = ?", (note_id,))
+        new_note = cursor.fetchone()
+
+    return dict(new_note)
+
+@app.put("/api/contacts/{contact_id}/notes/{note_id}", response_model=ContactNoteResponse)
+async def update_contact_note(contact_id: int, note_id: int, note: ContactNoteUpdate, token: str = Query(None)):
+    """Update a contact note"""
+    get_current_user(token)
+
+    updates = []
+    values = []
+
+    for field in ['call_datetime', 'next_conversation', 'transcript']:
+        value = getattr(note, field)
+        if value is not None:
+            updates.append(f"{field} = ?")
+            values.append(value)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(note_id)
+    values.append(contact_id)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE contact_notes SET {', '.join(updates)} WHERE id = ? AND contact_id = ?", values)
+        conn.commit()
+
+        cursor.execute("SELECT * FROM contact_notes WHERE id = ?", (note_id,))
+        updated_note = cursor.fetchone()
+
+    if not updated_note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    return dict(updated_note)
+
+@app.delete("/api/contacts/{contact_id}/notes/{note_id}")
+async def delete_contact_note(contact_id: int, note_id: int, token: str = Query(None)):
+    """Delete a contact note"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM contact_notes WHERE id = ? AND contact_id = ?", (note_id, contact_id))
+        conn.commit()
+
+    return {"message": "Note deleted"}
+
+# ============= CALLS ENDPOINTS =============
+
+@app.get("/api/calls", response_model=list[CallResponse])
+async def get_calls(token: str = Query(None)):
+    """Get all logged calls"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM calls ORDER BY call_date DESC, created_at DESC")
+        calls = [call_row_to_dict(row) for row in cursor.fetchall()]
+
+    return calls
+
+@app.post("/api/calls", response_model=CallResponse)
+async def create_call(call: CallCreate, token: str = Query(None)):
+    """Log a new call"""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (call.name, call.phone, call.duration_seconds, call.type, call.outcome, call.call_date, current_user['user_id'])
+        )
+        conn.commit()
+        call_id = cursor.lastrowid
+
+        cursor.execute("SELECT * FROM calls WHERE id = ?", (call_id,))
+        new_call = cursor.fetchone()
+
+    return call_row_to_dict(new_call)
+
+@app.delete("/api/calls/{call_id}")
+async def delete_call(call_id: int, token: str = Query(None)):
+    """Delete a logged call"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM calls WHERE id = ?", (call_id,))
+        conn.commit()
+
+    return {"message": "Call deleted"}
+
+# ============= MORE ANALYTICS ENDPOINTS =============
+
+@app.get("/api/analytics/contacts")
+async def get_contacts_analytics(token: str = Query(None)):
+    """Get contacts report metrics, computed from real contacts/notes data"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) as count FROM contacts")
+        total_contacts = cursor.fetchone()['count']
+
+        cursor.execute("SELECT COUNT(DISTINCT contact_id) as count FROM contact_notes")
+        active_contacts = cursor.fetchone()['count']
+
+        # Avg hours between a contact being added and their first logged note
+        cursor.execute("""
+            SELECT AVG(
+                (julianday(first_note.call_datetime) - julianday(c.created_at)) * 24
+            ) as avg_hours
+            FROM contacts c
+            JOIN (
+                SELECT contact_id, MIN(call_datetime) as call_datetime
+                FROM contact_notes
+                WHERE call_datetime IS NOT NULL
+                GROUP BY contact_id
+            ) first_note ON first_note.contact_id = c.id
+        """)
+        avg_hours_row = cursor.fetchone()
+        avg_response_hours = avg_hours_row['avg_hours'] if avg_hours_row and avg_hours_row['avg_hours'] is not None else None
+
+        # "High-value" contacts (score >= 70) as a proxy for conversion
+        cursor.execute("SELECT COUNT(*) as count FROM contacts WHERE score >= 70")
+        high_value = cursor.fetchone()['count']
+
+    conversion_rate = round((high_value / total_contacts * 100), 1) if total_contacts > 0 else 0
+
+    return {
+        "total_contacts": total_contacts,
+        "active_contacts": active_contacts,
+        "avg_response_time_hours": round(avg_response_hours, 1) if avg_response_hours is not None else None,
+        "conversion_rate": conversion_rate
+    }
+
+@app.get("/api/analytics/calls")
+async def get_calls_analytics(token: str = Query(None)):
+    """Get calls report metrics, computed from real calls data"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) as count, COALESCE(AVG(duration_seconds), 0) as avg_seconds FROM calls")
+        row = cursor.fetchone()
+        total_calls = row['count']
+        avg_seconds = row['avg_seconds']
+
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM calls
+            WHERE outcome IN ('Interested', 'Meeting Scheduled')
+        """)
+        successful = cursor.fetchone()['count']
+
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM calls
+            WHERE strftime('%Y-%m', call_date) = strftime('%Y-%m', 'now')
+        """)
+        calls_this_month = cursor.fetchone()['count']
+
+    success_rate = round((successful / total_calls * 100), 1) if total_calls > 0 else 0
+
+    return {
+        "total_calls": total_calls,
+        "avg_duration": format_duration(round(avg_seconds)),
+        "call_success_rate": success_rate,
+        "calls_this_month": calls_this_month
+    }
 
 # Run the app
 if __name__ == "__main__":

@@ -1,16 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { getSalesAnalytics } from '../services/api';
+import { getSalesAnalytics, getContactsAnalytics, getCallsAnalytics } from '../services/api';
 import '../styles/Reports.css';
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('sales');
   const [salesData, setSalesData] = useState(null);
+  const [contactsData, setContactsData] = useState(null);
+  const [callsData, setCallsData] = useState(null);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
     getSalesAnalytics(token)
       .then(setSalesData)
       .catch((error) => console.error('Error fetching sales analytics:', error));
+    getContactsAnalytics(token)
+      .then(setContactsData)
+      .catch((error) => console.error('Error fetching contacts analytics:', error));
+    getCallsAnalytics(token)
+      .then(setCallsData)
+      .catch((error) => console.error('Error fetching calls analytics:', error));
   }, [token]);
 
   const reportTabs = [
@@ -19,33 +27,34 @@ export default function Reports() {
     { id: 'calls', label: 'Calls', icon: '☎️' }
   ];
 
-  // Real data from /api/analytics/sales, computed from actual leads/deals.
-  const salesMetrics = salesData ? [
-    { label: 'Total Revenue', value: `₹${salesData.total_revenue.toLocaleString('en-IN')}` },
-    { label: 'Deals Closed', value: String(salesData.deals_closed) },
-    { label: 'Win Rate', value: `${salesData.win_rate}%` },
-    { label: 'Avg Deal Size', value: `₹${salesData.avg_deal_value.toLocaleString('en-IN')}` }
-  ] : [
+  const placeholderMetrics = [
     { label: 'Total Revenue', value: '…' },
     { label: 'Deals Closed', value: '…' },
     { label: 'Win Rate', value: '…' },
     { label: 'Avg Deal Size', value: '…' }
   ];
 
-  // Contacts/Calls have no backing data model on the backend yet, so these stay illustrative mock values.
-  const contactMetrics = [
-    { label: 'Total Contacts', value: '127' },
-    { label: 'Active Contacts', value: '85' },
-    { label: 'Avg Response Time', value: '2.5 hrs' },
-    { label: 'Conversion Rate', value: '42%' }
-  ];
+  // All three tabs now use real data, computed from actual leads/deals/contacts/calls.
+  const salesMetrics = salesData ? [
+    { label: 'Total Revenue', value: `₹${salesData.total_revenue.toLocaleString('en-IN')}` },
+    { label: 'Deals Closed', value: String(salesData.deals_closed) },
+    { label: 'Win Rate', value: `${salesData.win_rate}%` },
+    { label: 'Avg Deal Size', value: `₹${salesData.avg_deal_value.toLocaleString('en-IN')}` }
+  ] : placeholderMetrics;
 
-  const callMetrics = [
-    { label: 'Total Calls', value: '456' },
-    { label: 'Avg Call Duration', value: '6m 15s' },
-    { label: 'Call Success Rate', value: '62%' },
-    { label: 'Calls This Month', value: '128' }
-  ];
+  const contactMetrics = contactsData ? [
+    { label: 'Total Contacts', value: String(contactsData.total_contacts) },
+    { label: 'Active Contacts', value: String(contactsData.active_contacts) },
+    { label: 'Avg Response Time', value: contactsData.avg_response_time_hours != null ? `${contactsData.avg_response_time_hours} hrs` : 'N/A' },
+    { label: 'Conversion Rate', value: `${contactsData.conversion_rate}%` }
+  ] : placeholderMetrics;
+
+  const callMetrics = callsData ? [
+    { label: 'Total Calls', value: String(callsData.total_calls) },
+    { label: 'Avg Call Duration', value: callsData.avg_duration },
+    { label: 'Call Success Rate', value: `${callsData.call_success_rate}%` },
+    { label: 'Calls This Month', value: String(callsData.calls_this_month) }
+  ] : placeholderMetrics;
 
   const getMetrics = () => {
     switch(activeTab) {

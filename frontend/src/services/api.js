@@ -128,4 +128,70 @@ export const updateSettings = async (token, settingsData) => {
   return response.data;
 };
 
+// Contacts
+export const getContactsList = async (token) => {
+  const response = await api.get(`/api/contacts?token=${token}`);
+  return response.data;
+};
+
+export const createContact = async (token, contactData) => {
+  const response = await api.post(`/api/contacts?token=${token}`, contactData);
+  return response.data;
+};
+
+export const updateContact = async (token, id, contactData) => {
+  const response = await api.put(`/api/contacts/${id}?token=${token}`, contactData);
+  return response.data;
+};
+
+export const deleteContact = async (token, id) => {
+  await api.delete(`/api/contacts/${id}?token=${token}`);
+};
+
+// Contact notes
+export const getContactNotes = async (token, contactId) => {
+  const response = await api.get(`/api/contacts/${contactId}/notes?token=${token}`);
+  return response.data;
+};
+
+export const createContactNote = async (token, contactId, noteData) => {
+  const response = await api.post(`/api/contacts/${contactId}/notes?token=${token}`, noteData);
+  return response.data;
+};
+
+export const updateContactNote = async (token, contactId, noteId, noteData) => {
+  const response = await api.put(`/api/contacts/${contactId}/notes/${noteId}?token=${token}`, noteData);
+  return response.data;
+};
+
+export const deleteContactNote = async (token, contactId, noteId) => {
+  await api.delete(`/api/contacts/${contactId}/notes/${noteId}?token=${token}`);
+};
+
+// Calls
+export const getCallsList = async (token) => {
+  const response = await api.get(`/api/calls?token=${token}`);
+  return response.data;
+};
+
+export const createCall = async (token, callData) => {
+  const response = await api.post(`/api/calls?token=${token}`, callData);
+  return response.data;
+};
+
+export const deleteCall = async (token, id) => {
+  await api.delete(`/api/calls/${id}?token=${token}`);
+};
+
+// More analytics
+export const getContactsAnalytics = async (token) => {
+  const response = await api.get(`/api/analytics/contacts?token=${token}`);
+  return response.data;
+};
+
+export const getCallsAnalytics = async (token) => {
+  const response = await api.get(`/api/analytics/calls?token=${token}`);
+  return response.data;
+};
+
 export default api;

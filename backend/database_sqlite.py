@@ -39,6 +39,9 @@ def init_db():
         cursor.execute("DROP TABLE IF EXISTS campaigns")
         cursor.execute("DROP TABLE IF EXISTS integrations")
         cursor.execute("DROP TABLE IF EXISTS user_settings")
+        cursor.execute("DROP TABLE IF EXISTS contact_notes")
+        cursor.execute("DROP TABLE IF EXISTS contacts")
+        cursor.execute("DROP TABLE IF EXISTS calls")
         cursor.execute("DROP TABLE IF EXISTS users")
 
         # Create tables
@@ -149,6 +152,50 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                company TEXT,
+                email TEXT,
+                phone TEXT,
+                city TEXT,
+                score INTEGER,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE contact_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER NOT NULL,
+                call_datetime TEXT,
+                next_conversation TEXT,
+                transcript TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (contact_id) REFERENCES contacts(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE calls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT,
+                duration_seconds INTEGER DEFAULT 0,
+                type TEXT DEFAULT 'Outbound',
+                outcome TEXT,
+                call_date DATE,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
         conn.commit()
 
         # Insert test user (testuser/12345 - must match Login.jsx displayed hint)
@@ -241,8 +288,58 @@ def init_db():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (1, 'Test User', 'test@example.com', '+91-9876543210', '', 'IST', 'light', 1, 1, 0))
 
+        # Insert sample contacts
+        cursor.execute("""
+            INSERT INTO contacts (name, company, email, phone, city, score, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Neha Singh', 'Tech Startup', 'neha@techstartup.com', '+91-9876543210', 'Mumbai, Andheri West', 85, 1))
+        cursor.execute("""
+            INSERT INTO contacts (name, company, email, phone, city, score, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Vikram Reddy', 'Tech Park', 'vikram@techpark.com', '+91-9876543211', 'Bangalore, Whitefield', 72, 1))
+        cursor.execute("""
+            INSERT INTO contacts (name, company, email, phone, city, score, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Anjali Desai', 'Retail Chain', 'anjali@retail.com', '+91-9876543212', 'Pune, Kothrud', 65, 1))
+        cursor.execute("""
+            INSERT INTO contacts (name, company, email, phone, city, score, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Amit Patel', 'Manufacturing', 'amit@mfg.com', '+91-9876543213', 'Ahmedabad, Naroda', 58, 1))
+        cursor.execute("""
+            INSERT INTO contacts (name, company, email, phone, city, score, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Priya Kapoor', 'Digital Ventures', 'priya@digital.com', '+91-9876543214', 'Delhi, Connaught Place', 80, 1))
+
+        # Insert a sample note so "Active Contacts" analytics has something to count.
+        # call_datetime is left NULL here (excluded from the avg-response-time calc) since a
+        # fixed seed date would predate the contact's real (CURRENT_TIMESTAMP) created_at and
+        # produce a negative average - real notes added through the UI use the actual call time,
+        # which is always >= the contact's created_at, so the formula holds for genuine usage.
+        cursor.execute("""
+            INSERT INTO contact_notes (contact_id, next_conversation, transcript)
+            VALUES (?, ?, ?)
+        """, (1, '2026-08-25T10:30', 'Discussed LAP requirements, sending document checklist.'))
+
+        # Insert sample calls
+        cursor.execute("""
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Neha Singh', '+91-9876543210', 320, 'Outbound', 'Interested', '2026-08-21', 1))
+        cursor.execute("""
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Vikram Reddy', '+91-9876543211', 225, 'Inbound', 'Not Interested', '2026-08-21', 1))
+        cursor.execute("""
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Anjali Desai', '+91-9876543212', 490, 'Outbound', 'Meeting Scheduled', '2026-08-20', 1))
+        cursor.execute("""
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, ('Amit Patel', '+91-9876543213', 410, 'Outbound', 'Follow-up Needed', '2026-08-20', 1))
+
         conn.commit()
         cursor.close()
         print("[OK] SQLite database initialized successfully!")
         print("[OK] Test user created: testuser / password")
-        print("[OK] Sample leads, deals, campaigns, integrations and settings added!")
+        print("[OK] Sample leads, deals, campaigns, integrations, settings, contacts and calls added!")

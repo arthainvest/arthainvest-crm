@@ -139,6 +139,73 @@ class SettingsResponse(BaseModel):
     email_notifications: bool
     sms_notifications: bool
 
+# Contact Schemas
+class ContactCreate(BaseModel):
+    name: str
+    company: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    city: Optional[str] = None
+
+class ContactUpdate(BaseModel):
+    name: Optional[str] = None
+    company: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    score: Optional[int] = None
+
+class ContactResponse(BaseModel):
+    id: int
+    name: str
+    company: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    city: Optional[str]
+    score: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+# Contact Note Schemas
+class ContactNoteCreate(BaseModel):
+    call_datetime: Optional[str] = None
+    next_conversation: Optional[str] = None
+    transcript: str
+
+class ContactNoteUpdate(BaseModel):
+    call_datetime: Optional[str] = None
+    next_conversation: Optional[str] = None
+    transcript: Optional[str] = None
+
+class ContactNoteResponse(BaseModel):
+    id: int
+    contact_id: int
+    call_datetime: Optional[str]
+    next_conversation: Optional[str]
+    transcript: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+# Call Schemas
+class CallCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    duration_seconds: int = 0
+    type: str = "Outbound"
+    outcome: Optional[str] = None
+    call_date: Optional[str] = None
+
+class CallResponse(BaseModel):
+    id: int
+    name: str
+    phone: Optional[str]
+    duration_seconds: int
+    duration: str
+    type: str
+    outcome: Optional[str]
+    call_date: Optional[str]
+    created_at: datetime
+
 # Token
 class Token(BaseModel):
     access_token: str

@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  getContactsList, createContact, updateContact, deleteContact,
+  getContactNotes, createContactNote, updateContactNote, deleteContactNote
+} from '../services/api';
 import '../styles/Contacts.css';
 
 const WhatsAppIcon = () => (
@@ -8,19 +12,12 @@ const WhatsAppIcon = () => (
 );
 
 const emptyContactForm = { name: '', company: '', email: '', phone: '', city: '' };
+const emptyNoteDraft = { callDateTime: '', nextConversation: '', transcript: '' };
 
 export default function Contacts() {
-  // Mock data
-  const mockContactsData = [
-    { id: 1, name: 'Neha Singh', company: 'Tech Startup', email: 'neha@techstartup.com', phone: '+91-9876543210', score: 85, city: 'Mumbai, Andheri West' },
-    { id: 2, name: 'Vikram Reddy', company: 'Tech Park', email: 'vikram@techpark.com', phone: '+91-9876543211', score: 72, city: 'Bangalore, Whitefield' },
-    { id: 3, name: 'Anjali Desai', company: 'Retail Chain', email: 'anjali@retail.com', phone: '+91-9876543212', score: 65, city: 'Pune, Kothrud' },
-    { id: 4, name: 'Amit Patel', company: 'Manufacturing', email: 'amit@mfg.com', phone: '+91-9876543213', score: 58, city: 'Ahmedabad, Naroda' },
-    { id: 5, name: 'Priya Kapoor', company: 'Digital Ventures', email: 'priya@digital.com', phone: '+91-9876543214', score: 80, city: 'Delhi, Connaught Place' }
-  ];
-
-  const [contacts, setContacts] = useState(mockContactsData);
+  const [contacts, setContacts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const token = localStorage.getItem('token');
 
   // Expand/collapse per-contact details
   const [expandedContacts, setExpandedContacts] = useState({});
@@ -41,8 +38,8 @@ export default function Contacts() {
 
   // Notes & voice-note state
   const [showNotes, setShowNotes] = useState(false);
-  const [contactNotes, setContactNotes] = useState({});
-  const [noteDraft, setNoteDraft] = useState({ callDateTime: '', nextConversation: '', transcript: '' });
+  const [notes, setNotes] = useState([]);
+  const [noteDraft, setNoteDraft] = useState(emptyNoteDraft);
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [draftAudioUrl, setDraftAudioUrl] = useState(null);
@@ -62,17 +59,10 @@ export default function Contacts() {
 
   const fetchContacts = async () => {
     try {
-      const response = await fetch('/api/contacts');
-      if (!response.ok) throw new Error('API error');
-      const data = await response.json();
-      if (Array.isArray(data) && data.length > 0) {
-        setContacts(data);
-      } else {
-        setContacts(mockContactsData);
-      }
+      const data = await getContactsList(token);
+      setContacts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching contacts:', error);
-      setContacts(mockContactsData);
     }
   };
 
@@ -88,7 +78,7 @@ export default function Contacts() {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const text = event.target.result;
         const rows = text.split(/\r?\n/).filter((r) => r.trim().length > 0);
@@ -97,24 +87,33 @@ export default function Contacts() {
           return;
         }
         const headers = rows[0].split(',').map((h) => h.trim().toLowerCase().replace(/"/g, ''));
-        const imported = rows.slice(1).map((row, idx) => {
+        const imported = rows.slice(1).map((row) => {
           const cols = row.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
           const obj = {};
           headers.forEach((h, i) => { obj[h] = cols[i] || ''; });
           return {
-            id: Date.now() + idx,
             name: obj.name || 'Unnamed Contact',
             company: obj.company || '',
             email: obj.email || '',
             phone: obj.phone || '',
             city: obj.city || obj['city/area'] || '',
-            score: obj.score || ''
+            score: obj.score ? Number(obj.score) : null
           };
         });
-        setContacts((prev) => [...prev, ...imported]);
-        alert(`Imported ${imported.length} contact(s) successfully.`);
+
+        let created = 0;
+        for (const row of imported) {
+          const { score, ...contactData } = row;
+          const newContact = await createContact(token, contactData);
+          if (score !== null && !Number.isNaN(score)) {
+            await updateContact(token, newContact.id, { score });
+          }
+          created++;
+        }
+        await fetchContacts();
+        alert(`Imported ${created} contact(s) successfully.`);
       } catch (err) {
-        alert('Failed to parse CSV file: ' + err.message);
+        alert('Failed to import CSV file: ' + err.message);
       } finally {
         e.target.value = '';
       }
@@ -124,7 +123,7 @@ export default function Contacts() {
 
   const handleExportCSV = () => {
     const headers = ['Name', 'Company', 'Email', 'Phone', 'City/Area', 'Score'];
-    const rows = displayContacts.map((c) => [c.name, c.company || '', c.email || '', c.phone || '', c.city || '', c.score ?? '']);
+    const rows = filteredContacts.map((c) => [c.name, c.company || '', c.email || '', c.phone || '', c.city || '', c.score ?? '']);
     const csvContent = [headers, ...rows]
       .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
       .join('\n');
@@ -191,36 +190,49 @@ export default function Contacts() {
     setShowForm(true);
   };
 
-  const handleDeleteContact = (contactId) => {
-    if (window.confirm('Are you sure you want to delete this contact?')) {
+  const handleDeleteContact = async (contactId) => {
+    if (!window.confirm('Are you sure you want to delete this contact?')) return;
+    try {
+      await deleteContact(token, contactId);
       setContacts((prev) => prev.filter((c) => c.id !== contactId));
+    } catch (error) {
+      console.error('Error deleting contact:', error);
+      alert('Failed to delete contact. Please try again.');
     }
   };
 
-  const handleSaveContact = (e) => {
+  const handleSaveContact = async (e) => {
     e.preventDefault();
     if (!contactForm.name.trim()) return;
 
-    if (editingContactId) {
-      setContacts((prev) => prev.map((c) => (
-        c.id === editingContactId ? { ...c, ...contactForm } : c
-      )));
-    } else {
-      setContacts((prev) => [
-        ...prev,
-        { id: Date.now(), score: '', ...contactForm }
-      ]);
+    try {
+      if (editingContactId) {
+        await updateContact(token, editingContactId, contactForm);
+      } else {
+        await createContact(token, contactForm);
+      }
+      setShowForm(false);
+      setContactForm(emptyContactForm);
+      setEditingContactId(null);
+      fetchContacts();
+    } catch (error) {
+      console.error('Error saving contact:', error);
+      alert('Failed to save contact. Please try again.');
     }
-    setShowForm(false);
-    setContactForm(emptyContactForm);
-    setEditingContactId(null);
   };
 
-  const handleNotes = (contact) => {
+  const handleNotes = async (contact) => {
     setSelectedContact(contact);
     resetNoteDraft();
     setIsRecording(false);
     setShowNotes(true);
+    try {
+      const data = await getContactNotes(token, contact.id);
+      setNotes(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+      setNotes([]);
+    }
   };
 
   const closeNotes = () => {
@@ -240,11 +252,11 @@ export default function Contacts() {
 
   const handleEditNote = (note) => {
     setNoteDraft({
-      callDateTime: note.callDateTime || '',
-      nextConversation: note.nextConversation || '',
+      callDateTime: note.call_datetime || '',
+      nextConversation: note.next_conversation || '',
       transcript: note.transcript || ''
     });
-    setDraftAudioUrl(note.audioUrl || null);
+    setDraftAudioUrl(null);
     setEditingNoteId(note.id);
   };
 
@@ -299,63 +311,49 @@ export default function Contacts() {
     setIsRecording(false);
   };
 
-  const saveNote = () => {
+  const saveNote = async () => {
     if (!selectedContact) return;
     if (!noteDraft.transcript.trim() && !draftAudioUrl) {
       alert('Add a transcript note or record a voice note before saving.');
       return;
     }
 
-    if (editingNoteId) {
-      setContactNotes((prev) => ({
-        ...prev,
-        [selectedContact.id]: (prev[selectedContact.id] || []).map((n) =>
-          n.id === editingNoteId
-            ? {
-                ...n,
-                callDateTime: noteDraft.callDateTime,
-                nextConversation: noteDraft.nextConversation,
-                transcript: noteDraft.transcript.trim(),
-                audioUrl: draftAudioUrl,
-                updatedAt: new Date().toLocaleString()
-              }
-            : n
-        )
-      }));
-    } else {
-      const entry = {
-        id: Date.now(),
-        callDateTime: noteDraft.callDateTime,
-        nextConversation: noteDraft.nextConversation,
-        transcript: noteDraft.transcript.trim(),
-        audioUrl: draftAudioUrl,
-        createdAt: new Date().toLocaleString()
-      };
-      setContactNotes((prev) => ({
-        ...prev,
-        [selectedContact.id]: [entry, ...(prev[selectedContact.id] || [])]
-      }));
+    const payload = {
+      call_datetime: noteDraft.callDateTime || null,
+      next_conversation: noteDraft.nextConversation || null,
+      transcript: noteDraft.transcript.trim()
+    };
+
+    try {
+      if (editingNoteId) {
+        await updateContactNote(token, selectedContact.id, editingNoteId, payload);
+      } else {
+        await createContactNote(token, selectedContact.id, payload);
+      }
+      const data = await getContactNotes(token, selectedContact.id);
+      setNotes(Array.isArray(data) ? data : []);
+      resetNoteDraft();
+    } catch (error) {
+      console.error('Error saving note:', error);
+      alert('Failed to save note. Please try again.');
     }
-
-    resetNoteDraft();
   };
 
-  const deleteNote = (contactId, noteId) => {
-    setContactNotes((prev) => ({
-      ...prev,
-      [contactId]: (prev[contactId] || []).filter((n) => n.id !== noteId)
-    }));
-    if (editingNoteId === noteId) resetNoteDraft();
+  const deleteNote = async (contactId, noteId) => {
+    try {
+      await deleteContactNote(token, contactId, noteId);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      if (editingNoteId === noteId) resetNoteDraft();
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      alert('Failed to delete note. Please try again.');
+    }
   };
 
-  // Always show mock data - use mock data if no contacts are loaded
-  const displayContacts = (contacts && contacts.length > 0) ? contacts : mockContactsData;
-
-  const filteredContacts = (displayContacts && displayContacts.length > 0) ?
-    displayContacts.filter(c =>
-      (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
-    ) : mockContactsData;
+  const filteredContacts = contacts.filter(c =>
+    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="contacts-container">
@@ -387,7 +385,9 @@ export default function Contacts() {
       </div>
 
       <div className="contacts-list">
-        {filteredContacts.map((contact) => {
+        {filteredContacts.length === 0 ? (
+          <p className="no-data">No contacts yet. Add one to get started.</p>
+        ) : filteredContacts.map((contact) => {
           const isExpanded = !!expandedContacts[contact.id];
           return (
             <div key={contact.id} className="contact-row">
@@ -657,25 +657,26 @@ export default function Contacts() {
               </div>
 
               <div className="notes-history">
-                <h4>History ({(contactNotes[selectedContact.id] || []).length})</h4>
-                {(contactNotes[selectedContact.id] || []).length === 0 ? (
+                <h4>History ({notes.length})</h4>
+                {notes.length === 0 ? (
                   <p className="no-notes">No notes yet for this contact.</p>
                 ) : (
-                  (contactNotes[selectedContact.id] || []).map((note) => (
+                  notes.map((note) => (
                     <div key={note.id} className={`note-entry ${editingNoteId === note.id ? 'editing' : ''}`}>
                       <div className="note-entry-header">
-                        <span>📞 {note.callDateTime ? new Date(note.callDateTime).toLocaleString() : '—'}</span>
+                        <span>📞 {note.call_datetime ? new Date(note.call_datetime).toLocaleString() : '—'}</span>
                         <div className="note-entry-actions">
                           <button className="btn-edit-note" onClick={() => handleEditNote(note)} title="Edit">✏️</button>
                           <button className="btn-delete-note" onClick={() => deleteNote(selectedContact.id, note.id)} title="Delete">🗑️</button>
                         </div>
                       </div>
-                      {note.nextConversation && (
-                        <div className="note-next">⏭️ Next: {new Date(note.nextConversation).toLocaleString()}</div>
+                      {note.next_conversation && (
+                        <div className="note-next">⏭️ Next: {new Date(note.next_conversation).toLocaleString()}</div>
                       )}
                       {note.transcript && <p className="note-transcript">{note.transcript}</p>}
-                      {note.audioUrl && <audio controls src={note.audioUrl} className="voice-playback" />}
-                      {note.updatedAt && <div className="note-updated">Edited {note.updatedAt}</div>}
+                      {note.updated_at && note.updated_at !== note.created_at && (
+                        <div className="note-updated">Edited {new Date(note.updated_at).toLocaleString()}</div>
+                      )}
                     </div>
                   ))
                 )}
