@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getLeads, createLead, updateLead, deleteLead } from '../services/api';
 import '../styles/LeadsList.css';
 
@@ -23,6 +23,28 @@ export default function LeadsList() {
     source: '',
   });
   const token = localStorage.getItem('token');
+
+  // Communication modal state
+  const [showCommunication, setShowCommunication] = useState(false);
+  const [communicationTab, setCommunicationTab] = useState('message');
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [message, setMessage] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+
+  // DigiLocker modal state
+  const [showDigi, setShowDigi] = useState(false);
+
+  // Notes & voice-note state
+  const [showNotes, setShowNotes] = useState(false);
+  const [leadNotes, setLeadNotes] = useState({});
+  const [noteDraft, setNoteDraft] = useState({ callDateTime: '', nextConversation: '', transcript: '' });
+  const [isRecording, setIsRecording] = useState(false);
+  const [draftAudioUrl, setDraftAudioUrl] = useState(null);
+  const [speechSupported] = useState(() => !!(window.SpeechRecognition || window.webkitSpeechRecognition));
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recognitionRef = useRef(null);
 
   useEffect(() => {
     fetchLeads();
@@ -74,6 +96,152 @@ export default function LeadsList() {
         alert('Error deleting lead');
       }
     }
+  };
+
+  const handleCall = (lead) => {
+    if (lead.phone) {
+      window.location.href = `tel:${lead.phone}`;
+    } else {
+      alert('No phone number available');
+    }
+  };
+
+  const handleWhatsApp = (lead) => {
+    if (lead.phone) {
+      const url = `https://wa.me/${lead.phone.replace(/\D/g, '')}`;
+      window.open(url, '_blank');
+    }
+  };
+
+  const handleMessage = (lead) => {
+    setSelectedLead(lead);
+    setCommunicationTab('message');
+    setShowCommunication(true);
+  };
+
+  const handleEmail = (lead) => {
+    setSelectedLead(lead);
+    setCommunicationTab('email');
+    setShowCommunication(true);
+  };
+
+  const sendMessage = () => {
+    if (message.trim()) {
+      alert(`Message sent to ${selectedLead.name}: ${message}`);
+      setMessage('');
+      setShowCommunication(false);
+    }
+  };
+
+  const sendEmail = () => {
+    if (emailSubject.trim() && emailBody.trim()) {
+      window.location.href = `mailto:${selectedLead.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+      setEmailSubject('');
+      setEmailBody('');
+      setShowCommunication(false);
+    }
+  };
+
+  const handleDigi = (lead) => {
+    setSelectedLead(lead);
+    setShowDigi(true);
+  };
+
+  const handleNotes = (lead) => {
+    setSelectedLead(lead);
+    setNoteDraft({
+      callDateTime: new Date().toISOString().slice(0, 16),
+      nextConversation: '',
+      transcript: ''
+    });
+    setDraftAudioUrl(null);
+    setIsRecording(false);
+    setShowNotes(true);
+  };
+
+  const closeNotes = () => {
+    if (isRecording) stopRecording();
+    setShowNotes(false);
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setDraftAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-IN';
+        let finalTranscript = '';
+        recognition.onresult = (event) => {
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const text = event.results[i][0].transcript;
+            if (event.results[i].isFinal) finalTranscript += text + ' ';
+            else interim += text;
+          }
+          setNoteDraft((prev) => ({ ...prev, transcript: (finalTranscript + interim).trim() }));
+        };
+        recognition.onerror = (e) => console.error('Speech recognition error:', e.error);
+        recognition.start();
+        recognitionRef.current = recognition;
+      }
+    } catch (err) {
+      alert('Microphone access denied or unavailable: ' + err.message);
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setIsRecording(false);
+  };
+
+  const saveNote = () => {
+    if (!selectedLead) return;
+    if (!noteDraft.transcript.trim() && !draftAudioUrl) {
+      alert('Add a transcript note or record a voice note before saving.');
+      return;
+    }
+    const entry = {
+      id: Date.now(),
+      callDateTime: noteDraft.callDateTime,
+      nextConversation: noteDraft.nextConversation,
+      transcript: noteDraft.transcript.trim(),
+      audioUrl: draftAudioUrl,
+      createdAt: new Date().toLocaleString()
+    };
+    setLeadNotes((prev) => ({
+      ...prev,
+      [selectedLead.id]: [entry, ...(prev[selectedLead.id] || [])]
+    }));
+    setNoteDraft({
+      callDateTime: new Date().toISOString().slice(0, 16),
+      nextConversation: '',
+      transcript: ''
+    });
+    setDraftAudioUrl(null);
+  };
+
+  const deleteNote = (leadId, noteId) => {
+    setLeadNotes((prev) => ({
+      ...prev,
+      [leadId]: (prev[leadId] || []).filter((n) => n.id !== noteId)
+    }));
   };
 
   const displayLeads = (leads && leads.length > 0) ? leads : mockLeads;
@@ -215,12 +383,20 @@ export default function LeadsList() {
                 </td>
                 <td>{lead.ai_score || '-'}</td>
                 <td>
-                  <button
-                    className="btn-danger"
-                    onClick={() => handleDeleteLead(lead.id)}
-                  >
-                    Delete
-                  </button>
+                  <div className="action-buttons">
+                    <button className="btn-action call" onClick={() => handleCall(lead)} title="Click to Call">☎️</button>
+                    <button className="btn-action message" onClick={() => handleMessage(lead)} title="Direct Message">💬</button>
+                    <button className="btn-action email" onClick={() => handleEmail(lead)} title="Send Email">📧</button>
+                    <button className="btn-action whatsapp" onClick={() => handleWhatsApp(lead)} title="WhatsApp">📱</button>
+                    <button className="btn-action digilocker" onClick={() => handleDigi(lead)} title="DigiLocker">🔐</button>
+                    <button className="btn-action notes" onClick={() => handleNotes(lead)} title="Notes & Follow-up">📝</button>
+                    <button
+                      className="btn-danger"
+                      onClick={() => handleDeleteLead(lead.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -228,6 +404,199 @@ export default function LeadsList() {
         </table>
       ) : (
         <p className="no-data">No leads yet. Create your first lead!</p>
+      )}
+
+      {/* Communication Modal */}
+      {showCommunication && selectedLead && (
+        <div className="modal-overlay" onClick={() => setShowCommunication(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{communicationTab === 'message' ? 'Send Message' : 'Send Email'} to {selectedLead.name}</h2>
+              <button className="modal-close" onClick={() => setShowCommunication(false)}>✕</button>
+            </div>
+
+            {communicationTab === 'message' && (
+              <>
+                <div className="form-group">
+                  <label>Message</label>
+                  <textarea
+                    placeholder="Type your message..."
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    rows="6"
+                  />
+                </div>
+                <div className="modal-actions">
+                  <button className="btn-primary" onClick={sendMessage}>Send Message</button>
+                  <button className="btn-secondary" onClick={() => setShowCommunication(false)}>Cancel</button>
+                </div>
+              </>
+            )}
+
+            {communicationTab === 'email' && (
+              <>
+                <div className="form-group">
+                  <label>Subject</label>
+                  <input
+                    type="text"
+                    placeholder="Email subject..."
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Message</label>
+                  <textarea
+                    placeholder="Email body..."
+                    value={emailBody}
+                    onChange={(e) => setEmailBody(e.target.value)}
+                    rows="6"
+                  />
+                </div>
+                <div className="modal-actions">
+                  <button className="btn-primary" onClick={sendEmail}>Send Email</button>
+                  <button className="btn-secondary" onClick={() => setShowCommunication(false)}>Cancel</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* DigiLocker Modal */}
+      {showDigi && selectedLead && (
+        <div className="modal-overlay" onClick={() => setShowDigi(false)}>
+          <div className="modal-content digi-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>DigiLocker - Document Management</h2>
+              <button className="modal-close" onClick={() => setShowDigi(false)}>✕</button>
+            </div>
+
+            <div className="digi-info">
+              <h3>{selectedLead.name}</h3>
+              <p>{selectedLead.company} | {selectedLead.email} | {selectedLead.phone}</p>
+            </div>
+
+            <div className="digi-section">
+              <h4>Verified Documents</h4>
+              <div className="verified-docs">
+                <div className="doc-item">
+                  <input type="checkbox" defaultChecked /> PAN Card
+                </div>
+                <div className="doc-item">
+                  <input type="checkbox" defaultChecked /> Aadhar Card
+                </div>
+                <div className="doc-item">
+                  <input type="checkbox" /> Bank Statement
+                </div>
+                <div className="doc-item">
+                  <input type="checkbox" /> ITR (Income Tax Return)
+                </div>
+              </div>
+            </div>
+
+            <div className="digi-section">
+              <h4>Document Options</h4>
+              <div className="digi-options">
+                <button className="digi-btn">✓ Request from Aadhar</button>
+                <button className="digi-btn">✓ Request PAN</button>
+                <button className="digi-btn">📄 Upload Bank Statement</button>
+                <button className="digi-btn">📄 Upload ITR</button>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn-primary">Submit to DigiLocker</button>
+              <button className="btn-secondary" onClick={() => setShowDigi(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notes & Follow-up Modal */}
+      {showNotes && selectedLead && (
+        <div className="modal-overlay" onClick={closeNotes}>
+          <div className="modal-content notes-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>📝 Notes & Follow-up - {selectedLead.name}</h2>
+              <button className="modal-close" onClick={closeNotes}>✕</button>
+            </div>
+
+            <div className="notes-form">
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Call Date &amp; Time</label>
+                  <input
+                    type="datetime-local"
+                    value={noteDraft.callDateTime}
+                    onChange={(e) => setNoteDraft({ ...noteDraft, callDateTime: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Next Conversation</label>
+                  <input
+                    type="datetime-local"
+                    value={noteDraft.nextConversation}
+                    onChange={(e) => setNoteDraft({ ...noteDraft, nextConversation: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Notes / AI Transcript</label>
+                <textarea
+                  rows="5"
+                  placeholder={speechSupported ? 'Type notes, or record a voice note to auto-transcribe...' : 'Type notes here...'}
+                  value={noteDraft.transcript}
+                  onChange={(e) => setNoteDraft({ ...noteDraft, transcript: e.target.value })}
+                />
+              </div>
+
+              <div className="voice-note-controls">
+                {!isRecording ? (
+                  <button type="button" className="btn-record" onClick={startRecording}>
+                    🎙️ Start Voice Note
+                  </button>
+                ) : (
+                  <button type="button" className="btn-record recording" onClick={stopRecording}>
+                    <span className="rec-dot">●</span> Stop Recording
+                  </button>
+                )}
+                {!speechSupported && (
+                  <span className="voice-note-hint">AI live transcription needs Chrome/Edge - recording still works.</span>
+                )}
+                {draftAudioUrl && (
+                  <audio controls src={draftAudioUrl} className="voice-playback" />
+                )}
+              </div>
+
+              <div className="modal-actions">
+                <button className="btn-primary" onClick={saveNote}>💾 Save Note</button>
+              </div>
+            </div>
+
+            <div className="notes-history">
+              <h4>History ({(leadNotes[selectedLead.id] || []).length})</h4>
+              {(leadNotes[selectedLead.id] || []).length === 0 ? (
+                <p className="no-notes">No notes yet for this lead.</p>
+              ) : (
+                (leadNotes[selectedLead.id] || []).map((note) => (
+                  <div key={note.id} className="note-entry">
+                    <div className="note-entry-header">
+                      <span>📞 {note.callDateTime ? new Date(note.callDateTime).toLocaleString() : '—'}</span>
+                      <button className="btn-delete-note" onClick={() => deleteNote(selectedLead.id, note.id)}>🗑️</button>
+                    </div>
+                    {note.nextConversation && (
+                      <div className="note-next">⏭️ Next: {new Date(note.nextConversation).toLocaleString()}</div>
+                    )}
+                    {note.transcript && <p className="note-transcript">{note.transcript}</p>}
+                    {note.audioUrl && <audio controls src={note.audioUrl} className="voice-playback" />}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
