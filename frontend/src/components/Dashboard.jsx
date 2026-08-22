@@ -11,8 +11,30 @@ export default function Dashboard() {
     pipeline_value: 345000,
     avg_deal_value: 8600,
     conversion_rate: 0,
-    active_opportunities: 4
+    active_opportunities: 4,
+    total_contacts: 1247,
+    total_deals_value: 25000000,
+    conversion_rate_pct: 32,
+    active_campaigns: 12
   };
+
+  const loanStages = [
+    { label: 'Deals Closed (This Month)', count: 18, value: 4500000 },
+    { label: 'In Progress', count: 12, value: 3200000 },
+    { label: 'Rejected', count: 5, value: 850000 },
+    { label: 'On Hold', count: 7, value: 1550000 },
+    { label: 'Login/Sanction', count: 22, value: 6500000 },
+    { label: 'Disbursed', count: 14, value: 4200000 }
+  ];
+
+  const pipelineStatus = [
+    { label: 'New Leads', count: 15 },
+    { label: 'Contacted', count: 12 },
+    { label: 'Interested', count: 8 },
+    { label: 'Proposal', count: 5 }
+  ];
+
+  const formatINR = (n) => `₹${n.toLocaleString('en-IN')}`;
 
   const mockLeads = [
     { id: 1, name: 'Neha Singh', company: 'Startup Fund', status: 'New', lead_tier: 'Premium', ai_score: 85 },
@@ -60,7 +82,49 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard-container">
-      <h1>Dashboard</h1>
+      <h1>📊 Dashboard</h1>
+
+      <div className="growth-grid">
+        <GrowthCard title="Total Contacts" value={displayAnalytics.total_contacts.toLocaleString('en-IN')} trend="↑ 12% from last month" />
+        <GrowthCard title="Total Deals" value={formatINR(displayAnalytics.total_deals_value)} trend="↑ 8% from last month" />
+        <GrowthCard title="Conversion Rate" value={`${displayAnalytics.conversion_rate_pct}%`} trend="↑ 2% from last month" />
+        <GrowthCard title="Active Campaigns" value={displayAnalytics.active_campaigns} trend="Running on LinkedIn & WhatsApp" />
+      </div>
+
+      <div className="dashboard-section chart-panel">
+        <h2>📈 Sales Performance</h2>
+        <div className="chart-placeholder">
+          Sales chart - will show real-time data once a payment gateway integration is connected
+        </div>
+      </div>
+
+      <div className="dashboard-section">
+        <h2>Loan Pipeline</h2>
+        <div className="stage-grid">
+          {loanStages.map((stage) => (
+            <div key={stage.label} className="stage-card">
+              <div className="stage-label">{stage.label.toUpperCase()}</div>
+              <div className="stage-count">{stage.count}</div>
+              <div className="stage-value">{formatINR(stage.value)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="dashboard-section">
+        <h2>Pipeline Status</h2>
+        <div className="pipeline-status-grid">
+          {pipelineStatus.map((s) => (
+            <div key={s.label} className="pipeline-status-card">
+              <h3>{s.label}</h3>
+              <div className="pipeline-status-row">
+                <span>Count</span>
+                <strong>{s.count}</strong>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="kpi-grid">
         <KPICard
@@ -122,6 +186,16 @@ export default function Dashboard() {
           <p>No leads yet</p>
         )}
       </div>
+    </div>
+  );
+}
+
+function GrowthCard({ title, value, trend }) {
+  return (
+    <div className="growth-card">
+      <div className="growth-title">{title}</div>
+      <div className="growth-value">{value}</div>
+      <div className="growth-trend">{trend}</div>
     </div>
   );
 }
