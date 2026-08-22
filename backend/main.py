@@ -53,10 +53,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Add CORS middleware. Defaults to "*" for local development convenience - production
+# deployments should set CORS_ORIGINS to a comma-separated list of real frontend origin(s),
+# e.g. CORS_ORIGINS=https://app.example.com
+_cors_origins_env = os.getenv("CORS_ORIGINS", "*")
+CORS_ORIGINS = ["*"] if _cors_origins_env == "*" else [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

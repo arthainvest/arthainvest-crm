@@ -7,7 +7,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+_DEFAULT_SECRET_KEY = "your-secret-key-change-this"
+SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET_KEY)
+
+if SECRET_KEY == _DEFAULT_SECRET_KEY:
+    if ENVIRONMENT == "production":
+        raise RuntimeError(
+            "SECRET_KEY is not set. Refusing to start with the default placeholder key in "
+            "production - anyone could forge auth tokens. Set a real SECRET_KEY env var "
+            "(e.g. `python -c \"import secrets; print(secrets.token_hex(32))\"`)."
+        )
+    print(
+        "[WARNING] SECRET_KEY is not set - using the insecure default placeholder. "
+        "This is fine for local development but must never be used in production."
+    )
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 

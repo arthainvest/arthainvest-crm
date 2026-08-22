@@ -28,26 +28,15 @@ def execute_query(query, params=None, fetch=False):
         return result
 
 def init_db():
-    """Initialize database with schema"""
+    """Create the schema if it doesn't exist yet, then seed demo data only on a genuinely
+    empty database (first run). Never drops or touches existing tables/rows - this runs on
+    every server startup, so anything destructive here would wipe real production data on
+    the next restart or redeploy."""
     with get_db() as conn:
         cursor = conn.cursor()
 
-        # Drop existing tables for fresh start
-        cursor.execute("DROP TABLE IF EXISTS activity_log")
-        cursor.execute("DROP TABLE IF EXISTS deals")
-        cursor.execute("DROP TABLE IF EXISTS leads")
-        cursor.execute("DROP TABLE IF EXISTS campaigns")
-        cursor.execute("DROP TABLE IF EXISTS integrations")
-        cursor.execute("DROP TABLE IF EXISTS user_settings")
-        cursor.execute("DROP TABLE IF EXISTS contact_notes")
-        cursor.execute("DROP TABLE IF EXISTS contacts")
-        cursor.execute("DROP TABLE IF EXISTS lead_notes")
-        cursor.execute("DROP TABLE IF EXISTS calls")
-        cursor.execute("DROP TABLE IF EXISTS users")
-
-        # Create tables
         cursor.execute("""
-            CREATE TABLE users (
+            CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
                 email TEXT UNIQUE NOT NULL,
@@ -61,7 +50,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE leads (
+            CREATE TABLE IF NOT EXISTS leads (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 company TEXT,
@@ -80,7 +69,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE deals (
+            CREATE TABLE IF NOT EXISTS deals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 lead_id INTEGER NOT NULL,
                 deal_value REAL,
@@ -97,7 +86,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE activity_log (
+            CREATE TABLE IF NOT EXISTS activity_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
                 action TEXT,
@@ -110,7 +99,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE campaigns (
+            CREATE TABLE IF NOT EXISTS campaigns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 type TEXT DEFAULT 'Email',
@@ -126,7 +115,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE integrations (
+            CREATE TABLE IF NOT EXISTS integrations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 logo TEXT,
@@ -137,7 +126,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE user_settings (
+            CREATE TABLE IF NOT EXISTS user_settings (
                 user_id INTEGER PRIMARY KEY,
                 full_name TEXT,
                 email TEXT,
@@ -154,7 +143,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE contacts (
+            CREATE TABLE IF NOT EXISTS contacts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 company TEXT,
@@ -170,7 +159,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE contact_notes (
+            CREATE TABLE IF NOT EXISTS contact_notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 contact_id INTEGER NOT NULL,
                 call_datetime TEXT,
@@ -184,7 +173,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE lead_notes (
+            CREATE TABLE IF NOT EXISTS lead_notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 lead_id INTEGER NOT NULL,
                 call_datetime TEXT,
@@ -198,7 +187,7 @@ def init_db():
         """)
 
         cursor.execute("""
-            CREATE TABLE calls (
+            CREATE TABLE IF NOT EXISTS calls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 phone TEXT,
@@ -213,6 +202,19 @@ def init_db():
         """)
 
         conn.commit()
+
+        # Schema is in place. Only seed demo data into a genuinely empty database (first run
+        # ever) - never on a restart of a database that already has real users/data in it.
+        cursor.execute("SELECT COUNT(*) as count FROM users")
+        if cursor.fetchone()['count'] > 0:
+            cursor.close()
+            print("[OK] Database schema ready (existing data preserved)")
+            return
+
+        if os.getenv("SEED_DEMO_DATA", "true").lower() == "false":
+            cursor.close()
+            print("[OK] Database schema ready (demo seeding disabled via SEED_DEMO_DATA=false)")
+            return
 
         # Insert test user (testuser/12345 - must match Login.jsx displayed hint)
         from auth import hash_password

@@ -80,11 +80,13 @@ export default function Login({ onLoginSuccess }) {
           </button>
         </form>
 
-        <div className="login-footer">
-          <p>Test Credentials:</p>
-          <p><strong>Username:</strong> testuser</p>
-          <p><strong>Password:</strong> 12345</p>
-        </div>
+        {process.env.NODE_ENV === 'development' && (
+          <div className="login-footer">
+            <p>Test Credentials:</p>
+            <p><strong>Username:</strong> testuser</p>
+            <p><strong>Password:</strong> 12345</p>
+          </div>
+        )}
       </div>
     </div>
   );
