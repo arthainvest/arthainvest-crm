@@ -294,21 +294,44 @@
   color: #1976d2;
 }
 
-.loan-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.pipeline-table-wrapper {
+  overflow-x: auto;
 }
 
-.loan-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+.pipeline-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pipeline-table thead {
+  background-color: #e3f2fd;
+}
+
+.pipeline-table th {
   padding: 12px 14px;
-  background: white;
-  border: 1px solid #e3f2fd;
-  border-radius: 6px;
-  flex-wrap: wrap;
+  text-align: left;
+  font-weight: 600;
+  color: #1976d2;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.pipeline-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e3f2fd;
+  font-size: 14px;
+  color: #333;
+  vertical-align: middle;
+}
+
+.pipeline-table tbody tr:hover {
+  background-color: #f5faff;
+}
+
+.pipeline-client-name {
+  font-weight: 600;
+  color: #333;
 }
 
 .folder-icon-btn {
@@ -321,29 +344,10 @@
   align-items: center;
   justify-content: center;
   transition: transform 0.2s ease;
-  flex: 0 0 auto;
 }
 
 .folder-icon-btn:hover {
   transform: scale(1.15);
-}
-
-.loan-row-client {
-  display: flex;
-  flex-direction: column;
-  min-width: 140px;
-  flex: 1 1 140px;
-}
-
-.loan-client-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #333;
-}
-
-.loan-client-amount {
-  font-size: 12px;
-  color: #1976d2;
 }
 
 .process-status-select {
@@ -360,34 +364,11 @@
   background-repeat: no-repeat;
   background-position: right 8px center;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231976d2' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  flex: 0 0 auto;
 }
 
-.milestones-inline {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  flex: 0 0 auto;
-}
-
-.milestone-pill {
-  padding: 5px 12px;
-  border-radius: 20px;
-  border: 1px solid #90caf9;
-  background: white;
-  color: #90caf9;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.milestone-pill.done {
-  background: #1976d2;
-  border-color: #1976d2;
+.process-status-select.status-disbursed {
+  background-color: #1976d2;
   color: white;
-}
-
-.milestone-pill:hover {
-  transform: scale(1.05);
+  border-color: #1976d2;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }

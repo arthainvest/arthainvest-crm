@@ -18,8 +18,7 @@ export default function Pipeline() {
       loanProduct: 'LAP',
       stage: 'New',
       probability: 30,
-      processStatus: 'In Progress',
-      milestones: { login: true, sanction: false, disbursed: false }
+      processStatus: 'Login'
     },
     {
       id: 2,
@@ -30,8 +29,7 @@ export default function Pipeline() {
       loanProduct: 'Business',
       stage: 'Qualified',
       probability: 50,
-      processStatus: 'On Hold',
-      milestones: { login: true, sanction: false, disbursed: false }
+      processStatus: 'Hold'
     },
     {
       id: 3,
@@ -42,8 +40,7 @@ export default function Pipeline() {
       loanProduct: 'Home',
       stage: 'Proposal',
       probability: 70,
-      processStatus: 'In Progress',
-      milestones: { login: true, sanction: true, disbursed: false }
+      processStatus: 'Sanction'
     },
     {
       id: 4,
@@ -54,12 +51,11 @@ export default function Pipeline() {
       loanProduct: 'Project',
       stage: 'Negotiation',
       probability: 60,
-      processStatus: 'Disbursed',
-      milestones: { login: true, sanction: true, disbursed: true }
+      processStatus: 'Disbursed'
     }
   ];
 
-  const PROCESS_STATUS_OPTIONS = ['In Progress', 'On Hold', 'Disbursed', 'Rejected'];
+  const PROCESS_STATUS_OPTIONS = ['Login', 'Sanction', 'Hold', 'Disbursed'];
 
   const [deals, setDeals] = useState(mockDeals);
   const [showForm, setShowForm] = useState(false);
@@ -167,14 +163,6 @@ export default function Pipeline() {
     return { completed, total, percentage: Math.round((completed / total) * 100) };
   };
 
-  const handleMilestoneToggle = (dealId, milestone) => {
-    setDeals((prev) => prev.map((d) =>
-      d.id === dealId
-        ? { ...d, milestones: { ...(d.milestones || {}), [milestone]: !d.milestones?.[milestone] } }
-        : d
-    ));
-  };
-
   const handleProcessStatusChange = (dealId, newStatus) => {
     setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, processStatus: newStatus } : d)));
   };
@@ -245,61 +233,54 @@ export default function Pipeline() {
         ))}
       </div>
 
-      {/* Loan Processing Tracker */}
+      {/* Sales Pipeline Table */}
       <div className="loan-processing-section">
-        <h2>Loan Processing</h2>
-        <div className="loan-rows">
-          {deals.map((deal) => (
-            <div key={deal.id} className="loan-row">
-              <button
-                type="button"
-                className="folder-icon-btn"
-                onClick={() => handleDigiLocker(deal)}
-                title="Open DigiLocker"
-              >
-                <FolderIcon />
-              </button>
-
-              <div className="loan-row-client">
-                <span className="loan-client-name">{deal.name}</span>
-                <span className="loan-client-amount">₹{deal.value}K</span>
-              </div>
-
-              <select
-                className="process-status-select"
-                value={deal.processStatus || 'In Progress'}
-                onChange={(e) => handleProcessStatusChange(deal.id, e.target.value)}
-              >
-                {PROCESS_STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-
-              <div className="milestones-inline">
-                <button
-                  type="button"
-                  className={`milestone-pill ${deal.milestones?.login ? 'done' : ''}`}
-                  onClick={() => handleMilestoneToggle(deal.id, 'login')}
-                >
-                  Login
-                </button>
-                <button
-                  type="button"
-                  className={`milestone-pill ${deal.milestones?.sanction ? 'done' : ''}`}
-                  onClick={() => handleMilestoneToggle(deal.id, 'sanction')}
-                >
-                  Sanction
-                </button>
-                <button
-                  type="button"
-                  className={`milestone-pill ${deal.milestones?.disbursed ? 'done' : ''}`}
-                  onClick={() => handleMilestoneToggle(deal.id, 'disbursed')}
-                >
-                  Disbursed
-                </button>
-              </div>
-            </div>
-          ))}
+        <h2>Sales Pipeline</h2>
+        <div className="pipeline-table-wrapper">
+          <table className="pipeline-table">
+            <thead>
+              <tr>
+                <th>Folder</th>
+                <th>Client</th>
+                <th>Amount</th>
+                <th>Type of Loan</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deals.map((deal) => {
+                const loanInfo = getLoanProductInfo(deal.loanProduct);
+                return (
+                  <tr key={deal.id}>
+                    <td>
+                      <button
+                        type="button"
+                        className="folder-icon-btn"
+                        onClick={() => handleDigiLocker(deal)}
+                        title="Open DigiLocker"
+                      >
+                        <FolderIcon />
+                      </button>
+                    </td>
+                    <td className="pipeline-client-name">{deal.name}</td>
+                    <td>₹{deal.value}K</td>
+                    <td>{loanInfo?.icon} {loanInfo?.name}</td>
+                    <td>
+                      <select
+                        className={`process-status-select status-${(deal.processStatus || 'Login').toLowerCase()}`}
+                        value={deal.processStatus || 'Login'}
+                        onChange={(e) => handleProcessStatusChange(deal.id, e.target.value)}
+                      >
+                        {PROCESS_STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
