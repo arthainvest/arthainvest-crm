@@ -49,7 +49,7 @@ function App() {
         </div>
       ) : (
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route path="/login" element={<Login onLoginSuccess={() => setIsLoggedIn(true)} />} />
           <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       )}

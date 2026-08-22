@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { loginUser } from '../services/api';
 import '../styles/Login.css';
 
-export default function Login() {
+export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,7 +24,8 @@ export default function Login() {
       localStorage.setItem('username', response.username);
       localStorage.setItem('role', response.role);
 
-      // Redirect to dashboard
+      // Update app-level auth state, then redirect to dashboard
+      onLoginSuccess?.();
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.detail || 'Login failed. Please try again.');
