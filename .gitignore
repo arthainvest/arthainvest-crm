@@ -1,123 +1,44 @@
 # Dependencies
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+env/
 
-# Production
-build/
+# Build outputs
 dist/
+build/
+*.egg-info/
 .next/
 
-# Environment variables
+# Environment
 .env
 .env.local
 .env.*.local
-.env.production
-.env.development
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
-postgres_data/
 
-# Logs
-logs/
-*.log
-npm-debug.log*
-
-# OS
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*~
-
-# IDE
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-*.code-workspace
-
-# Testing
-coverage/
-.nyc_output/
-test/fixtures/actual/
-
-# Build
-dist/
-build/
-*.tsbuildinfo
-
-# Temporary
-tmp/
-temp/
+# Temporary files
 *.tmp
-
-# SSL Certificates (keep directory, ignore certs)
-ssl/*.crt
-ssl/*.key
-ssl/*.pem
-!ssl/.gitkeep
-
-# Backups
-backups/*.sql
-backups/*.dump
-!backups/.gitkeep
-
-# Uploads (user-generated content)
-uploads/*
-!uploads/.gitkeep
-
-# Docker volumes
-postgres_data/
-redis_data/
-
-# Node version managers
-.nvmrc
-.node-version
-
-# Lock files (for development, not production)
-# package-lock.json
-# yarn.lock
-
-# Credentials and secrets
-*.pem
-*.key
-*.p12
-*.p8
-
-# MacOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Windows
-Thumbs.db
-ehthumbs.db
-
-# Misc
+*.temp
 .cache/
-.parcel-cache/
-.eslintcache
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn
-.yarn-integrity
-
-# Environment (already covered but being explicit)
-.env*.local
-.env.production.local
-
-# Dotenv module (https://github.com/motdotla/dotenv)
-.env
-
-# Application specific
-certificates/
-uploads/
-temp/
-logs/
