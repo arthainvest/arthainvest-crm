@@ -27,7 +27,6 @@ from schemas import (
     WhatsAppSendRequest, WhatsAppSendResponse,
     EmailSendRequest, EmailSendResponse,
     SmsSendRequest, SmsSendResponse,
-    PaymentLinkRequest, PaymentLinkResponse,
     MailchimpSyncResponse,
     TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow
 )
@@ -1275,43 +1274,6 @@ async def send_email_real(payload: EmailSendRequest, token: str = Query(None)):
         return EmailSendResponse(configured=True, message=f"Email sent to {payload.to}.")
     except Exception as e:
         return EmailSendResponse(configured=True, message=f"Email failed: {str(e)}")
-
-@app.post("/api/payments/create-link", response_model=PaymentLinkResponse)
-async def create_payment_link(payload: PaymentLinkRequest, token: str = Query(None)):
-    """Create a Razorpay payment link (e.g. for a loan processing fee). Returns
-    configured=False when RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET aren't set."""
-    get_current_user(token)
-
-    key_id = os.getenv("RAZORPAY_KEY_ID")
-    key_secret = os.getenv("RAZORPAY_KEY_SECRET")
-
-    if not (key_id and key_secret):
-        return PaymentLinkResponse(configured=False, message="Razorpay is not configured on this server.")
-
-    try:
-        import requests
-        body = {
-            "amount": int(round(payload.amount * 100)),  # paise
-            "currency": "INR",
-            "description": payload.description,
-        }
-        if payload.customer_name or payload.customer_phone:
-            body["customer"] = {
-                "name": payload.customer_name or "",
-                "contact": payload.customer_phone or ""
-            }
-        resp = requests.post(
-            "https://api.razorpay.com/v1/payment_links",
-            auth=(key_id, key_secret),
-            json=body,
-            timeout=10
-        )
-        if resp.status_code >= 400:
-            return PaymentLinkResponse(configured=True, message=f"Razorpay couldn't create the link: {resp.text[:200]}")
-        data = resp.json()
-        return PaymentLinkResponse(configured=True, message="Payment link created.", payment_url=data.get("short_url"))
-    except Exception as e:
-        return PaymentLinkResponse(configured=True, message=f"Payment link failed: {str(e)}")
 
 @app.post("/api/marketing/mailchimp/sync", response_model=MailchimpSyncResponse)
 async def sync_mailchimp(token: str = Query(None)):

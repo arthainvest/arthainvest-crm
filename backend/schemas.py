@@ -278,18 +278,6 @@ class SmsSendResponse(BaseModel):
     configured: bool
     message: str
 
-# Razorpay payment links
-class PaymentLinkRequest(BaseModel):
-    amount: float  # rupees
-    description: str
-    customer_name: Optional[str] = None
-    customer_phone: Optional[str] = None
-
-class PaymentLinkResponse(BaseModel):
-    configured: bool
-    message: str
-    payment_url: Optional[str] = None
-
 # Mailchimp sync (Marketing)
 class MailchimpSyncResponse(BaseModel):
     configured: bool

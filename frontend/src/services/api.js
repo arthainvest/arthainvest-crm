@@ -260,14 +260,6 @@ export const sendEmailReal = async (token, to, subject, body) => {
   return response.data;
 };
 
-// Razorpay payment links
-export const createPaymentLink = async (token, amount, description, customerName, customerPhone) => {
-  const response = await api.post(`/api/payments/create-link?token=${token}`, {
-    amount, description, customer_name: customerName, customer_phone: customerPhone
-  });
-  return response.data;
-};
-
 // Mailchimp sync
 export const syncMailchimp = async (token) => {
   const response = await api.post(`/api/marketing/mailchimp/sync?token=${token}`);

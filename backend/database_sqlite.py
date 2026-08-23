@@ -41,7 +41,6 @@ def _ensure_integrations_catalog(cursor, conn):
         ('Claude AI', '✨', 'AI-drafted follow-ups and note summaries', 0, 'never'),
         ('LinkedIn', '💼', 'Sync leads and posts from LinkedIn', 0, 'never'),
         ('WhatsApp Business API', '💬', 'Send WhatsApp messages via Meta Cloud API', 0, 'never'),
-        ('Razorpay Payments', '💳', 'Create payment links for loan processing fees', 0, 'never'),
         ('Email Service', '📮', 'Send real emails via SMTP', 0, 'never'),
         ('Mailchimp', '🐒', 'Sync contacts and send email campaigns', 0, 'never'),
         ('DigiLocker', '🔐', 'Secure document storage and verification', 0, 'never'),
@@ -55,6 +54,11 @@ def _ensure_integrations_catalog(cursor, conn):
                 "INSERT INTO integrations (name, logo, description, connected, last_sync) VALUES (?, ?, ?, ?, ?)",
                 (name, logo, description, connected, last_sync)
             )
+
+    # Razorpay was added and then removed from the catalog above - drop any row a previous
+    # startup already inserted, so it doesn't linger on databases that saw it before.
+    cursor.execute("DELETE FROM integrations WHERE name = 'Razorpay Payments'")
+
     conn.commit()
 
 def _ensure_team_roster(cursor, conn):
