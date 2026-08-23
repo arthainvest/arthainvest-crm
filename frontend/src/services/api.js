@@ -10,6 +10,25 @@ const api = axios.create({
   },
 });
 
+// Login tokens expire after ACCESS_TOKEN_EXPIRE_MINUTES (30 min by default, see backend/auth.py)
+// with no refresh mechanism. Without this, an expired token makes every write silently fail and
+// each form shows its own generic "Error creating X" alert with no indication that the real
+// cause is just a stale session - so the user has no way to know they need to log back in.
+// This catches it once, in one place, for every request, and sends them to a fresh login instead.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    const url = error.config?.url || '';
+    const isAuthEndpoint = url.includes('/api/auth/login') || url.includes('/api/auth/register');
+    if (status === 401 && !isAuthEndpoint && localStorage.getItem('token')) {
+      localStorage.clear();
+      window.location.href = '/login?expired=1';
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Authentication
 export const loginUser = async (username, password) => {
   const response = await api.post('/api/auth/login', { username, password });

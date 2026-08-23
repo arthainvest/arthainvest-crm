@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loginUser } from '../services/api';
 import '../styles/Login.css';
 
 export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [searchParams] = useSearchParams();
+  // Set by the api.js response interceptor when a request comes back 401 mid-session - the
+  // token expired (30 min by default, see backend/auth.py) and there's no refresh mechanism,
+  // so this is the one place that tells the user why they landed back here instead of leaving
+  // every form to fail with its own generic, unexplained error.
+  const [error, setError] = useState(searchParams.get('expired') ? 'Your session expired - please log in again.' : '');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
