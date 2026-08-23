@@ -2,7 +2,8 @@ import sqlite3
 from contextlib import contextmanager
 import os
 
-DB_PATH = "arthainvest_crm.db"
+# Overridable so tests can point at an isolated temp file instead of the real dev database.
+DB_PATH = os.getenv("DB_PATH", "arthainvest_crm.db")
 
 @contextmanager
 def get_db():
