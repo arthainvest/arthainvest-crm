@@ -1,0 +1,836 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  getContactsList, createContact, updateContact, deleteContact,
+  getContactNotes, createContactNote, updateContactNote, deleteContactNote,
+  uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup,
+  sendWhatsApp, sendEmailReal, sendSms
+} from '../services/api';
+import '../styles/Contacts.css';
+
+const WhatsAppIcon = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+    <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.004c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0012.05 2zm5.71 14.14c-.24.68-1.4 1.31-1.94 1.36-.5.05-1.13.07-1.82-.11-.42-.11-.96-.31-1.65-.61-2.9-1.25-4.79-4.17-4.94-4.36-.15-.19-1.18-1.57-1.18-3 0-1.43.75-2.13 1.02-2.42.27-.29.59-.36.78-.36l.56.01c.18 0 .42-.07.66.5.24.58.83 2 .9 2.15.07.15.12.32.02.51-.09.19-.14.31-.28.48-.14.17-.29.37-.42.5-.14.14-.28.29-.12.56.16.28.71 1.17 1.52 1.89 1.05.93 1.93 1.22 2.21 1.36.28.14.44.12.6-.07.16-.19.68-.79.86-1.06.18-.28.36-.23.6-.14.24.09 1.53.72 1.79.85.26.13.44.19.5.3.06.11.06.63-.18 1.31z" />
+  </svg>
+);
+
+const emptyContactForm = { name: '', company: '', email: '', phone: '', city: '' };
+const emptyNoteDraft = { callDateTime: '', nextConversation: '', transcript: '' };
+
+// A naive line.split(',') breaks on quoted fields containing commas (e.g. "Doe, John") or
+// escaped quotes ("Say ""hi"""). This walks the line char-by-char tracking quote state instead.
+const parseCSVLine = (line) => {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',') {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+};
+
+export default function Contacts() {
+  const [contacts, setContacts] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const token = localStorage.getItem('token');
+
+  // Expand/collapse per-contact details
+  const [expandedContacts, setExpandedContacts] = useState({});
+
+  // Add/Edit Contact modal
+  const [showForm, setShowForm] = useState(false);
+  const [editingContactId, setEditingContactId] = useState(null);
+  const [contactForm, setContactForm] = useState(emptyContactForm);
+
+  // Email modal
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+
+  // DigiLocker modal
+  const [showDigi, setShowDigi] = useState(false);
+
+  // Notes & voice-note state
+  const [showNotes, setShowNotes] = useState(false);
+  const [notes, setNotes] = useState([]);
+  const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(emptyNoteDraft);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [draftAudioUrl, setDraftAudioUrl] = useState(null);
+  const [speechSupported] = useState(() => !!(window.SpeechRecognition || window.webkitSpeechRecognition));
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recognitionRef = useRef(null);
+  const draftAudioBlobRef = useRef(null);
+
+  // Role-based Import/Export
+  const userRole = (localStorage.getItem('role') || 'employee').toLowerCase();
+  const canExport = userRole === 'admin';
+  const importInputRef = useRef(null);
+
+  useEffect(() => {
+    fetchContacts();
+  }, []);
+
+  const fetchContacts = async () => {
+    try {
+      const data = await getContactsList(token);
+      setContacts(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+    }
+  };
+
+  const toggleExpand = (contactId) => {
+    setExpandedContacts((prev) => ({ ...prev, [contactId]: !prev[contactId] }));
+  };
+
+  const handleImportClick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const rows = text.split(/\r?\n/).filter((r) => r.trim().length > 0);
+        if (rows.length < 2) {
+          alert('CSV file appears to be empty or missing data rows.');
+          return;
+        }
+        const headers = parseCSVLine(rows[0]).map((h) => h.toLowerCase());
+        const imported = rows.slice(1).map((row) => {
+          const cols = parseCSVLine(row);
+          const obj = {};
+          headers.forEach((h, i) => { obj[h] = cols[i] || ''; });
+          return {
+            name: obj.name || 'Unnamed Contact',
+            company: obj.company || '',
+            email: obj.email || '',
+            phone: obj.phone || '',
+            city: obj.city || obj['city/area'] || '',
+            score: obj.score ? Number(obj.score) : null
+          };
+        });
+
+        let created = 0;
+        let failed = 0;
+        for (const row of imported) {
+          try {
+            const { score, ...contactData } = row;
+            const newContact = await createContact(token, contactData);
+            if (score !== null && !Number.isNaN(score)) {
+              await updateContact(token, newContact.id, { score });
+            }
+            created++;
+          } catch (rowErr) {
+            console.error('Error importing row:', row, rowErr);
+            failed++;
+          }
+        }
+        await fetchContacts();
+        alert(failed > 0
+          ? `Imported ${created} contact(s). ${failed} row(s) failed - check the console for details.`
+          : `Imported ${created} contact(s) successfully.`);
+      } catch (err) {
+        alert('Failed to parse CSV file: ' + err.message);
+      } finally {
+        e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['Name', 'Company', 'Email', 'Phone', 'City/Area', 'Score'];
+    const rows = filteredContacts.map((c) => [c.name, c.company || '', c.email || '', c.phone || '', c.city || '', c.score ?? '']);
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `contacts-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCall = async (contact) => {
+    if (!contact.phone) {
+      alert('No phone number available');
+      return;
+    }
+    // Try a real Twilio click-to-call first (rings the agent, then bridges to the contact);
+    // falls back to a plain tel: link when Twilio isn't configured on the server.
+    try {
+      const result = await dialCall(token, contact.phone);
+      if (result.configured) {
+        alert(result.message);
+        return;
+      }
+    } catch (error) {
+      console.error('Error placing Twilio call:', error);
+    }
+    window.location.href = `tel:${contact.phone}`;
+  };
+
+  const handleWhatsApp = async (contact) => {
+    if (!contact.phone) {
+      alert('No phone number available');
+      return;
+    }
+    // Try a real WhatsApp Business API send first; falls back to opening a wa.me link
+    // when it isn't configured on the server.
+    try {
+      const result = await sendWhatsApp(token, contact.phone, `Hi ${contact.name}, this is ArthaInvest reaching out.`);
+      if (result.configured) {
+        alert(result.message);
+        return;
+      }
+    } catch (error) {
+      console.error('Error sending WhatsApp message:', error);
+    }
+    const url = `https://wa.me/${contact.phone.replace(/\D/g, '')}`;
+    window.open(url, '_blank');
+  };
+
+  const handleSms = async (contact) => {
+    if (!contact.phone) {
+      alert('No phone number available');
+      return;
+    }
+    const message = window.prompt(`SMS to ${contact.name}:`, `Hi ${contact.name}, this is ArthaInvest.`);
+    if (!message) return;
+    try {
+      const result = await sendSms(token, contact.phone, message);
+      if (result.configured) {
+        alert(result.message);
+        return;
+      }
+    } catch (error) {
+      console.error('Error sending SMS:', error);
+    }
+    window.location.href = `sms:${contact.phone}`;
+  };
+
+  const handleEmail = (contact) => {
+    setSelectedContact(contact);
+    setShowEmailModal(true);
+  };
+
+  const sendEmail = async () => {
+    if (!emailSubject.trim() || !emailBody.trim()) return;
+    // Try a real SMTP send first; falls back to opening a mailto: link when SMTP isn't
+    // configured on the server.
+    try {
+      const result = await sendEmailReal(token, selectedContact.email, emailSubject, emailBody);
+      if (result.configured) {
+        alert(result.message);
+        setEmailSubject('');
+        setEmailBody('');
+        setShowEmailModal(false);
+        return;
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+    }
+    window.location.href = `mailto:${selectedContact.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+    setEmailSubject('');
+    setEmailBody('');
+    setShowEmailModal(false);
+  };
+
+  const handleDigi = (contact) => {
+    setSelectedContact(contact);
+    setShowDigi(true);
+  };
+
+  const handleAddContactClick = () => {
+    setEditingContactId(null);
+    setContactForm(emptyContactForm);
+    setShowForm(true);
+  };
+
+  const handleEditContact = (contact) => {
+    setEditingContactId(contact.id);
+    setContactForm({
+      name: contact.name || '',
+      company: contact.company || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+      city: contact.city || ''
+    });
+    setShowForm(true);
+  };
+
+  const handleDeleteContact = async (contactId) => {
+    if (!window.confirm('Are you sure you want to delete this contact?')) return;
+    try {
+      await deleteContact(token, contactId);
+      setContacts((prev) => prev.filter((c) => c.id !== contactId));
+    } catch (error) {
+      console.error('Error deleting contact:', error);
+      alert('Failed to delete contact. Please try again.');
+    }
+  };
+
+  const handleSaveContact = async (e) => {
+    e.preventDefault();
+    if (!contactForm.name.trim()) return;
+
+    try {
+      if (editingContactId) {
+        await updateContact(token, editingContactId, contactForm);
+      } else {
+        await createContact(token, contactForm);
+      }
+      setShowForm(false);
+      setContactForm(emptyContactForm);
+      setEditingContactId(null);
+      fetchContacts();
+    } catch (error) {
+      console.error('Error saving contact:', error);
+      alert('Failed to save contact. Please try again.');
+    }
+  };
+
+  const handleNotes = async (contact) => {
+    setSelectedContact(contact);
+    resetNoteDraft();
+    setIsRecording(false);
+    setAiSuggestion(null);
+    setShowNotes(true);
+    try {
+      const data = await getContactNotes(token, contact.id);
+      setNotes(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+      setNotes([]);
+    }
+  };
+
+  const handleAiSuggest = async () => {
+    if (!selectedContact) return;
+    setAiLoading(true);
+    setAiSuggestion(null);
+    try {
+      const result = await aiSuggestContactFollowup(token, selectedContact.id);
+      setAiSuggestion(result.suggestion || result.message);
+    } catch (error) {
+      console.error('Error getting AI suggestion:', error);
+      setAiSuggestion('Failed to get a suggestion. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const closeNotes = () => {
+    if (isRecording) stopRecording();
+    setShowNotes(false);
+  };
+
+  // Local recordings use blob: URLs, which the browser won't release until explicitly revoked
+  // or the page unloads - revoke before dropping our only reference to one.
+  const revokeIfLocalBlob = (url) => {
+    if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+  };
+
+  const resetNoteDraft = () => {
+    revokeIfLocalBlob(draftAudioUrl);
+    setNoteDraft({
+      callDateTime: new Date().toISOString().slice(0, 16),
+      nextConversation: '',
+      transcript: ''
+    });
+    setDraftAudioUrl(null);
+    draftAudioBlobRef.current = null;
+    setEditingNoteId(null);
+  };
+
+  const handleEditNote = (note) => {
+    revokeIfLocalBlob(draftAudioUrl);
+    setNoteDraft({
+      callDateTime: note.call_datetime || '',
+      nextConversation: note.next_conversation || '',
+      transcript: note.transcript || ''
+    });
+    // Load the previously saved recording for playback; a fresh recording (if the user makes
+    // one) replaces it on save via draftAudioBlobRef, which stays null until that happens.
+    setDraftAudioUrl(note.audio_url ? `${API_URL}${note.audio_url}` : null);
+    draftAudioBlobRef.current = null;
+    setEditingNoteId(note.id);
+  };
+
+  const cancelEditNote = () => {
+    resetNoteDraft();
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
+      recorder.onstop = () => {
+        revokeIfLocalBlob(draftAudioUrl);
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        draftAudioBlobRef.current = blob;
+        setDraftAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-IN';
+        let finalTranscript = '';
+        recognition.onresult = (event) => {
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const text = event.results[i][0].transcript;
+            if (event.results[i].isFinal) finalTranscript += text + ' ';
+            else interim += text;
+          }
+          setNoteDraft((prev) => ({ ...prev, transcript: (finalTranscript + interim).trim() }));
+        };
+        recognition.onerror = (e) => console.error('Speech recognition error:', e.error);
+        recognition.start();
+        recognitionRef.current = recognition;
+      }
+    } catch (err) {
+      alert('Microphone access denied or unavailable: ' + err.message);
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setIsRecording(false);
+  };
+
+  const saveNote = async () => {
+    if (!selectedContact) return;
+    if (!noteDraft.transcript.trim() && !draftAudioUrl) {
+      alert('Add a transcript note or record a voice note before saving.');
+      return;
+    }
+
+    const payload = {
+      call_datetime: noteDraft.callDateTime || null,
+      next_conversation: noteDraft.nextConversation || null,
+      transcript: noteDraft.transcript.trim()
+    };
+
+    try {
+      const savedNote = editingNoteId
+        ? await updateContactNote(token, selectedContact.id, editingNoteId, payload)
+        : await createContactNote(token, selectedContact.id, payload);
+
+      if (draftAudioBlobRef.current) {
+        await uploadNoteAudio(token, selectedContact.id, savedNote.id, draftAudioBlobRef.current);
+      }
+
+      const data = await getContactNotes(token, selectedContact.id);
+      setNotes(Array.isArray(data) ? data : []);
+      resetNoteDraft();
+    } catch (error) {
+      console.error('Error saving note:', error);
+      alert('Failed to save note. Please try again.');
+    }
+  };
+
+  const deleteNote = async (contactId, noteId) => {
+    try {
+      await deleteContactNote(token, contactId, noteId);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      if (editingNoteId === noteId) resetNoteDraft();
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      alert('Failed to delete note. Please try again.');
+    }
+  };
+
+  const filteredContacts = contacts.filter(c =>
+    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="contacts-container">
+      <div className="contacts-header">
+        <h1>Contacts</h1>
+        <div className="contacts-header-actions">
+          <input
+            type="file"
+            accept=".csv"
+            ref={importInputRef}
+            onChange={handleImportFile}
+            style={{ display: 'none' }}
+          />
+          <button className="btn-secondary" onClick={handleImportClick}>📥 Import</button>
+          {canExport && (
+            <button className="btn-secondary" onClick={handleExportCSV}>📤 Export</button>
+          )}
+          <button className="btn-primary" onClick={handleAddContactClick}>+ Add Contact</button>
+        </div>
+      </div>
+
+      <div className="search-bar">
+        <input
+          type="text"
+          placeholder="Search contacts by name or email..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      <div className="contacts-list">
+        {filteredContacts.length === 0 ? (
+          <p className="no-data">No contacts yet. Add one to get started.</p>
+        ) : filteredContacts.map((contact) => {
+          const isExpanded = !!expandedContacts[contact.id];
+          return (
+            <div key={contact.id} className="contact-row">
+              <div className="contact-row-main">
+                <button
+                  type="button"
+                  className="contact-name-toggle"
+                  onClick={() => toggleExpand(contact.id)}
+                  title={isExpanded ? 'Hide details' : 'Show details'}
+                >
+                  <span className={`expand-arrow ${isExpanded ? 'open' : ''}`}>▸</span>
+                  <span className="contact-name">{contact.name}</span>
+                </button>
+
+                {contact.score !== '' && contact.score != null && (
+                  <span className="score-badge-inline">{contact.score}%</span>
+                )}
+
+                <div className="contact-row-actions">
+                  <button className="btn-action call" onClick={() => handleCall(contact)} title="Click to Call">☎️</button>
+                  <button className="btn-action sms" onClick={() => handleSms(contact)} title="Send SMS">📱</button>
+                  <button className="btn-action email" onClick={() => handleEmail(contact)} title="Send Email">📧</button>
+                  <button className="btn-action whatsapp" onClick={() => handleWhatsApp(contact)} title="WhatsApp">
+                    <WhatsAppIcon />
+                  </button>
+                  <button className="btn-action digilocker" onClick={() => handleDigi(contact)} title="DigiLocker">🔐</button>
+                  <button className="btn-action notes" onClick={() => handleNotes(contact)} title="Notes & Follow-up">📝</button>
+                </div>
+
+                <div className="contact-row-corner">
+                  <button className="btn-corner edit" onClick={() => handleEditContact(contact)} title="Edit">✏️</button>
+                  <button className="btn-corner delete" onClick={() => handleDeleteContact(contact.id)} title="Delete">🗑️</button>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="contact-row-details">
+                  <p><strong>Company:</strong> {contact.company || '-'}</p>
+                  <p><strong>Email:</strong> {contact.email || '-'}</p>
+                  <p><strong>Phone:</strong> {contact.phone || '-'}</p>
+                  <p><strong>City/Area:</strong> 📍 {contact.city || '-'}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Add/Edit Contact Modal */}
+      {showForm && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{editingContactId ? 'Edit Contact' : 'Add New Contact'}</h2>
+              <button className="btn-close" onClick={() => setShowForm(false)}>×</button>
+            </div>
+
+            <form onSubmit={handleSaveContact}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label>Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Company</label>
+                  <input
+                    type="text"
+                    value={contactForm.company}
+                    onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Phone</label>
+                  <input
+                    type="tel"
+                    value={contactForm.phone}
+                    onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>City/Area</label>
+                  <input
+                    type="text"
+                    value={contactForm.city}
+                    onChange={(e) => setContactForm({ ...contactForm, city: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button type="submit" className="btn-primary">
+                  {editingContactId ? 'Save Changes' : 'Add Contact'}
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Email Modal */}
+      {showEmailModal && selectedContact && (
+        <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Send Email to {selectedContact.name}</h2>
+              <button className="btn-close" onClick={() => setShowEmailModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Subject:</label>
+                <input
+                  type="text"
+                  placeholder="Email subject..."
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>Message:</label>
+                <textarea
+                  placeholder="Email body..."
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                  rows="6"
+                />
+              </div>
+              <div className="modal-actions">
+                <button className="btn-primary" onClick={sendEmail}>Send Email</button>
+                <button className="btn-secondary" onClick={() => setShowEmailModal(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DigiLocker Modal */}
+      {showDigi && selectedContact && (
+        <div className="modal-overlay" onClick={() => setShowDigi(false)}>
+          <div className="modal-content digi-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>DigiLocker - Document Management</h2>
+              <button className="btn-close" onClick={() => setShowDigi(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="digi-info">
+                <h3>{selectedContact.name}</h3>
+                <p>{selectedContact.company} | {selectedContact.email} | {selectedContact.phone}</p>
+              </div>
+
+              <div className="digi-section">
+                <h4>Verified Documents</h4>
+                <div className="verified-docs">
+                  <div className="doc-item">
+                    <input type="checkbox" defaultChecked /> PAN Card
+                  </div>
+                  <div className="doc-item">
+                    <input type="checkbox" defaultChecked /> Aadhar Card
+                  </div>
+                  <div className="doc-item">
+                    <input type="checkbox" /> Bank Statement
+                  </div>
+                  <div className="doc-item">
+                    <input type="checkbox" /> ITR (Income Tax Return)
+                  </div>
+                </div>
+              </div>
+
+              <div className="digi-section">
+                <h4>Document Options</h4>
+                <div className="digi-options">
+                  <button className="digi-btn">✓ Request from Aadhar</button>
+                  <button className="digi-btn">✓ Request PAN</button>
+                  <button className="digi-btn">📄 Upload Bank Statement</button>
+                  <button className="digi-btn">📄 Upload ITR</button>
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button className="btn-primary">Submit to DigiLocker</button>
+                <button className="btn-secondary" onClick={() => setShowDigi(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notes & Follow-up Modal */}
+      {showNotes && selectedContact && (
+        <div className="modal-overlay" onClick={closeNotes}>
+          <div className="modal-content notes-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>📝 Notes & Follow-up - {selectedContact.name}</h2>
+              <button className="btn-close" onClick={closeNotes}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="notes-form">
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Call Date &amp; Time</label>
+                    <input
+                      type="datetime-local"
+                      value={noteDraft.callDateTime}
+                      onChange={(e) => setNoteDraft({ ...noteDraft, callDateTime: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Next Conversation</label>
+                    <input
+                      type="datetime-local"
+                      value={noteDraft.nextConversation}
+                      onChange={(e) => setNoteDraft({ ...noteDraft, nextConversation: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Notes / AI Transcript</label>
+                  <textarea
+                    rows="5"
+                    placeholder={speechSupported ? 'Type notes, or record a voice note to auto-transcribe...' : 'Type notes here...'}
+                    value={noteDraft.transcript}
+                    onChange={(e) => setNoteDraft({ ...noteDraft, transcript: e.target.value })}
+                  />
+                </div>
+
+                <div className="voice-note-controls">
+                  {!isRecording ? (
+                    <button type="button" className="btn-record" onClick={startRecording}>
+                      🎙️ Start Voice Note
+                    </button>
+                  ) : (
+                    <button type="button" className="btn-record recording" onClick={stopRecording}>
+                      <span className="rec-dot">●</span> Stop Recording
+                    </button>
+                  )}
+                  {!speechSupported && (
+                    <span className="voice-note-hint">AI live transcription needs Chrome/Edge - recording still works.</span>
+                  )}
+                  {draftAudioUrl && (
+                    <audio controls src={draftAudioUrl} className="voice-playback" />
+                  )}
+                </div>
+
+                <div className="modal-actions">
+                  <button className="btn-primary" onClick={saveNote}>
+                    {editingNoteId ? '💾 Update Note' : '💾 Save Note'}
+                  </button>
+                  {editingNoteId && (
+                    <button className="btn-secondary" onClick={cancelEditNote}>Cancel Edit</button>
+                  )}
+                </div>
+              </div>
+
+              <div className="notes-history">
+                <div className="notes-history-header">
+                  <h4>History ({notes.length})</h4>
+                  <button type="button" className="btn-ai-suggest" onClick={handleAiSuggest} disabled={aiLoading}>
+                    {aiLoading ? '✨ Thinking…' : '✨ AI Suggest Follow-up'}
+                  </button>
+                </div>
+                {aiSuggestion && (
+                  <div className="ai-suggestion">{aiSuggestion}</div>
+                )}
+                {notes.length === 0 ? (
+                  <p className="no-notes">No notes yet for this contact.</p>
+                ) : (
+                  notes.map((note) => (
+                    <div key={note.id} className={`note-entry ${editingNoteId === note.id ? 'editing' : ''}`}>
+                      <div className="note-entry-header">
+                        <span>📞 {note.call_datetime ? new Date(note.call_datetime).toLocaleString() : '—'}</span>
+                        <div className="note-entry-actions">
+                          <button className="btn-edit-note" onClick={() => handleEditNote(note)} title="Edit">✏️</button>
+                          <button className="btn-delete-note" onClick={() => deleteNote(selectedContact.id, note.id)} title="Delete">🗑️</button>
+                        </div>
+                      </div>
+                      {note.next_conversation && (
+                        <div className="note-next">⏭️ Next: {new Date(note.next_conversation).toLocaleString()}</div>
+                      )}
+                      {note.transcript && <p className="note-transcript">{note.transcript}</p>}
+                      {note.audio_url && (
+                        <audio controls src={`${API_URL}${note.audio_url}`} className="voice-playback" />
+                      )}
+                      {note.updated_at && note.updated_at !== note.created_at && (
+                        <div className="note-updated">Edited {new Date(note.updated_at).toLocaleString()}</div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

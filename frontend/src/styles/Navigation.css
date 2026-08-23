@@ -1,0 +1,143 @@
+.navigation {
+  width: 250px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 30px 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+}
+
+.nav-header {
+  padding: 0 20px 30px 20px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.app-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+  color: white;
+}
+
+.nav-links {
+  flex: 1;
+  padding: 20px 0;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 20px;
+  color: white;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  border-left: 4px solid transparent;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-left-color: white;
+}
+
+.nav-link.active {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-left-color: white;
+}
+
+.nav-link .icon {
+  font-size: 20px;
+  width: 24px;
+  text-align: center;
+}
+
+.nav-user {
+  padding: 20px;
+  border-top: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.user-info {
+  margin-bottom: 15px;
+}
+
+.username {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+}
+
+.logout-button {
+  width: 100%;
+  padding: 10px 15px;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.logout-button:hover {
+  background-color: white;
+  color: #667eea;
+}
+
+@media (max-width: 768px) {
+  .navigation {
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    padding: 15px;
+    align-items: center;
+  }
+
+  .nav-header {
+    padding: 0;
+    border-bottom: none;
+    border-right: 2px solid rgba(255, 255, 255, 0.2);
+    padding-right: 15px;
+    margin-right: 15px;
+  }
+
+  .nav-links {
+    flex: 1;
+    padding: 0;
+    display: flex;
+    gap: 10px;
+  }
+
+  .nav-link {
+    padding: 8px 12px;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+  }
+
+  .nav-link:hover,
+  .nav-link.active {
+    border-left: none;
+    border-bottom-color: white;
+  }
+
+  .nav-user {
+    padding: 0;
+    border-top: none;
+  }
+
+  .user-info {
+    display: none;
+  }
+
+  .logout-button {
+    width: auto;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}
