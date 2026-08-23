@@ -1,0 +1,422 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║           📢 MARKETING MATERIALS - COMPLETE FEATURE GUIDE                     ║
+║                   Share Materials via WhatsApp & Email                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+VERSION: 2.0.0+
+FEATURE: Marketing Materials Management & Distribution
+STATUS: Production Ready ✅
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 WHAT IS THE MARKETING MATERIALS FEATURE?
+
+The Marketing Materials feature allows you to:
+  ✅ Create and store marketing materials (brochures, guides, offers, etc.)
+  ✅ Share materials with clients via WhatsApp
+  ✅ Share materials with clients via Email
+  ✅ Track all marketing materials in one place
+  ✅ Include links to digital assets
+  ✅ Select multiple clients for bulk sharing
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 HOW TO USE - STEP BY STEP
+
+STEP 1: ACCESS MARKETING MATERIALS
+  1. Login to ArthaInvest CRM
+  2. Click: 📢 Marketing (in left sidebar)
+  3. You'll see the Marketing Materials section
+
+STEP 2: CREATE A NEW MARKETING MATERIAL
+  1. Click: "+ Add Marketing Material" button
+  2. Fill in the form:
+     • Material Name: e.g., "Investment Guide 2026"
+     • Material Type: Choose from dropdown
+       - Brochure
+       - Investment Guide
+       - White Paper
+       - Product Info
+       - Special Offer
+       - Newsletter
+       - Other
+     • Description: Your marketing message
+     • Link (optional): URL to the material (Google Drive, website, etc.)
+  3. Click: "Save Material"
+  4. Success! ✅ Material saved
+
+STEP 3: SHARE VIA WHATSAPP
+  1. Find your material in the list
+  2. Click: 📱 WhatsApp button
+  3. A modal appears with all your clients
+  4. Select clients you want to share with:
+     ☑ Client 1
+     ☑ Client 2
+     ☑ Client 3
+  5. Click: "Share via WhatsApp"
+  6. WhatsApp links open for each selected client
+  7. Send the message on WhatsApp
+
+STEP 4: SHARE VIA EMAIL
+  1. Find your material in the list
+  2. Click: ✉️ Email button
+  3. A modal appears with all your clients
+  4. Select clients you want to email:
+     ☑ Client 1
+     ☑ Client 2
+     ☑ Client 3
+  5. Click: "Share via Email"
+  6. Email clients open for each selected client
+  7. Send the email (you can edit before sending)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 MATERIAL TYPES EXPLAINED
+
+Brochure
+  → Company overview or product brochures
+  → Use for: Initial client introduction
+
+Investment Guide
+  → Investment tips, strategies, market info
+  → Use for: Educational content
+
+White Paper
+  → Detailed technical or market analysis
+  → Use for: Deep-dive information
+
+Product Info
+  → Specific product details and features
+  → Use for: Product promotion
+
+Special Offer
+  → Limited-time offers or promotions
+  → Use for: Time-sensitive marketing
+
+Newsletter
+  → Monthly or regular updates
+  → Use for: Ongoing communication
+
+Other
+  → Any other marketing material
+  → Use for: Custom categories
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💬 WHATSAPP SHARING - HOW IT WORKS
+
+When you share via WhatsApp:
+
+1. A WhatsApp link opens for each selected client
+2. The message includes:
+   • Material name
+   • Your description/message
+   • The link (if provided)
+   • Professional signature
+
+Example message:
+  ┌────────────────────────────────────────┐
+  │ Hi Rajesh,                             │
+  │                                        │
+  │ 📢 Investment Guide 2026               │
+  │                                        │
+  │ Check out our latest investment guide │
+  │ with strategies for 2026. Perfect for │
+  │ planning your portfolio!              │
+  │                                        │
+  │ View: https://link-to-guide.pdf       │
+  │                                        │
+  │ - ArthaInvest                          │
+  └────────────────────────────────────────┘
+
+Requirements:
+  ✓ Client must have phone number saved
+  ✓ Phone number must be in +country code format
+    Example: +919876543210 (India)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✉️ EMAIL SHARING - HOW IT WORKS
+
+When you share via Email:
+
+1. An email client opens for each selected client
+2. The email includes:
+   • Professional subject line
+   • Your description/message
+   • The link (if provided)
+   • Professional signature
+
+Example email:
+  ┌────────────────────────────────────────┐
+  │ To: rajesh@email.com                   │
+  │ Subject: Investment Guide 2026 -       │
+  │          ArthaInvest                   │
+  │                                        │
+  │ Hi Rajesh,                             │
+  │                                        │
+  │ Check out our latest investment guide │
+  │ with strategies for 2026. Perfect for │
+  │ planning your portfolio!              │
+  │                                        │
+  │ View: https://link-to-guide.pdf       │
+  │                                        │
+  │ Best regards,                          │
+  │ ArthaInvest Team                       │
+  └────────────────────────────────────────┘
+
+Requirements:
+  ✓ Client must have email address saved
+  ✓ Email must be in valid format (name@domain.com)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔗 USING LINKS IN MATERIALS
+
+You can include a link to your marketing material:
+
+Recommended link sources:
+  • Google Drive (shareable link)
+  • OneDrive / Dropbox
+  • Your company website
+  • PDF hosting service
+  • Marketing platform
+
+How to get a link:
+  1. Upload file to Google Drive / cloud storage
+  2. Right-click → Share
+  3. Change to "Anyone with link"
+  4. Copy link
+  5. Paste in Material Link field
+
+Example links:
+  https://drive.google.com/file/d/1abc123/view
+  https://example.com/investment-guide.pdf
+  https://www.brochure-link.com/2026-guide
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 BEST PRACTICES
+
+✅ DO:
+  • Keep descriptions short and compelling
+  • Include a link to the full material
+  • Use appropriate material types
+  • Segment clients by interest before sharing
+  • Follow up with phone call after email
+  • Track which clients received what
+
+❌ DON'T:
+  • Send too many materials at once
+  • Use generic descriptions
+  • Share without client email/phone
+  • Forget to include call-to-action link
+  • Share irrelevant materials
+  • Spam with daily materials
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📲 CLIENT INFORMATION REQUIREMENTS
+
+For successful sharing:
+
+WhatsApp Sharing:
+  Required: Phone number with country code
+  Example: +919876543210
+  Format: +[country-code][number]
+
+Email Sharing:
+  Required: Valid email address
+  Example: client@company.com
+  Format: name@domain.com
+
+Missing Info?
+  If a client lacks phone/email:
+  → System will show warning
+  → Fill in client info first:
+    • Click: All Leads
+    • Edit client
+    • Add phone/email
+    • Save
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📈 EXAMPLE SCENARIOS
+
+SCENARIO 1: Launch New Product
+  1. Create material:
+     Name: "New Mutual Fund Launch 2026"
+     Type: "Product Info"
+     Description: "Exciting new mutual fund with 8% expected returns. Perfect for long-term growth."
+     Link: https://drive.google.com/product-details
+
+  2. Share via WhatsApp to interested clients
+  3. Follow up with email to all clients
+  4. Track engagement
+
+SCENARIO 2: Monthly Newsletter
+  1. Create material:
+     Name: "January 2026 Market Update"
+     Type: "Newsletter"
+     Description: "Markets rallied 5% in December. Our analysis for January markets."
+     Link: https://newsletter-link.com/jan-2026
+
+  2. Share to all active clients via email
+  3. Send bulk WhatsApp to top clients
+
+SCENARIO 3: Special Promotion
+  1. Create material:
+     Name: "Year-End Investment Offer"
+     Type: "Special Offer"
+     Description: "Limited time: Get 50% fee waiver on new investments made before Dec 31."
+     Link: https://offers.company.com/year-end-2025
+
+  2. Share to clients within deadline
+  3. Use WhatsApp for urgent follow-up
+
+═══════════════════════════════════════════════════════════════════════════════
+
+❓ FAQ
+
+Q: Can I share to multiple clients at once?
+A: Yes! Select multiple clients in the share modal.
+
+Q: Can I edit a material after saving?
+A: Currently, you'll need to delete and recreate. We're adding edit feature soon.
+
+Q: What happens if a client doesn't have phone/email?
+A: The system warns you. You can edit the client's info first.
+
+Q: Can I schedule materials for later?
+A: Currently, sharing is immediate. Scheduled sending coming soon.
+
+Q: Is there a way to see who received what?
+A: Materials are tracked by creation date and creator. We're adding delivery tracking.
+
+Q: Can I delete a material?
+A: Yes! Click the 🗑️ delete button on any material. Confirm deletion.
+
+Q: What's the character limit for descriptions?
+A: No hard limit, but keep under 500 chars for best results on WhatsApp.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔄 WORKFLOW EXAMPLE
+
+Daily Marketing Routine:
+
+Morning:
+  1. Create 1-2 materials based on market updates
+  2. Share relevant materials via WhatsApp to top 5 clients
+  3. Send weekly newsletter email to all clients
+
+Midweek:
+  1. Create special offer material
+  2. Share via WhatsApp to interested segment
+  3. Follow up with email to broader list
+
+End of Week:
+  1. Review which materials were created
+  2. Track client engagement
+  3. Plan next week's materials
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 MATERIAL MANAGEMENT
+
+Viewing All Materials:
+  → Click: 📢 Marketing
+  → See list of all created materials
+  → Each shows: Name, Type, Created Date
+
+Sharing a Material:
+  → Find material in list
+  → Click: 📱 WhatsApp or ✉️ Email
+  → Select clients
+  → Confirm sharing
+
+Deleting a Material:
+  → Find material in list
+  → Click: 🗑️ Delete
+  → Confirm deletion
+  → Material removed
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 PRO TIPS
+
+Tip 1: Personalization
+  Address clients by name in WhatsApp
+  Subject lines with client names in email
+
+Tip 2: Timing
+  Send WhatsApp during business hours
+  Send emails on Tuesday-Thursday mornings
+
+Tip 3: Segmentation
+  Group clients by interest
+  Share relevant materials only
+
+Tip 4: Call-to-Action
+  Include clear next step in description
+  "Call me to discuss" or "Reply with questions"
+
+Tip 5: Follow-up
+  Send via WhatsApp first (faster delivery)
+  Follow up with email (official record)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 INTEGRATION WITH OTHER FEATURES
+
+Marketing Materials works with:
+
+Leads Management:
+  • Share materials with leads to nurture them
+  • Track follow-ups in lead notes
+
+Email Field:
+  • Add email to leads
+  • Share via email from Marketing
+
+Phone Field:
+  • Add phone to leads
+  • Share via WhatsApp from Marketing
+
+Documents:
+  • Upload docs in Documents section
+  • Link to them in Marketing materials
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📚 FREQUENTLY USED LINKS
+
+Google Drive: https://drive.google.com
+  → Create shareable PDF links
+  → Host brochures and guides
+
+Canva: https://canva.com
+  → Design marketing materials
+  → Export as PDF or image
+
+PDF Converter: https://cloudconvert.com
+  → Convert docs to PDF
+  → Get shareable links
+
+Bit.ly: https://bit.ly
+  → Shorten long URLs
+  → Make links more professional
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Support & Training:
+  • Need help? Contact your manager
+  • Questions? Check this guide first
+  • Feature request? Email: feedback@arthainvest.com
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ArthaInvest CRM v2.0.0+ - Marketing Materials Feature
+Complete Guide | August 7, 2026
+
+═══════════════════════════════════════════════════════════════════════════════

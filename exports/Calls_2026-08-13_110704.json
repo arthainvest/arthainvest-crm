@@ -1,0 +1,8 @@
+﻿{
+    "id":  1,
+    "phone":  "+91-9876543210",
+    "duration":  "3min",
+    "type":  "Outbound",
+    "date":  "2026-08-12",
+    "lead":  "John"
+}

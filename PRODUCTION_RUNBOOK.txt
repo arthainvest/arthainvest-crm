@@ -1,0 +1,211 @@
+﻿╔═══════════════════════════════════════════════════════════════╗
+║          ARTHAINVEST CRM - PRODUCTION RUNBOOK                ║
+║                                                               ║
+║ Quick Reference Guide for Daily Operations                   ║
+║ Updated: August 13, 2026                                      ║
+╚═══════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUICK START (First Time)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Open PowerShell or Command Prompt
+2. Navigate to: cd C:\Users\artha\LaptopHub\CRM_APP
+3. Start backend: node arthainvest-10-10-enhanced-server.js
+4. Open browser: http://localhost:3001
+5. Login: admin@arthainvest.com / admin123
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DAILY OPERATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MORNING (8:00 AM):
+  ✓ Automatic backup runs (configured in Task Scheduler)
+  ✓ Start backend server: node arthainvest-10-10-enhanced-server.js
+  ✓ Open CRM: http://localhost:3001
+  ✓ Verify login works: admin@arthainvest.com / admin123
+
+DURING DAY:
+  ✓ Log calls and client interactions
+  ✓ Update lead information
+  ✓ Track commissions
+  ✓ Monitor deal pipeline
+  ✓ Review performance targets
+
+EVENING (5:00 PM):
+  ✓ Export daily data (optional): powershell -File CRM_Dashboard.ps1 -Action Export-All
+  ✓ Review logs for any errors
+  ✓ Save any important notes
+
+SHUTDOWN:
+  ✓ Close browser (CRM application)
+  ✓ Stop backend server (Ctrl+C in terminal)
+  ✓ Verify backup completed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BACKUP OPERATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DAILY AUTOMATIC BACKUP (8:00 AM):
+  Location: C:\Users\artha\LaptopHub\CRM_APP\backups\
+  Status: Automated via Task Scheduler
+  Retention: Last 7 days (automatic cleanup)
+
+WEEKLY MANUAL BACKUP (Friday 5:00 PM):
+  Command: powershell -File CRM_Dashboard.ps1 -Action Create-Backup
+  Location: C:\Users\artha\LaptopHub\CRM_APP\backups\
+  Action: Copy to External USB drive
+
+MONTHLY ARCHIVE (Last day of month):
+  Command: Create backup manually
+  Location: Copy to Google Drive or OneDrive
+  Retention: 12 months
+
+LIST AVAILABLE BACKUPS:
+  Command: powershell -File CRM_Dashboard.ps1 -Action List-Backups
+  Output: Shows all backup points with dates and sizes
+
+RESTORE FROM BACKUP:
+  Command: powershell -File CRM_Dashboard.ps1 -Action Restore-Backup -BackupName "CRM_Backup_2026-08-13_112840"
+  Warning: This overwrites current data! Backup current state first.
+
+EXPORT DATA TO JSON:
+  Command: powershell -File CRM_Dashboard.ps1 -Action Export-All
+  Location: C:\Users\artha\LaptopHub\CRM_APP\exports\
+  Files: Leads.json, Calls.json, Commissions.json, Targets.json, Manifest.json
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MONITORING & LOGS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VIEW DAILY STATISTICS:
+  Command: powershell -File CRM_Dashboard.ps1 -Action Show-Stats
+  Output: Shows current lead count, call count, commissions, etc.
+
+VIEW LOGS:
+  Location: C:\Users\artha\LaptopHub\CRM_APP\logs\
+  Files: CRM_Import_YYYY-MM-DD.log (daily files)
+  View: Open in Notepad or any text editor
+
+SEARCH LOGS FOR ERRORS:
+  Command: Select-String "error" "logs\CRM_Import_2026-08-13.log"
+
+RECENT LOG ENTRIES:
+  Command: Get-Content "logs\CRM_Import_2026-08-13.log" -Tail 50
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ISSUE: Backend server won't start
+  Solution 1: Check if port 3001 is already in use
+  Solution 2: Kill existing node process: taskkill /F /IM node.exe
+  Solution 3: Restart computer and try again
+
+ISSUE: "Database file not found" error
+  Solution 1: Verify file exists: C:\Users\artha\LaptopHub\CRM_APP\arthainvest-10-10.db
+  Solution 2: Check permissions on database file
+  Solution 3: Restore from backup if file corrupted
+
+ISSUE: Can't login to CRM
+  Solution 1: Verify server is running (check console output)
+  Solution 2: Refresh browser (Ctrl+F5)
+  Solution 3: Clear browser cache and cookies
+  Solution 4: Restart backend server
+
+ISSUE: Backup failed
+  Solution 1: Check disk space (need at least 100 MB free)
+  Solution 2: Verify backup directory exists and is writable
+  Solution 3: Check logs for detailed error message
+  Solution 4: Try manual backup with PowerShell
+
+ISSUE: Data looks wrong
+  Solution 1: Check when data was last modified (check logs)
+  Solution 2: Export data to review (powershell -File CRM_Dashboard.ps1 -Action Export-All)
+  Solution 3: Restore from previous backup if needed
+  Solution 4: Contact support
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACCOUNT MANAGEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ADMIN ACCOUNT (Primary):
+  Email: admin@arthainvest.com
+  Password: admin123
+  Role: Administrator (full access)
+  Action: Change password immediately in production!
+
+OTHER ROLES AVAILABLE (in database):
+  • Senior Manager
+  • Team Leader
+  • Employee
+  • Distributor
+  • POSP Agent
+  • Accountant
+  • Auditor
+  • Guest
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DISASTER RECOVERY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SCENARIO: Accidental data deletion
+  Recovery Time: 5 minutes
+  Action: Restore from daily backup
+  Command: powershell -File CRM_Dashboard.ps1 -Action Restore-Backup
+
+SCENARIO: System crash / Hard disk failure
+  Recovery Time: 10 minutes
+  Action: Restore yesterday's backup
+  Command: powershell -File CRM_Dashboard.ps1 -Action Restore-Backup -BackupName "previous_date"
+
+SCENARIO: Database corruption
+  Recovery Time: 15 minutes
+  Action: Restore from backup before corruption
+  Command: List backups, choose good point, restore
+
+SCENARIO: Malware/Ransomware
+  Recovery Time: 30 minutes
+  Action: Restore from external USB backup
+  Location: External USB drive backup location
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PERFORMANCE TIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For Best Performance:
+  ✓ Keep browser cache clean (monthly)
+  ✓ Restart server weekly (close and reopen)
+  ✓ Archive old logs (monthly)
+  ✓ Keep backups pruned (keep last 30 days local)
+  ✓ Monitor disk space (keep 1 GB+ free)
+  ✓ Update Windows and Node.js (when convenient)
+
+Optimization Commands:
+  • Restart server: taskkill /F /IM node.exe
+  • Clean logs: Remove logs older than 30 days
+  • Clean exports: Archive old JSON exports
+  • Trim backups: Keep only recent backups locally
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONTACT & SUPPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Quick Links:
+  CRM Application: http://localhost:3001
+  Application Folder: C:\Users\artha\LaptopHub\CRM_APP
+  Logs Folder: C:\Users\artha\LaptopHub\CRM_APP\logs
+  Backups Folder: C:\Users\artha\LaptopHub\CRM_APP\backups
+  Exports Folder: C:\Users\artha\LaptopHub\CRM_APP\exports
+
+Documentation:
+  • PRODUCTION_CONFIG.json - Configuration details
+  • PRODUCTION_DEPLOYMENT_CHECKLIST.txt - Deployment verification
+  • CRM_IMPORT_DASHBOARD_GUIDE.txt - Complete user guide
+  • LOGGING_COMPLIANCE_SYSTEM.txt - Logging details
+  • BACKUP_SYSTEM_VERIFICATION.txt - Backup procedures
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Last Updated: August 13, 2026
+Status: PRODUCTION ACTIVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
