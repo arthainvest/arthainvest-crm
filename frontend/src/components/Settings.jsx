@@ -12,7 +12,8 @@ const defaultSettings = {
   theme: 'light',
   notifications: true,
   emailNotifications: true,
-  smsNotifications: false
+  smsNotifications: false,
+  gaTrackingId: ''
 };
 
 const fromApi = (s) => ({
@@ -24,7 +25,8 @@ const fromApi = (s) => ({
   theme: s.theme,
   notifications: s.notifications,
   emailNotifications: s.email_notifications,
-  smsNotifications: s.sms_notifications
+  smsNotifications: s.sms_notifications,
+  gaTrackingId: s.ga_tracking_id || ''
 });
 
 const toApi = (s) => ({
@@ -36,7 +38,8 @@ const toApi = (s) => ({
   theme: s.theme,
   notifications: s.notifications,
   email_notifications: s.emailNotifications,
-  sms_notifications: s.smsNotifications
+  sms_notifications: s.smsNotifications,
+  ga_tracking_id: s.gaTrackingId
 });
 
 export default function Settings() {
@@ -167,6 +170,17 @@ export default function Settings() {
               <option value="dark">Dark</option>
               <option value="auto">Auto</option>
             </select>
+          </div>
+
+          <div className="form-group">
+            <label>Google Analytics Tracking ID</label>
+            <input
+              type="text"
+              name="gaTrackingId"
+              value={settings.gaTrackingId}
+              onChange={handleChange}
+              placeholder="G-XXXXXXXXXX"
+            />
           </div>
         </div>
 

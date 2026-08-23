@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDeals, getLeads, createDeal, createLead } from '../services/api';
+import { getDeals, getLeads, createDeal, createLead, createPaymentLink } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Pipeline.css';
 
@@ -201,6 +201,27 @@ export default function Pipeline() {
     return { completed, total, percentage: Math.round((completed / total) * 100) };
   };
 
+  const handleCreatePaymentLink = async (deal) => {
+    const amountStr = window.prompt(`Amount to collect from ${deal.name} (₹):`, String((deal.value || 0) * 1000));
+    if (!amountStr) return;
+    const amount = Number(amountStr);
+    if (!amount || amount <= 0) {
+      alert('Please enter a valid amount.');
+      return;
+    }
+    try {
+      const result = await createPaymentLink(token, amount, `${getLoanProductInfo(deal.loanProduct)?.name || 'Loan'} processing fee - ${deal.name}`, deal.name, deal.phone);
+      if (result.configured && result.payment_url) {
+        window.open(result.payment_url, '_blank');
+      } else {
+        alert(result.message);
+      }
+    } catch (error) {
+      console.error('Error creating payment link:', error);
+      alert('Failed to create payment link. Please try again.');
+    }
+  };
+
   const handleProcessStatusChange = (dealId, newStatus) => {
     setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, processStatus: newStatus } : d)));
   };
@@ -256,6 +277,7 @@ export default function Pipeline() {
                   <th>Amount</th>
                   <th>Type of Loan</th>
                   <th>Status</th>
+                  <th>Payment</th>
                 </tr>
               </thead>
               <tbody>
@@ -286,6 +308,16 @@ export default function Pipeline() {
                             <option key={s} value={s}>{s}</option>
                           ))}
                         </select>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="payment-link-btn"
+                          onClick={() => handleCreatePaymentLink(deal)}
+                          title="Create Razorpay Payment Link"
+                        >
+                          💳 Pay Link
+                        </button>
                       </td>
                     </tr>
                   );

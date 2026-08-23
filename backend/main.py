@@ -6,6 +6,9 @@ import sqlite3
 from typing import List
 import os
 import uuid
+import smtplib
+import hashlib
+from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
 from database_sqlite import get_db, init_db
@@ -20,7 +23,13 @@ from schemas import (
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     CallCreate, CallResponse,
-    DialRequest, DialResponse, AISummaryResponse
+    DialRequest, DialResponse, AISummaryResponse,
+    WhatsAppSendRequest, WhatsAppSendResponse,
+    EmailSendRequest, EmailSendResponse,
+    SmsSendRequest, SmsSendResponse,
+    PaymentLinkRequest, PaymentLinkResponse,
+    MailchimpSyncResponse,
+    TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -642,6 +651,8 @@ async def update_settings(settings: SettingsUpdate, token: str = Query(None)):
         'notifications': None if settings.notifications is None else int(settings.notifications),
         'email_notifications': None if settings.email_notifications is None else int(settings.email_notifications),
         'sms_notifications': None if settings.sms_notifications is None else int(settings.sms_notifications),
+        'ga_tracking_id': settings.ga_tracking_id,
+        'default_report_period': settings.default_report_period,
     }
     updates = [(k, v) for k, v in field_map.items() if v is not None]
 
@@ -1177,6 +1188,287 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
         return DialResponse(configured=True, message=f"Twilio couldn't place the call: {e.msg}")
     except Exception as e:
         return DialResponse(configured=True, message=f"Call failed: {str(e)}")
+
+@app.post("/api/sms/send", response_model=SmsSendResponse)
+async def send_sms(sms: SmsSendRequest, token: str = Query(None)):
+    """Send a real SMS via Twilio, reusing the same credentials as click-to-call. Returns
+    configured=False when TWILIO_* isn't set, so the frontend can fall back to an sms: link."""
+    get_current_user(token)
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_FROM_NUMBER")
+
+    if not (account_sid and auth_token and from_number):
+        return SmsSendResponse(configured=False, message="Twilio SMS is not configured on this server.")
+
+    try:
+        from twilio.rest import Client
+        from twilio.base.exceptions import TwilioRestException
+
+        client = Client(account_sid, auth_token)
+        client.messages.create(to=sms.to, from_=from_number, body=sms.message)
+        return SmsSendResponse(configured=True, message=f"SMS sent to {sms.to}.")
+    except TwilioRestException as e:
+        return SmsSendResponse(configured=True, message=f"SMS failed: {e.msg}")
+    except Exception as e:
+        return SmsSendResponse(configured=True, message=f"SMS failed: {str(e)}")
+
+@app.post("/api/whatsapp/send", response_model=WhatsAppSendResponse)
+async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
+    """Send a real WhatsApp message via the Meta Cloud API. Returns configured=False when
+    WHATSAPP_TOKEN/WHATSAPP_PHONE_ID aren't set, so the frontend can fall back to a wa.me link."""
+    get_current_user(token)
+
+    wa_token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_ID")
+
+    if not (wa_token and phone_id):
+        return WhatsAppSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
+
+    try:
+        import requests
+        to_digits = ''.join(ch for ch in payload.to if ch.isdigit())
+        resp = requests.post(
+            f"https://graph.facebook.com/v19.0/{phone_id}/messages",
+            headers={"Authorization": f"Bearer {wa_token}"},
+            json={
+                "messaging_product": "whatsapp",
+                "to": to_digits,
+                "type": "text",
+                "text": {"body": payload.message}
+            },
+            timeout=10
+        )
+        if resp.status_code >= 400:
+            return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {resp.text[:200]}")
+        return WhatsAppSendResponse(configured=True, message=f"WhatsApp message sent to {payload.to}.")
+    except Exception as e:
+        return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {str(e)}")
+
+@app.post("/api/email/send", response_model=EmailSendResponse)
+async def send_email_real(payload: EmailSendRequest, token: str = Query(None)):
+    """Send a real email via SMTP. Returns configured=False when SMTP_* isn't set, so the
+    frontend can fall back to a mailto: link."""
+    get_current_user(token)
+
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = os.getenv("SMTP_PORT")
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_from = os.getenv("SMTP_FROM") or smtp_user
+
+    if not (smtp_host and smtp_port and smtp_user and smtp_password):
+        return EmailSendResponse(configured=False, message="Email service (SMTP) is not configured on this server.")
+
+    try:
+        msg = MIMEText(payload.body)
+        msg["Subject"] = payload.subject
+        msg["From"] = smtp_from
+        msg["To"] = payload.to
+
+        with smtplib.SMTP(smtp_host, int(smtp_port), timeout=10) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_from, [payload.to], msg.as_string())
+
+        return EmailSendResponse(configured=True, message=f"Email sent to {payload.to}.")
+    except Exception as e:
+        return EmailSendResponse(configured=True, message=f"Email failed: {str(e)}")
+
+@app.post("/api/payments/create-link", response_model=PaymentLinkResponse)
+async def create_payment_link(payload: PaymentLinkRequest, token: str = Query(None)):
+    """Create a Razorpay payment link (e.g. for a loan processing fee). Returns
+    configured=False when RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET aren't set."""
+    get_current_user(token)
+
+    key_id = os.getenv("RAZORPAY_KEY_ID")
+    key_secret = os.getenv("RAZORPAY_KEY_SECRET")
+
+    if not (key_id and key_secret):
+        return PaymentLinkResponse(configured=False, message="Razorpay is not configured on this server.")
+
+    try:
+        import requests
+        body = {
+            "amount": int(round(payload.amount * 100)),  # paise
+            "currency": "INR",
+            "description": payload.description,
+        }
+        if payload.customer_name or payload.customer_phone:
+            body["customer"] = {
+                "name": payload.customer_name or "",
+                "contact": payload.customer_phone or ""
+            }
+        resp = requests.post(
+            "https://api.razorpay.com/v1/payment_links",
+            auth=(key_id, key_secret),
+            json=body,
+            timeout=10
+        )
+        if resp.status_code >= 400:
+            return PaymentLinkResponse(configured=True, message=f"Razorpay couldn't create the link: {resp.text[:200]}")
+        data = resp.json()
+        return PaymentLinkResponse(configured=True, message="Payment link created.", payment_url=data.get("short_url"))
+    except Exception as e:
+        return PaymentLinkResponse(configured=True, message=f"Payment link failed: {str(e)}")
+
+@app.post("/api/marketing/mailchimp/sync", response_model=MailchimpSyncResponse)
+async def sync_mailchimp(token: str = Query(None)):
+    """Push all contacts into a Mailchimp audience. Returns configured=False when
+    MAILCHIMP_API_KEY/MAILCHIMP_AUDIENCE_ID aren't set."""
+    get_current_user(token)
+
+    api_key = os.getenv("MAILCHIMP_API_KEY")
+    audience_id = os.getenv("MAILCHIMP_AUDIENCE_ID")
+
+    if not (api_key and audience_id) or "-" not in (api_key or ""):
+        return MailchimpSyncResponse(configured=False, message="Mailchimp is not configured on this server.")
+
+    server_prefix = api_key.rsplit("-", 1)[-1]
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, email FROM contacts WHERE email IS NOT NULL AND email != ''")
+        contacts = [dict(row) for row in cursor.fetchall()]
+
+    if not contacts:
+        return MailchimpSyncResponse(configured=True, message="No contacts with an email address to sync.", synced_count=0)
+
+    try:
+        import requests
+        synced = 0
+        for c in contacts:
+            subscriber_hash = hashlib.md5(c['email'].strip().lower().encode()).hexdigest()
+            resp = requests.put(
+                f"https://{server_prefix}.api.mailchimp.com/3.0/lists/{audience_id}/members/{subscriber_hash}",
+                auth=("anystring", api_key),
+                json={
+                    "email_address": c['email'],
+                    "status_if_new": "subscribed",
+                    "merge_fields": {"FNAME": c['name'] or ""}
+                },
+                timeout=10
+            )
+            if resp.status_code < 400:
+                synced += 1
+        return MailchimpSyncResponse(configured=True, message=f"Synced {synced} of {len(contacts)} contact(s) to Mailchimp.", synced_count=synced)
+    except Exception as e:
+        return MailchimpSyncResponse(configured=True, message=f"Mailchimp sync failed: {str(e)}")
+
+# ============= TEAM MANAGEMENT ENDPOINTS =============
+
+TEAM_ROLE_ORDER = {"admin": 0, "team_lead": 1, "location_head": 2, "employee": 3}
+
+@app.get("/api/team", response_model=list[TeamMemberResponse])
+async def get_team(token: str = Query(None)):
+    """List all team members, grouped by role hierarchy then name"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM team_members")
+        members = [dict(row) for row in cursor.fetchall()]
+
+    members.sort(key=lambda m: (TEAM_ROLE_ORDER.get(m['role'], 99), m['name']))
+    return members
+
+@app.post("/api/team", response_model=TeamMemberResponse)
+async def create_team_member(member: TeamMemberCreate, token: str = Query(None)):
+    """Add a new team member"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO team_members (name, role, email, phone) VALUES (?, ?, ?, ?)",
+            (member.name, member.role, member.email, member.phone)
+        )
+        conn.commit()
+        cursor.execute("SELECT * FROM team_members WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.put("/api/team/{member_id}", response_model=TeamMemberResponse)
+async def update_team_member(member_id: int, member: TeamMemberUpdate, token: str = Query(None)):
+    """Update a team member's details"""
+    get_current_user(token)
+
+    field_map = {
+        'name': member.name, 'role': member.role, 'email': member.email, 'phone': member.phone
+    }
+    updates = [(k, v) for k, v in field_map.items() if v is not None]
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (member_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Team member not found")
+
+        if updates:
+            set_clause = ', '.join(f"{k} = ?" for k, _ in updates)
+            values = [v for _, v in updates] + [member_id]
+            cursor.execute(f"UPDATE team_members SET {set_clause} WHERE id = ?", values)
+            conn.commit()
+
+        cursor.execute("SELECT * FROM team_members WHERE id = ?", (member_id,))
+        return dict(cursor.fetchone())
+
+@app.delete("/api/team/{member_id}")
+async def delete_team_member(member_id: int, token: str = Query(None)):
+    """Remove a team member"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM team_members WHERE id = ?", (member_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Team member not found")
+
+    return {"message": "Team member removed"}
+
+@app.get("/api/analytics/team", response_model=list[TeamProductivityRow])
+async def get_team_analytics(token: str = Query(None)):
+    """Real per-team-member productivity, computed from deals.owner_id / calls.created_by /
+    leads.created_by. Only team members linked to a real login account (team_members.user_id)
+    have any activity to report - everyone else genuinely has none yet (no assignment system
+    exists beyond the single owning login), so their fields come back as None rather than a
+    fabricated 0, and the frontend renders that as "no data yet" instead of implying poor
+    performance."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM team_members")
+        members = [dict(row) for row in cursor.fetchall()]
+
+        rows = []
+        for m in members:
+            uid = m.get('user_id')
+            if uid is None:
+                rows.append(TeamProductivityRow(id=m['id'], name=m['name'], role=m['role']))
+                continue
+
+            cursor.execute("SELECT COUNT(*) as count FROM calls WHERE created_by = ?", (uid,))
+            calls = cursor.fetchone()['count']
+
+            cursor.execute("SELECT COUNT(*) as count FROM deals WHERE owner_id = ? AND stage = 'closed'", (uid,))
+            deals_closed = cursor.fetchone()['count']
+
+            cursor.execute("SELECT COALESCE(SUM(deal_value), 0) as total FROM deals WHERE owner_id = ? AND stage = 'closed'", (uid,))
+            revenue = cursor.fetchone()['total']
+
+            cursor.execute("SELECT COUNT(*) as count FROM leads WHERE created_by = ?", (uid,))
+            total_leads = cursor.fetchone()['count']
+            conversion_rate = round((deals_closed / total_leads * 100), 1) if total_leads > 0 else 0.0
+
+            rows.append(TeamProductivityRow(
+                id=m['id'], name=m['name'], role=m['role'],
+                calls=calls, deals_closed=deals_closed, revenue=revenue, conversion_rate=conversion_rate
+            ))
+
+    rows.sort(key=lambda r: (TEAM_ROLE_ORDER.get(r.role, 99), r.name))
+    return rows
 
 # ============= MORE ANALYTICS ENDPOINTS =============
 

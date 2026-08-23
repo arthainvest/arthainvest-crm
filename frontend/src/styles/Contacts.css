@@ -162,6 +162,10 @@
   color: #00c853;
 }
 
+.contact-row-actions .btn-action.sms {
+  color: #7c4dff;
+}
+
 .contact-row-actions .btn-action.email {
   color: #F57C00;
 }

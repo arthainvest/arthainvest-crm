@@ -1,12 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { getSalesAnalytics, getContactsAnalytics, getCallsAnalytics } from '../services/api';
+import {
+  getSalesAnalytics, getContactsAnalytics, getCallsAnalytics,
+  getCampaigns, getTeamAnalytics, getSettings, updateSettings
+} from '../services/api';
 import '../styles/Reports.css';
+
+const REPORT_PERIODS = ['This Month', 'Last Month', 'Last Quarter', 'This Year'];
+const ROLE_LABELS = { admin: 'Admin', team_lead: 'Team Leader', location_head: 'Location Head', employee: 'Employee' };
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('sales');
   const [salesData, setSalesData] = useState(null);
   const [contactsData, setContactsData] = useState(null);
   const [callsData, setCallsData] = useState(null);
+  const [campaigns, setCampaigns] = useState([]);
+  const [teamStats, setTeamStats] = useState([]);
+  const [reportPeriod, setReportPeriod] = useState('This Month');
+  const [showSettings, setShowSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
@@ -19,7 +30,36 @@ export default function Reports() {
     getCallsAnalytics(token)
       .then(setCallsData)
       .catch((error) => console.error('Error fetching calls analytics:', error));
+    getCampaigns(token)
+      .then((data) => setCampaigns(Array.isArray(data) ? data : []))
+      .catch((error) => console.error('Error fetching campaigns:', error));
+    getTeamAnalytics(token)
+      .then((data) => setTeamStats(Array.isArray(data) ? data : []))
+      .catch((error) => console.error('Error fetching team analytics:', error));
+    getSettings(token)
+      .then((data) => { if (data.default_report_period) setReportPeriod(data.default_report_period); })
+      .catch((error) => console.error('Error fetching settings:', error));
   }, [token]);
+
+  const handleSaveReportPeriod = async () => {
+    setSavingSettings(true);
+    try {
+      await updateSettings(token, { default_report_period: reportPeriod });
+      setShowSettings(false);
+    } catch (error) {
+      console.error('Error saving report settings:', error);
+      alert('Failed to save report settings. Please try again.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const fmtStat = (v, isRevenue) => {
+    if (v === null || v === undefined) return '—';
+    return isRevenue ? `₹${Number(v).toLocaleString('en-IN')}` : v;
+  };
+
+  const maxRecipients = Math.max(1, ...campaigns.map((c) => c.recipients || 0));
 
   const reportTabs = [
     { id: 'sales', label: 'Sales', icon: '📊' },
@@ -68,7 +108,10 @@ export default function Reports() {
     <div className="reports-container">
       <div className="reports-header">
         <h1>Reports</h1>
-        <button className="btn-primary">📊 Export Report</button>
+        <div className="reports-header-actions">
+          <button className="btn-secondary" onClick={() => setShowSettings(true)}>⚙️ Report Settings</button>
+          <button className="btn-primary">📊 Export Report</button>
+        </div>
       </div>
 
       <div className="tab-navigation">
@@ -98,15 +141,102 @@ export default function Reports() {
         <div style={{ height: '300px', background: '#1976d2', borderRadius: '8px', opacity: 0.1 }}></div>
       </div>
 
+      <div className="chart-container">
+        <h3>Campaign Performance</h3>
+        {campaigns.length === 0 ? (
+          <p className="placeholder">No campaigns yet - create one in Marketing to see performance here.</p>
+        ) : (
+          <div className="campaign-perf-list">
+            {campaigns.map((c) => (
+              <div key={c.id} className="campaign-perf-row">
+                <div className="campaign-perf-name">{c.name}</div>
+                <div className="campaign-perf-bars">
+                  <div className="campaign-perf-bar-track">
+                    <div className="campaign-perf-bar recipients" style={{ width: `${(c.recipients / maxRecipients) * 100}%` }}></div>
+                  </div>
+                  <div className="campaign-perf-bar-track">
+                    <div className="campaign-perf-bar opens" style={{ width: `${(c.opens / maxRecipients) * 100}%` }}></div>
+                  </div>
+                  <div className="campaign-perf-bar-track">
+                    <div className="campaign-perf-bar clicks" style={{ width: `${(c.clicks / maxRecipients) * 100}%` }}></div>
+                  </div>
+                </div>
+                <div className="campaign-perf-legend">
+                  <span><i className="dot recipients"></i>{c.recipients} sent</span>
+                  <span><i className="dot opens"></i>{c.opens} opened</span>
+                  <span><i className="dot clicks"></i>{c.clicks} clicked</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="chart-container">
+        <h3>Team Productivity</h3>
+        {teamStats.length === 0 ? (
+          <p className="placeholder">No team members yet - add some in Team to see productivity here.</p>
+        ) : (
+          <div className="team-productivity-table-wrapper">
+            <table className="team-productivity-table">
+              <thead>
+                <tr>
+                  <th>Team Member</th>
+                  <th>Role</th>
+                  <th>Calls</th>
+                  <th>Deals Closed</th>
+                  <th>Revenue</th>
+                  <th>Conversion Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamStats.map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.name}</td>
+                    <td>{ROLE_LABELS[m.role] || m.role}</td>
+                    <td>{fmtStat(m.calls)}</td>
+                    <td>{fmtStat(m.deals_closed)}</td>
+                    <td>{fmtStat(m.revenue, true)}</td>
+                    <td>{m.conversion_rate === null || m.conversion_rate === undefined ? '—' : `${m.conversion_rate}%`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="report-controls">
         <label>Date Range:</label>
-        <select>
-          <option>This Month</option>
-          <option>Last Month</option>
-          <option>Last Quarter</option>
-          <option>This Year</option>
+        <select value={reportPeriod} onChange={(e) => setReportPeriod(e.target.value)}>
+          {REPORT_PERIODS.map((p) => <option key={p}>{p}</option>)}
         </select>
       </div>
+
+      {showSettings && (
+        <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Report Settings</h2>
+              <button className="btn-close" onClick={() => setShowSettings(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Default Date Range</label>
+                <select value={reportPeriod} onChange={(e) => setReportPeriod(e.target.value)}>
+                  {REPORT_PERIODS.map((p) => <option key={p}>{p}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-primary" onClick={handleSaveReportPeriod} disabled={savingSettings}>
+                {savingSettings ? 'Saving…' : 'Save'}
+              </button>
+              <button className="btn-secondary" onClick={() => setShowSettings(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

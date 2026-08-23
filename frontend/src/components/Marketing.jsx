@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getCampaigns, createCampaign, updateCampaign, deleteCampaign } from '../services/api';
+import { getCampaigns, createCampaign, updateCampaign, deleteCampaign, syncMailchimp } from '../services/api';
 import '../styles/Marketing.css';
 
 const emptyCampaignForm = { name: '', type: 'Email', status: 'Active', recipients: '' };
@@ -9,8 +9,22 @@ export default function Marketing() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [campaignForm, setCampaignForm] = useState(emptyCampaignForm);
+  const [mailchimpSyncing, setMailchimpSyncing] = useState(false);
 
   const token = localStorage.getItem('token');
+
+  const handleMailchimpSync = async () => {
+    setMailchimpSyncing(true);
+    try {
+      const result = await syncMailchimp(token);
+      alert(result.message);
+    } catch (error) {
+      console.error('Error syncing Mailchimp:', error);
+      alert('Failed to sync with Mailchimp. Please try again.');
+    } finally {
+      setMailchimpSyncing(false);
+    }
+  };
 
   useEffect(() => {
     fetchCampaigns();
@@ -95,6 +109,19 @@ export default function Marketing() {
       <div className="marketing-header">
         <h1>Marketing Campaigns</h1>
         <button className="btn-primary" onClick={handleNewCampaignClick}>+ New Campaign</button>
+      </div>
+
+      <div className="mailchimp-card">
+        <div className="mailchimp-info">
+          <span className="mailchimp-icon">🐒</span>
+          <div>
+            <h3>Email Marketing (Mailchimp)</h3>
+            <p>Sync your contacts into a Mailchimp audience for email campaigns.</p>
+          </div>
+        </div>
+        <button className="btn-secondary" onClick={handleMailchimpSync} disabled={mailchimpSyncing}>
+          {mailchimpSyncing ? 'Syncing…' : 'Sync Contacts to Mailchimp'}
+        </button>
       </div>
 
       <div className="stats-grid">

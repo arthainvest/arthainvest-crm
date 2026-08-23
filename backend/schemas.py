@@ -130,6 +130,8 @@ class SettingsUpdate(BaseModel):
     notifications: Optional[bool] = None
     email_notifications: Optional[bool] = None
     sms_notifications: Optional[bool] = None
+    ga_tracking_id: Optional[str] = None
+    default_report_period: Optional[str] = None
 
 class SettingsResponse(BaseModel):
     full_name: Optional[str]
@@ -141,6 +143,8 @@ class SettingsResponse(BaseModel):
     notifications: bool
     email_notifications: bool
     sms_notifications: bool
+    ga_tracking_id: Optional[str] = None
+    default_report_period: Optional[str] = None
 
 # Contact Schemas
 class ContactCreate(BaseModel):
@@ -245,6 +249,82 @@ class AISummaryResponse(BaseModel):
     configured: bool
     message: str
     suggestion: Optional[str] = None
+
+# WhatsApp Business API (Meta Cloud API)
+class WhatsAppSendRequest(BaseModel):
+    to: str
+    message: str
+
+class WhatsAppSendResponse(BaseModel):
+    configured: bool
+    message: str
+
+# Email Service (SMTP)
+class EmailSendRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+
+class EmailSendResponse(BaseModel):
+    configured: bool
+    message: str
+
+# SMS (Twilio)
+class SmsSendRequest(BaseModel):
+    to: str
+    message: str
+
+class SmsSendResponse(BaseModel):
+    configured: bool
+    message: str
+
+# Razorpay payment links
+class PaymentLinkRequest(BaseModel):
+    amount: float  # rupees
+    description: str
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+
+class PaymentLinkResponse(BaseModel):
+    configured: bool
+    message: str
+    payment_url: Optional[str] = None
+
+# Mailchimp sync (Marketing)
+class MailchimpSyncResponse(BaseModel):
+    configured: bool
+    message: str
+    synced_count: Optional[int] = None
+
+# Team Management
+class TeamMemberCreate(BaseModel):
+    name: str
+    role: str  # admin, team_lead, location_head, employee
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+class TeamMemberUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+class TeamMemberResponse(BaseModel):
+    id: int
+    name: str
+    role: str
+    email: Optional[str]
+    phone: Optional[str]
+    created_at: datetime
+
+class TeamProductivityRow(BaseModel):
+    id: int
+    name: str
+    role: str
+    calls: Optional[int] = None
+    deals_closed: Optional[int] = None
+    revenue: Optional[float] = None
+    conversion_rate: Optional[float] = None
 
 # Token
 class Token(BaseModel):

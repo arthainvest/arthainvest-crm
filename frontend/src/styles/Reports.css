@@ -1,6 +1,8 @@
 .reports-container { padding: 20px; }
 .reports-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+.reports-header-actions { display: flex; gap: 10px; }
 .reports-header .btn-primary { background: #1976d2; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; flex: none; }
+.reports-header .btn-secondary { background: var(--border-subtle); color: #1976d2; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; flex: none; }
 .tab-navigation { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid var(--border-subtle); }
 .tab-btn { padding: 10px 20px; background: none; border: none; cursor: pointer; font-weight: 500; color: var(--text-muted); border-bottom: 3px solid transparent; transition: all 0.2s ease; }
 .tab-btn.active { color: #1976d2; border-bottom-color: #1976d2; }
@@ -14,3 +16,37 @@
 .report-controls { display: flex; align-items: center; gap: 15px; color: var(--text-primary); }
 .report-controls label { font-weight: 500; }
 .report-controls select { padding: 8px 12px; border: 1px solid #90caf9; border-radius: 4px; color: #1976d2; background: var(--bg-surface); }
+
+.campaign-perf-list { display: flex; flex-direction: column; gap: 18px; }
+.campaign-perf-row { display: flex; flex-direction: column; gap: 6px; }
+.campaign-perf-name { font-weight: 600; color: var(--text-primary); font-size: 14px; }
+.campaign-perf-bars { display: flex; flex-direction: column; gap: 4px; }
+.campaign-perf-bar-track { width: 100%; height: 8px; background: var(--border-subtle); border-radius: 4px; overflow: hidden; }
+.campaign-perf-bar { height: 100%; border-radius: 4px; }
+.campaign-perf-bar.recipients { background: #90caf9; }
+.campaign-perf-bar.opens { background: #1976d2; }
+.campaign-perf-bar.clicks { background: #4caf50; }
+.campaign-perf-legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-muted); }
+.campaign-perf-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.campaign-perf-legend .dot.recipients { background: #90caf9; }
+.campaign-perf-legend .dot.opens { background: #1976d2; }
+.campaign-perf-legend .dot.clicks { background: #4caf50; }
+
+.team-productivity-table-wrapper { overflow-x: auto; }
+.team-productivity-table { width: 100%; border-collapse: collapse; }
+.team-productivity-table th { text-align: left; padding: 10px 12px; font-size: 12px; text-transform: uppercase; color: var(--text-muted); border-bottom: 2px solid var(--border-subtle); }
+.team-productivity-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-neutral-alt); color: var(--text-primary); font-size: 14px; }
+
+.reports-container .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.reports-container .modal-content { background: var(--bg-surface); color: var(--text-primary); border-radius: 8px; width: 90%; max-width: 420px; }
+.reports-container .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-subtle); }
+.reports-container .modal-header h2 { margin: 0; font-size: 18px; }
+.reports-container .btn-close { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted); }
+.reports-container .modal-body { padding: 20px; }
+.reports-container .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+.reports-container .form-group select { width: 100%; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--bg-surface); color: var(--text-primary); }
+.reports-container .modal-actions { display: flex; gap: 10px; padding: 20px; border-top: 1px solid var(--border-subtle); }
+.reports-container .modal-actions .btn-primary,
+.reports-container .modal-actions .btn-secondary { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
+.reports-container .modal-actions .btn-primary { background: #1976d2; color: white; }
+.reports-container .modal-actions .btn-secondary { background: var(--border-subtle); color: #1976d2; }

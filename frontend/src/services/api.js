@@ -242,6 +242,63 @@ export const aiSuggestLeadFollowup = async (token, leadId) => {
   return response.data;
 };
 
+// SMS via Twilio
+export const sendSms = async (token, to, message) => {
+  const response = await api.post(`/api/sms/send?token=${token}`, { to, message });
+  return response.data;
+};
+
+// WhatsApp Business API
+export const sendWhatsApp = async (token, to, message) => {
+  const response = await api.post(`/api/whatsapp/send?token=${token}`, { to, message });
+  return response.data;
+};
+
+// Email service (SMTP)
+export const sendEmailReal = async (token, to, subject, body) => {
+  const response = await api.post(`/api/email/send?token=${token}`, { to, subject, body });
+  return response.data;
+};
+
+// Razorpay payment links
+export const createPaymentLink = async (token, amount, description, customerName, customerPhone) => {
+  const response = await api.post(`/api/payments/create-link?token=${token}`, {
+    amount, description, customer_name: customerName, customer_phone: customerPhone
+  });
+  return response.data;
+};
+
+// Mailchimp sync
+export const syncMailchimp = async (token) => {
+  const response = await api.post(`/api/marketing/mailchimp/sync?token=${token}`);
+  return response.data;
+};
+
+// Team management
+export const getTeam = async (token) => {
+  const response = await api.get(`/api/team?token=${token}`);
+  return response.data;
+};
+
+export const createTeamMember = async (token, memberData) => {
+  const response = await api.post(`/api/team?token=${token}`, memberData);
+  return response.data;
+};
+
+export const updateTeamMember = async (token, id, memberData) => {
+  const response = await api.put(`/api/team/${id}?token=${token}`, memberData);
+  return response.data;
+};
+
+export const deleteTeamMember = async (token, id) => {
+  await api.delete(`/api/team/${id}?token=${token}`);
+};
+
+export const getTeamAnalytics = async (token) => {
+  const response = await api.get(`/api/analytics/team?token=${token}`);
+  return response.data;
+};
+
 // More analytics
 export const getContactsAnalytics = async (token) => {
   const response = await api.get(`/api/analytics/contacts?token=${token}`);

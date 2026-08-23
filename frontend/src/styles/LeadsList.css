@@ -275,6 +275,10 @@
   color: #00c853;
 }
 
+.lead-row-actions .btn-action.sms {
+  color: #7c4dff;
+}
+
 .lead-row-actions .btn-action.email {
   color: #F57C00;
 }

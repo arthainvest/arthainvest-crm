@@ -40,6 +40,13 @@ def _ensure_integrations_catalog(cursor, conn):
         ('Twilio', '📞', 'Click-to-call and SMS via Twilio', 0, 'never'),
         ('Claude AI', '✨', 'AI-drafted follow-ups and note summaries', 0, 'never'),
         ('LinkedIn', '💼', 'Sync leads and posts from LinkedIn', 0, 'never'),
+        ('WhatsApp Business API', '💬', 'Send WhatsApp messages via Meta Cloud API', 0, 'never'),
+        ('Razorpay Payments', '💳', 'Create payment links for loan processing fees', 0, 'never'),
+        ('Email Service', '📮', 'Send real emails via SMTP', 0, 'never'),
+        ('Mailchimp', '🐒', 'Sync contacts and send email campaigns', 0, 'never'),
+        ('DigiLocker', '🔐', 'Secure document storage and verification', 0, 'never'),
+        ('AI Voice Assistant', '🎙️', 'Automated status updates via voice notes', 0, 'never'),
+        ('Google Analytics', '📊', 'Track campaign performance and ROI', 0, 'never'),
     ]
     existing = {row['name'] for row in cursor.execute("SELECT name FROM integrations").fetchall()}
     for name, logo, description, connected, last_sync in catalog:
@@ -47,6 +54,30 @@ def _ensure_integrations_catalog(cursor, conn):
             cursor.execute(
                 "INSERT INTO integrations (name, logo, description, connected, last_sync) VALUES (?, ?, ?, ?, ?)",
                 (name, logo, description, connected, last_sync)
+            )
+    conn.commit()
+
+def _ensure_team_roster(cursor, conn):
+    """Insert any roster member that doesn't exist yet, by name. Same pattern as
+    _ensure_integrations_catalog - runs on every startup so it appears without duplicating
+    on restart. user_id links a roster entry to a real login for activity tracking in Team
+    Productivity reports; entries without one (no login account exists for them yet) show
+    real "no data" rather than a fabricated number."""
+    roster = [
+        ('Artha', 'admin', 'artha@arthainvest.com', '+91-9876500001', 1),
+        ('Team Admin', 'admin', 'admin2@arthainvest.com', '+91-9876500002', None),
+        ('Rajesh Kumar', 'team_lead', 'rajesh.kumar@arthainvest.com', '+91-9876500003', None),
+        ('Suresh Iyer', 'location_head', 'suresh.iyer@arthainvest.com', '+91-9876500004', None),
+        ('Arjun Sharma', 'employee', 'arjun.sharma@arthainvest.com', '+91-9876500005', None),
+        ('Priya Singh', 'employee', 'priya.singh@arthainvest.com', '+91-9876500006', None),
+        ('Vikram Patel', 'employee', 'vikram.patel@arthainvest.com', '+91-9876500007', None),
+    ]
+    existing = {row['name'] for row in cursor.execute("SELECT name FROM team_members").fetchall()}
+    for name, role, email, phone, user_id in roster:
+        if name not in existing:
+            cursor.execute(
+                "INSERT INTO team_members (name, role, email, phone, user_id) VALUES (?, ?, ?, ?, ?)",
+                (name, role, email, phone, user_id)
             )
     conn.commit()
 
@@ -234,11 +265,36 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS team_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                email TEXT,
+                phone TEXT,
+                user_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
+        # Same retrofit pattern as deals.loan_product - only matters for a database that
+        # already existed before these columns were added.
+        try:
+            cursor.execute("ALTER TABLE user_settings ADD COLUMN ga_tracking_id TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE user_settings ADD COLUMN default_report_period TEXT DEFAULT 'This Month'")
+        except sqlite3.OperationalError:
+            pass
+
         conn.commit()
 
         # Runs on every startup regardless of seed state (unlike the demo-data block below),
         # so a catalog entry added after a database was already seeded still shows up.
         _ensure_integrations_catalog(cursor, conn)
+        _ensure_team_roster(cursor, conn)
 
         # Schema is in place. Only seed demo data into a genuinely empty database (first run
         # ever) - never on a restart of a database that already has real users/data in it.

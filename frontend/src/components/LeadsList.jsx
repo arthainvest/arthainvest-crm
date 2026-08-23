@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   getLeads, createLead, updateLead,
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
-  uploadLeadNoteAudio, API_URL, dialCall, aiSuggestLeadFollowup
+  uploadLeadNoteAudio, API_URL, dialCall, aiSuggestLeadFollowup,
+  sendWhatsApp, sendEmailReal, sendSms
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/LeadsList.css';
@@ -241,13 +242,43 @@ export default function LeadsList() {
     window.location.href = `tel:${lead.phone}`;
   };
 
-  const handleWhatsApp = (lead) => {
-    if (lead.phone) {
-      const url = `https://wa.me/${lead.phone.replace(/\D/g, '')}`;
-      window.open(url, '_blank');
-    } else {
+  const handleWhatsApp = async (lead) => {
+    if (!lead.phone) {
       alert('No phone number available');
+      return;
     }
+    // Try a real WhatsApp Business API send first; falls back to opening a wa.me link
+    // when it isn't configured on the server.
+    try {
+      const result = await sendWhatsApp(token, lead.phone, `Hi ${lead.name}, this is ArthaInvest reaching out.`);
+      if (result.configured) {
+        alert(result.message);
+        return;
+      }
+    } catch (error) {
+      console.error('Error sending WhatsApp message:', error);
+    }
+    const url = `https://wa.me/${lead.phone.replace(/\D/g, '')}`;
+    window.open(url, '_blank');
+  };
+
+  const handleSms = async (lead) => {
+    if (!lead.phone) {
+      alert('No phone number available');
+      return;
+    }
+    const message = window.prompt(`SMS to ${lead.name}:`, `Hi ${lead.name}, this is ArthaInvest.`);
+    if (!message) return;
+    try {
+      const result = await sendSms(token, lead.phone, message);
+      if (result.configured) {
+        alert(result.message);
+        return;
+      }
+    } catch (error) {
+      console.error('Error sending SMS:', error);
+    }
+    window.location.href = `sms:${lead.phone}`;
   };
 
   const handleEmail = (lead) => {
@@ -255,13 +286,26 @@ export default function LeadsList() {
     setShowEmailModal(true);
   };
 
-  const sendEmail = () => {
-    if (emailSubject.trim() && emailBody.trim()) {
-      window.location.href = `mailto:${selectedLead.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-      setEmailSubject('');
-      setEmailBody('');
-      setShowEmailModal(false);
+  const sendEmail = async () => {
+    if (!emailSubject.trim() || !emailBody.trim()) return;
+    // Try a real SMTP send first; falls back to opening a mailto: link when SMTP isn't
+    // configured on the server.
+    try {
+      const result = await sendEmailReal(token, selectedLead.email, emailSubject, emailBody);
+      if (result.configured) {
+        alert(result.message);
+        setEmailSubject('');
+        setEmailBody('');
+        setShowEmailModal(false);
+        return;
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
     }
+    window.location.href = `mailto:${selectedLead.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+    setEmailSubject('');
+    setEmailBody('');
+    setShowEmailModal(false);
   };
 
   // Local recordings use blob: URLs, which the browser won't release until explicitly revoked
@@ -582,6 +626,7 @@ export default function LeadsList() {
 
                   <div className="lead-row-actions">
                     <button className="btn-action call" onClick={() => handleCall(lead)} title="Click to Call">☎️</button>
+                    <button className="btn-action sms" onClick={() => handleSms(lead)} title="Send SMS">📱</button>
                     <button className="btn-action whatsapp" onClick={() => handleWhatsApp(lead)} title="WhatsApp">
                       <WhatsAppIcon />
                     </button>

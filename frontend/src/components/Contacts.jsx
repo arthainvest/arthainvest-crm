@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   getContactsList, createContact, updateContact, deleteContact,
   getContactNotes, createContactNote, updateContactNote, deleteContactNote,
-  uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup
+  uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup,
+  sendWhatsApp, sendEmailReal, sendSms
 } from '../services/api';
 import '../styles/Contacts.css';
 
@@ -201,13 +202,43 @@ export default function Contacts() {
     window.location.href = `tel:${contact.phone}`;
   };
 
-  const handleWhatsApp = (contact) => {
-    if (contact.phone) {
-      const url = `https://wa.me/${contact.phone.replace(/\D/g, '')}`;
-      window.open(url, '_blank');
-    } else {
+  const handleWhatsApp = async (contact) => {
+    if (!contact.phone) {
       alert('No phone number available');
+      return;
     }
+    // Try a real WhatsApp Business API send first; falls back to opening a wa.me link
+    // when it isn't configured on the server.
+    try {
+      const result = await sendWhatsApp(token, contact.phone, `Hi ${contact.name}, this is ArthaInvest reaching out.`);
+      if (result.configured) {
+        alert(result.message);
+        return;
+      }
+    } catch (error) {
+      console.error('Error sending WhatsApp message:', error);
+    }
+    const url = `https://wa.me/${contact.phone.replace(/\D/g, '')}`;
+    window.open(url, '_blank');
+  };
+
+  const handleSms = async (contact) => {
+    if (!contact.phone) {
+      alert('No phone number available');
+      return;
+    }
+    const message = window.prompt(`SMS to ${contact.name}:`, `Hi ${contact.name}, this is ArthaInvest.`);
+    if (!message) return;
+    try {
+      const result = await sendSms(token, contact.phone, message);
+      if (result.configured) {
+        alert(result.message);
+        return;
+      }
+    } catch (error) {
+      console.error('Error sending SMS:', error);
+    }
+    window.location.href = `sms:${contact.phone}`;
   };
 
   const handleEmail = (contact) => {
@@ -215,13 +246,26 @@ export default function Contacts() {
     setShowEmailModal(true);
   };
 
-  const sendEmail = () => {
-    if (emailSubject.trim() && emailBody.trim()) {
-      window.location.href = `mailto:${selectedContact.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-      setEmailSubject('');
-      setEmailBody('');
-      setShowEmailModal(false);
+  const sendEmail = async () => {
+    if (!emailSubject.trim() || !emailBody.trim()) return;
+    // Try a real SMTP send first; falls back to opening a mailto: link when SMTP isn't
+    // configured on the server.
+    try {
+      const result = await sendEmailReal(token, selectedContact.email, emailSubject, emailBody);
+      if (result.configured) {
+        alert(result.message);
+        setEmailSubject('');
+        setEmailBody('');
+        setShowEmailModal(false);
+        return;
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
     }
+    window.location.href = `mailto:${selectedContact.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+    setEmailSubject('');
+    setEmailBody('');
+    setShowEmailModal(false);
   };
 
   const handleDigi = (contact) => {
@@ -498,6 +542,7 @@ export default function Contacts() {
 
                 <div className="contact-row-actions">
                   <button className="btn-action call" onClick={() => handleCall(contact)} title="Click to Call">☎️</button>
+                  <button className="btn-action sms" onClick={() => handleSms(contact)} title="Send SMS">📱</button>
                   <button className="btn-action email" onClick={() => handleEmail(contact)} title="Send Email">📧</button>
                   <button className="btn-action whatsapp" onClick={() => handleWhatsApp(contact)} title="WhatsApp">
                     <WhatsAppIcon />
