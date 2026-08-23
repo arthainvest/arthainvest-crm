@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 ArthaInvest Analytics Dashboard - Lead Routing & Predictions</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        header h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            border-left: 4px solid #667eea;
+        }
+
+        .card.high { border-left-color: #dc2626; }
+        .card.medium { border-left-color: #f59e0b; }
+        .card.success { border-left-color: #10b981; }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .card-subtitle {
+            color: #666;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .metric-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge.high { background: #fee2e2; color: #991b1b; }
+        .badge.medium { background: #fef3c7; color: #92400e; }
+        .badge.low { background: #dcfce7; color: #15803d; }
+
+        .score-bar {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .score-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f9fafb;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+            font-size: 13px;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 14px;
+            color: #333;
+        }
+
+        tr:hover {
+            background: #f9fafb;
+        }
+
+        .action-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .action-btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .alert.critical {
+            background: #fee2e2;
+            border-left: 4px solid #dc2626;
+            color: #7f1d1d;
+        }
+
+        .alert.warning {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            color: #78350f;
+        }
+
+        .alert.success {
+            background: #dcfce7;
+            border-left: 4px solid #10b981;
+            color: #065f46;
+        }
+
+        .chart-container {
+            margin-top: 20px;
+            height: 300px;
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .chart-bar {
+            flex: 1;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px 4px 0 0;
+            position: relative;
+            min-height: 50px;
+        }
+
+        .chart-label {
+            position: absolute;
+            bottom: -25px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .chart-value {
+            position: absolute;
+            top: -25px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .recommendation {
+            background: #f0f9ff;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #1e40af;
+            line-height: 1.6;
+        }
+
+        .filter-bar {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+
+        .filter-bar input,
+        .filter-bar select {
+            padding: 10px 15px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #764ba2;
+        }
+
+        .stat-icon {
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>🎯 Auto-Lead Routing & Predictive Analytics</h1>
+            <p>Real-time lead intelligence, automated assignment, and closure predictions</p>
+        </header>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+            <input type="date" id="startDate" placeholder="Start Date">
+            <input type="date" id="endDate" placeholder="End Date">
+            <select id="filterType">
+                <option value="all">All Leads</option>
+                <option value="high-score">High Score (>70)</option>
+                <option value="medium-score">Medium Score (40-70)</option>
+                <option value="low-score">Low Score (<40)</option>
+            </select>
+            <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="dashboard-grid">
+            <div class="card success">
+                <div class="card-title">
+                    <span class="stat-icon">📊</span>
+                    Average Lead Score
+                </div>
+                <div class="card-value">72</div>
+                <div class="card-subtitle">
+                    <div class="metric-row">
+                        <span class="metric-label">High Quality (>70)</span>
+                        <span class="metric-value">34 leads</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Improvement vs Last Month</span>
+                        <span class="metric-value" style="color: #10b981;">+8%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span class="stat-icon">🎯</span>
+                    Avg Deal Closure Rate
+                </div>
+                <div class="card-value">28.5%</div>
+                <div class="card-subtitle">
+                    <div class="metric-row">
+                        <span class="metric-label">Deals Closed This Month</span>
+                        <span class="metric-value">12</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Avg Deal Value</span>
+                        <span class="metric-value">₹2.5L</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card high">
+                <div class="card-title">
+                    <span class="stat-icon">⚠️</span>
+                    Churn Alerts
+                </div>
+                <div class="card-value">5</div>
+                <div class="card-subtitle">
+                    <div class="metric-row">
+                        <span class="metric-label">Critical Risk</span>
+                        <span class="badge high">2 clients</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">High Risk</span>
+                        <span class="badge medium">3 clients</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lead Routing Analytics -->
+        <div class="table-container">
+            <h2 style="font-size: 20px; margin-bottom: 20px; color: #333;">📍 Auto-Lead Routing Analytics</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Lead Name</th>
+                        <th>Score</th>
+                        <th>Quality</th>
+                        <th>Assigned To</th>
+                        <th>Routing Score</th>
+                        <th>Product</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Acme Corp CEO</strong></td>
+                        <td>95</td>
+                        <td><span class="badge low">Excellent</span></td>
+                        <td>Yogesh Khatri</td>
+                        <td>92/100</td>
+                        <td>Business Loan</td>
+                        <td><button class="action-btn" onclick="viewLead(1)">View</button></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Tech Startup Founder</strong></td>
+                        <td>88</td>
+                        <td><span class="badge low">Excellent</span></td>
+                        <td>Chirag Rathi</td>
+                        <td>85/100</td>
+                        <td>Term Insurance</td>
+                        <td><button class="action-btn" onclick="viewLead(2)">View</button></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Finance Manager</strong></td>
+                        <td>82</td>
+                        <td><span class="badge low">High</span></td>
+                        <td>Amol Kasat</td>
+                        <td>78/100</td>
+                        <td>Mutual Funds</td>
+                        <td><button class="action-btn" onclick="viewLead(3)">View</button></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Retail Director</strong></td>
+                        <td>65</td>
+                        <td><span class="badge medium">Medium</span></td>
+                        <td>Employee 1</td>
+                        <td>62/100</td>
+                        <td>Insurance</td>
+                        <td><button class="action-btn" onclick="viewLead(4)">View</button></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Small Business Owner</strong></td>
+                        <td>48</td>
+                        <td><span class="badge medium">Medium</span></td>
+                        <td>Employee 2</td>
+                        <td>45/100</td>
+                        <td>Loans</td>
+                        <td><button class="action-btn" onclick="viewLead(5)">View</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Deal Closure Predictions -->
+        <div class="table-container">
+            <h2 style="font-size: 20px; margin-bottom: 20px; color: #333;">🎯 Deal Closure Predictions</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Deal</th>
+                        <th>Lead</th>
+                        <th>Value</th>
+                        <th>Stage</th>
+                        <th>Closure Probability</th>
+                        <th>Confidence</th>
+                        <th>Recommendation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Deal-001</strong></td>
+                        <td>Acme Corp CEO</td>
+                        <td>₹50L</td>
+                        <td>Proposal</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div class="score-bar" style="width: 100px;">
+                                    <div class="score-bar-fill" style="width: 92%;"></div>
+                                </div>
+                                <strong>92%</strong>
+                            </div>
+                        </td>
+                        <td><span class="badge low">High</span></td>
+                        <td>🟢 Prioritize</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Deal-002</strong></td>
+                        <td>Tech Startup</td>
+                        <td>₹20L</td>
+                        <td>Negotiation</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div class="score-bar" style="width: 100px;">
+                                    <div class="score-bar-fill" style="width: 78%;"></div>
+                                </div>
+                                <strong>78%</strong>
+                            </div>
+                        </td>
+                        <td><span class="badge medium">Medium</span></td>
+                        <td>🟡 Monitor</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Deal-003</strong></td>
+                        <td>Finance Manager</td>
+                        <td>₹15L</td>
+                        <td>Qualified</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div class="score-bar" style="width: 100px;">
+                                    <div class="score-bar-fill" style="width: 55%;"></div>
+                                </div>
+                                <strong>55%</strong>
+                            </div>
+                        </td>
+                        <td><span class="badge medium">Medium</span></td>
+                        <td>🟡 Nurture</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Churn Risk Alerts -->
+        <div class="table-container">
+            <h2 style="font-size: 20px; margin-bottom: 20px; color: #333;">⚠️ Churn Risk Alerts</h2>
+
+            <div class="alert critical">
+                <span style="font-size: 20px;">🔴</span>
+                <div>
+                    <strong>ABC Company - CRITICAL RISK (85%)</strong>
+                    <p>No contact in 95 days. Immediate intervention required.</p>
+                </div>
+            </div>
+
+            <div class="alert warning">
+                <span style="font-size: 20px;">🟠</span>
+                <div>
+                    <strong>XYZ Ltd - HIGH RISK (72%)</strong>
+                    <p>Last interaction 65 days ago. Schedule check-in call.</p>
+                </div>
+            </div>
+
+            <div class="alert warning">
+                <span style="font-size: 20px;">🟠</span>
+                <div>
+                    <strong>Tech Solutions - HIGH RISK (68%)</strong>
+                    <p>Only single product. Cross-sell opportunity to increase engagement.</p>
+                </div>
+            </div>
+
+            <table style="margin-top: 20px;">
+                <thead>
+                    <tr>
+                        <th>Client</th>
+                        <th>Churn Risk</th>
+                        <th>Risk Level</th>
+                        <th>Last Interaction</th>
+                        <th>Recommended Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>ABC Company</strong></td>
+                        <td>85%</td>
+                        <td><span class="badge high">Critical</span></td>
+                        <td>95 days ago</td>
+                        <td>Assign relationship manager</td>
+                    </tr>
+                    <tr>
+                        <td><strong>XYZ Ltd</strong></td>
+                        <td>72%</td>
+                        <td><span class="badge medium">High</span></td>
+                        <td>65 days ago</td>
+                        <td>Schedule executive call</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Tech Solutions</strong></td>
+                        <td>68%</td>
+                        <td><span class="badge medium">High</span></td>
+                        <td>45 days ago</td>
+                        <td>Cross-sell offer</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Product Recommendations -->
+        <div class="table-container">
+            <h2 style="font-size: 20px; margin-bottom: 20px; color: #333;">💡 AI Product Recommendations</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Lead</th>
+                        <th>Recommended Product</th>
+                        <th>Match Score</th>
+                        <th>Reason</th>
+                        <th>Estimated Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Acme Corp CEO</strong></td>
+                        <td>Business Loan</td>
+                        <td>90%</td>
+                        <td>High earner, decision maker</td>
+                        <td>₹50L+</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Tech Startup Founder</strong></td>
+                        <td>Term Insurance</td>
+                        <td>85%</td>
+                        <td>Risk coverage need</td>
+                        <td>₹20L</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Finance Manager</strong></td>
+                        <td>Mutual Funds SIP</td>
+                        <td>75%</td>
+                        <td>Wealth creation opportunity</td>
+                        <td>₹10-50K/month</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Best Call Times -->
+        <div class="card">
+            <div class="card-title">
+                <span class="stat-icon">📞</span>
+                Best Call Times Prediction
+            </div>
+            <div style="margin-top: 20px;">
+                <div class="metric-row">
+                    <span class="metric-label">IT Industry Leads</span>
+                    <span class="metric-value">Tue-Wed, 10:00-11:30</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Finance/Banking</span>
+                    <span class="metric-value">Mon-Wed, 14:00-15:30</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Insurance Sector</span>
+                    <span class="metric-value">Thu-Fri, 15:00-16:30</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Pharma Industry</span>
+                    <span class="metric-value">Mon-Wed, 11:00-12:30</span>
+                </div>
+                <div class="recommendation">
+                    <strong>💡 Insight:</strong> Timing optimization can improve answer rate by 15-20%. Use these predictions to schedule your outbound calls.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function viewLead(leadId) {
+            alert(`Opening lead #${leadId} details...`);
+            // In production, would navigate to lead detail page
+        }
+
+        function refreshData() {
+            alert('Refreshing lead routing and prediction data...');
+            // In production, would call API endpoints
+        }
+
+        // Initialize date pickers with default values
+        document.addEventListener('DOMContentLoaded', () => {
+            const today = new Date();
+            const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+            document.getElementById('endDate').valueAsDate = today;
+            document.getElementById('startDate').valueAsDate = thirtyDaysAgo;
+        });
+    </script>
+</body>
+</html>

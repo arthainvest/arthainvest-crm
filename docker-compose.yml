@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: arthainvest-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-arthainvest}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+      POSTGRES_DB: ${DB_NAME:-arthainvest_crm}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-arthainvest}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - arthainvest-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # ArthaInvest CRM Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: arthainvest-crm-app
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-arthainvest}
+      DB_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+      DB_NAME: ${DB_NAME:-arthainvest_crm}
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_here}
+      API_URL: ${API_URL:-https://arthainvestcapital.com}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://arthainvestcapital.com}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - arthainvest-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.example.description: "ArthaInvest CRM Production Server"
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: arthainvest-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - app
+    networks:
+      - arthainvest-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  arthainvest-network:
+    driver: bridge

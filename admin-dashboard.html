@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArthaInvest CRM - Admin Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto; background: #f5f7fa; }
+
+        .container { display: flex; height: 100vh; }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 250px;
+            background: linear-gradient(180deg, #0d5c7e 0%, #1a6b8a 100%);
+            color: white;
+            padding: 20px;
+            overflow-y: auto;
+            position: fixed;
+            height: 100vh;
+            left: 0;
+        }
+
+        .logo { font-size: 24px; font-weight: 700; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+
+        .nav-item {
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .nav-item:hover { background: rgba(255,255,255,0.1); }
+        .nav-item.active { background: rgba(255,255,255,0.2); font-weight: 600; }
+
+        .sidebar-section { margin-top: 30px; font-size: 12px; opacity: 0.7; padding: 0 16px; font-weight: 600; }
+
+        /* MAIN CONTENT */
+        .main-content { flex: 1; margin-left: 250px; display: flex; flex-direction: column; }
+
+        .header {
+            background: white;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title { font-size: 24px; font-weight: 700; color: #0d5c7e; }
+        .header-right { display: flex; gap: 20px; align-items: center; }
+        .header-user { font-size: 14px; color: #666; }
+        .logout-btn { padding: 8px 16px; background: #0d5c7e; color: white; border: none; border-radius: 6px; cursor: pointer; }
+
+        .content { flex: 1; overflow-y: auto; padding: 20px; }
+
+        /* CARDS */
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .card-title { font-size: 16px; font-weight: 700; color: #0d5c7e; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+
+        /* GRID */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+
+        .stat-box {
+            background: linear-gradient(135deg, #0d5c7e 0%, #1a6b8a 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-number { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+        .stat-label { font-size: 12px; opacity: 0.9; }
+
+        /* TABLE */
+        .table-container { overflow-x: auto; }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th {
+            background: #f5f5f5;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            color: #666;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .data-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+        }
+
+        .data-table tr:hover { background: #f9f9f9; }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .badge-new { background: #fff3cd; color: #856404; }
+        .badge-progress { background: #e7f3ff; color: #0066cc; }
+        .badge-converted { background: #d4edda; color: #155724; }
+        .badge-lost { background: #f8d7da; color: #721c24; }
+
+        /* BUTTONS */
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #0d5c7e;
+            color: white;
+        }
+
+        .btn-primary:hover { background: #0a4558; }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 11px;
+        }
+
+        /* SECTIONS */
+        .section { display: none; }
+        .section.active { display: block; }
+
+        /* SEARCH/FILTER */
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-bar input, .filter-bar select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        /* MODALS */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active { display: flex; }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #0d5c7e; }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #333;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+
+        .form-group textarea { resize: vertical; }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .status-online { background: #d4edda; color: #155724; }
+        .status-offline { background: #fff3cd; color: #856404; }
+
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .tab-btn {
+            padding: 10px 16px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: #0d5c7e;
+            border-bottom-color: #0d5c7e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <div class="logo">🏢 ArthaInvest</div>
+
+            <div class="nav-item active" onclick="switchSection('dashboard')">
+                <span>📊</span> Dashboard
+            </div>
+
+            <div class="sidebar-section">CRM & LEADS</div>
+            <div class="nav-item" onclick="switchSection('opportunities')">
+                <span>🎯</span> Opportunities
+            </div>
+            <div class="nav-item" onclick="switchSection('campaigns')">
+                <span>📋</span> Campaigns
+            </div>
+            <div class="nav-item" onclick="switchSection('team')">
+                <span>👥</span> Team Status
+            </div>
+
+            <div class="sidebar-section">PRODUCTS</div>
+            <div class="nav-item" onclick="switchSection('insurance')">
+                <span>🛡️</span> Insurance
+            </div>
+            <div class="nav-item" onclick="switchSection('loans')">
+                <span>💰</span> Loans
+            </div>
+            <div class="nav-item" onclick="switchSection('funds')">
+                <span>📈</span> Mutual Funds
+            </div>
+
+            <div class="sidebar-section">MANAGEMENT</div>
+            <div class="nav-item" onclick="switchSection('digilocker')">
+                <span>🔐</span> DigiLocker
+            </div>
+            <div class="nav-item" onclick="switchSection('tasks')">
+                <span>✅</span> Tasks
+            </div>
+            <div class="nav-item" onclick="switchSection('communications')">
+                <span>💬</span> Communications
+            </div>
+
+            <div class="sidebar-section">INTEGRATIONS</div>
+            <div class="nav-item" onclick="openTab('https://policybazoar.com')">
+                <span>🏢</span> Policy Boss
+            </div>
+            <div class="nav-item" onclick="openTab('https://investwell.in')">
+                <span>💳</span> MFU Portal
+            </div>
+
+            <button class="logout-btn" style="width: 100%; margin-top: auto;" onclick="logout()">🚪 Logout</button>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <div class="header">
+                <div class="header-title">ArthaInvest CRM</div>
+                <div class="header-right">
+                    <div class="header-user" id="userInfo">Admin</div>
+                    <button class="logout-btn" onclick="logout()">Logout</button>
+                </div>
+            </div>
+
+            <div class="content">
+                <!-- DASHBOARD SECTION -->
+                <div class="section active" id="dashboard">
+                    <div class="grid">
+                        <div class="stat-box">
+                            <div class="stat-number" id="totalOpportunities">0</div>
+                            <div class="stat-label">Total Opportunities</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-number" id="totalClients">0</div>
+                            <div class="stat-label">Total Clients</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-number" id="teamOnline">0</div>
+                            <div class="stat-label">Team Online</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-number" id="activeCampaigns">0</div>
+                            <div class="stat-label">Active Campaigns</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Quick Actions</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                            <button class="btn btn-primary" onclick="openModal('newOpportunity')">+ New Opportunity</button>
+                            <button class="btn btn-primary" onclick="openModal('newCampaign')">+ New Campaign</button>
+                            <button class="btn btn-primary" onclick="openModal('newClient')">+ New Client</button>
+                            <button class="btn btn-primary" onclick="openModal('bulkUpload')">📤 Bulk Upload</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- OPPORTUNITIES SECTION -->
+                <div class="section" id="opportunities">
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Opportunities</span>
+                            <button class="btn btn-primary btn-small" onclick="openModal('newOpportunity')">+ New</button>
+                        </div>
+
+                        <div class="tab-buttons">
+                            <button class="tab-btn active" onclick="filterOpportunities('all')">All Opportunities</button>
+                            <button class="tab-btn" onclick="filterOpportunities('New')">New</button>
+                            <button class="tab-btn" onclick="filterOpportunities('In Progress')">In Progress</button>
+                            <button class="tab-btn" onclick="filterOpportunities('Converted')">Converted</button>
+                        </div>
+
+                        <div class="filter-bar">
+                            <input type="text" id="oppSearch" placeholder="Search opportunities..." onkeyup="searchOpportunities()">
+                            <input type="date" id="oppDateFilter" onchange="filterByDate()">
+                            <select id="oppStatusFilter" onchange="filterOpportunities(this.value)">
+                                <option value="">All Status</option>
+                                <option value="New">New</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Converted">Converted</option>
+                                <option value="Lost">Lost</option>
+                            </select>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Title</th>
+                                        <th>Client</th>
+                                        <th>Follow Up Date</th>
+                                        <th>Status</th>
+                                        <th>Expected Value (₹)</th>
+                                        <th>AI Score</th>
+                                        <th>Source</th>
+                                        <th>Created By</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="opportunitiesTable">
+                                    <tr>
+                                        <td colspan="9" style="text-align: center; color: #999;">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CAMPAIGNS SECTION -->
+                <div class="section" id="campaigns">
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Campaigns</span>
+                            <button class="btn btn-primary btn-small" onclick="openModal('newCampaign')">+ New</button>
+                        </div>
+                        <div id="campaignsList"></div>
+                    </div>
+                </div>
+
+                <!-- TEAM STATUS SECTION -->
+                <div class="section" id="team">
+                    <div class="card">
+                        <div class="card-title">Team Status & Performance</div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Department</th>
+                                        <th>Status</th>
+                                        <th>Calls Today</th>
+                                        <th>Conversions</th>
+                                        <th>Conversion Rate</th>
+                                        <th>Last Login</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="teamTableBody">
+                                    <tr>
+                                        <td colspan="7" style="text-align: center; color: #999;">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INSURANCE SECTION -->
+                <div class="section" id="insurance">
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Insurance Policies</span>
+                            <button class="btn btn-primary btn-small" onclick="openModal('newInsurance')">+ New Policy</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Client</th>
+                                        <th>Policy Number</th>
+                                        <th>Policy Name</th>
+                                        <th>Issue Date</th>
+                                        <th>Renewal Date</th>
+                                        <th>Premium (₹)</th>
+                                        <th>Sum Assured (₹)</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="insuranceTable">
+                                    <tr>
+                                        <td colspan="8" style="text-align: center; color: #999;">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LOANS SECTION -->
+                <div class="section" id="loans">
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Loan Applications</span>
+                            <button class="btn btn-primary btn-small" onclick="openModal('newLoan')">+ New Application</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Client</th>
+                                        <th>Loan Type</th>
+                                        <th>Loan Amount (₹)</th>
+                                        <th>Application Date</th>
+                                        <th>Status</th>
+                                        <th>Tenure</th>
+                                        <th>Interest Rate (%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="loansTable">
+                                    <tr>
+                                        <td colspan="7" style="text-align: center; color: #999;">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MUTUAL FUNDS SECTION -->
+                <div class="section" id="funds">
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Mutual Funds</span>
+                            <button class="btn btn-primary btn-small" onclick="openModal('newFund')">+ New Investment</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Client</th>
+                                        <th>Fund Name</th>
+                                        <th>Folio Number</th>
+                                        <th>Investment Amount (₹)</th>
+                                        <th>Current Value (₹)</th>
+                                        <th>Investment Date</th>
+                                        <th>SIP Active</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fundsTable">
+                                    <tr>
+                                        <td colspan="8" style="text-align: center; color: #999;">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DIGILOCKER SECTION -->
+                <div class="section" id="digilocker">
+                    <div class="card">
+                        <div class="card-title">DigiLocker - Documents</div>
+                        <div class="filter-bar">
+                            <input type="text" id="docSearch" placeholder="Search documents..." onkeyup="searchDocuments()">
+                            <select id="docTypeFilter" onchange="filterDocuments()">
+                                <option value="">All Types</option>
+                                <option value="PAN">PAN</option>
+                                <option value="Aadhar">Aadhar</option>
+                                <option value="Bank Statement">Bank Statement</option>
+                                <option value="Income Proof">Income Proof</option>
+                                <option value="KYC">KYC</option>
+                            </select>
+                        </div>
+                        <div id="documentsList"></div>
+                    </div>
+                </div>
+
+                <!-- TASKS SECTION -->
+                <div class="section" id="tasks">
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Tasks & Follow-ups</span>
+                            <button class="btn btn-primary btn-small" onclick="openModal('newTask')">+ New Task</button>
+                        </div>
+                        <div class="filter-bar">
+                            <select id="taskStatusFilter" onchange="filterTasks()">
+                                <option value="">All Status</option>
+                                <option value="Open">Open</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Overdue">Overdue</option>
+                            </select>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Title</th>
+                                        <th>Client</th>
+                                        <th>Assigned To</th>
+                                        <th>Due Date</th>
+                                        <th>Priority</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tasksTable">
+                                    <tr>
+                                        <td colspan="7" style="text-align: center; color: #999;">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COMMUNICATIONS SECTION -->
+                <div class="section" id="communications">
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Communications</span>
+                            <button class="btn btn-primary btn-small" onclick="openModal('newCommunication')">+ Send Message</button>
+                        </div>
+                        <div class="filter-bar">
+                            <select id="commTypeFilter" onchange="filterCommunications()">
+                                <option value="">All Types</option>
+                                <option value="Email">Email</option>
+                                <option value="WhatsApp">WhatsApp</option>
+                                <option value="SMS">SMS</option>
+                                <option value="LinkedIn">LinkedIn</option>
+                            </select>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Client</th>
+                                        <th>Type</th>
+                                        <th>Message</th>
+                                        <th>Status</th>
+                                        <th>Sent By</th>
+                                        <th>Sent At</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="communicationsTable">
+                                    <tr>
+                                        <td colspan="7" style="text-align: center; color: #999;">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <div class="modal" id="newOpportunityModal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal('newOpportunity')">✕</button>
+            <div class="modal-header">Create New Opportunity</div>
+            <form onsubmit="createOpportunity(event)">
+                <div class="form-group">
+                    <label>Title *</label>
+                    <input type="text" id="oppTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>Client *</label>
+                    <select id="oppClient" required></select>
+                </div>
+                <div class="form-group">
+                    <label>Product Type *</label>
+                    <select id="oppProduct" required>
+                        <option value="">Select...</option>
+                        <option value="Insurance">Insurance</option>
+                        <option value="Loans">Loans</option>
+                        <option value="Mutual Funds">Mutual Funds</option>
+                        <option value="Brokerage">Brokerage</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <select id="oppStatus">
+                        <option value="New">New</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Converted">Converted</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Follow Up Date</label>
+                    <input type="date" id="oppFollowUp">
+                </div>
+                <div class="form-group">
+                    <label>Expected Value (₹)</label>
+                    <input type="number" id="oppValue" min="0">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn" onclick="closeModal('newOpportunity')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        let authToken = localStorage.getItem('authToken');
+
+        window.onload = () => {
+            if (!authToken) window.location.href = 'arthainvest-login.html';
+            loadUserInfo();
+            loadDashboardData();
+            setInterval(loadDashboardData, 30000);
+        };
+
+        function loadUserInfo() {
+            const user = JSON.parse(localStorage.getItem('userData') || '{}');
+            document.getElementById('userInfo').textContent = user.name || 'Admin';
+        }
+
+        async function loadDashboardData() {
+            try {
+                const oppRes = await fetch(`${API_BASE}/opportunities`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const oppData = await oppRes.json();
+                document.getElementById('totalOpportunities').textContent = oppData.opportunities?.length || 0;
+                loadOpportunitiesTable(oppData.opportunities || []);
+
+                const clientRes = await fetch(`${API_BASE}/clients`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const clientData = await clientRes.json();
+                document.getElementById('totalClients').textContent = clientData.clients?.length || 0;
+
+                const teamRes = await fetch(`${API_BASE}/team/status`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const teamData = await teamRes.json();
+                const onlineCount = teamData.team?.filter(u => u.is_online).length || 0;
+                document.getElementById('teamOnline').textContent = onlineCount;
+                loadTeamTable(teamData.team || []);
+
+                const campRes = await fetch(`${API_BASE}/campaigns`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const campData = await campRes.json();
+                document.getElementById('activeCampaigns').textContent = campData.campaigns?.length || 0;
+                loadCampaigns(campData.campaigns || []);
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+
+        function loadOpportunitiesTable(opportunities) {
+            const tbody = document.getElementById('opportunitiesTable');
+            if (!opportunities || opportunities.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: #999;">No opportunities yet</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = opportunities.map(opp => `
+                <tr>
+                    <td><strong>${opp.title}</strong></td>
+                    <td>${opp.client_id}</td>
+                    <td>${opp.follow_up_date || '-'}</td>
+                    <td><span class="badge badge-${opp.status.toLowerCase().replace(' ', '-')}">${opp.status}</span></td>
+                    <td>₹${opp.expected_value || 0}</td>
+                    <td>${opp.ai_score || '-'}</td>
+                    <td>${opp.source || '-'}</td>
+                    <td>${opp.created_by || '-'}</td>
+                    <td><button class="btn btn-small" onclick="editOpportunity(${opp.id})">Edit</button></td>
+                </tr>
+            `).join('');
+        }
+
+        function loadTeamTable(team) {
+            const tbody = document.getElementById('teamTableBody');
+            if (!team || team.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999;">No team members</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = team.map(member => `
+                <tr>
+                    <td><strong>${member.name}</strong></td>
+                    <td>${member.department || '-'}</td>
+                    <td><span class="status-badge ${member.is_online ? 'status-online' : 'status-offline'}">
+                        ${member.is_online ? '● Online' : '● Offline'}
+                    </span></td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>${member.last_login ? new Date(member.last_login).toLocaleString() : '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function loadCampaigns(campaigns) {
+            const container = document.getElementById('campaignsList');
+            if (!campaigns || campaigns.length === 0) {
+                container.innerHTML = '<p style="color: #999;">No campaigns yet</p>';
+                return;
+            }
+
+            container.innerHTML = campaigns.map(camp => {
+                const progress = camp.target_count > 0 ? (camp.achieved_count / camp.target_count * 100) : 0;
+                return `
+                    <div style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <strong>${camp.name}</strong>
+                            <span style="font-size: 12px; color: #999;">${camp.achieved_count}/${camp.target_count}</span>
+                        </div>
+                        <div style="height: 6px; background: #e0e0e0; border-radius: 3px; overflow: hidden; margin-bottom: 8px;">
+                            <div style="height: 100%; background: #4CAF50; width: ${progress}%;"></div>
+                        </div>
+                        <div style="font-size: 12px; color: #666;">
+                            Product: ${camp.product_type} | Status: ${camp.status}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function switchSection(section) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(section)?.classList.add('active');
+            event.target.closest('.nav-item')?.classList.add('active');
+        }
+
+        function openModal(modalType) {
+            document.getElementById(modalType + 'Modal')?.classList.add('active');
+        }
+
+        function closeModal(modalType) {
+            document.getElementById(modalType + 'Modal')?.classList.remove('active');
+        }
+
+        async function createOpportunity(e) {
+            e.preventDefault();
+            const data = {
+                title: document.getElementById('oppTitle').value,
+                client_id: document.getElementById('oppClient').value,
+                product_type: document.getElementById('oppProduct').value,
+                status: document.getElementById('oppStatus').value,
+                follow_up_date: document.getElementById('oppFollowUp').value,
+                expected_value: document.getElementById('oppValue').value
+            };
+
+            const res = await fetch(`${API_BASE}/opportunities`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                closeModal('newOpportunity');
+                loadDashboardData();
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('userData');
+            window.location.href = 'arthainvest-login.html';
+        }
+
+        function openTab(url) {
+            window.open(url, '_blank');
+        }
+    </script>
+</body>
+</html>

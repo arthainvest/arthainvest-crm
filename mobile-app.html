@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>ArthaInvest CRM - Mobile App</title>
+  <meta name="theme-color" content="#0d5c7e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; background: #f5f7fa; }
+
+    body { display: flex; flex-direction: column; padding-top: max(env(safe-area-inset-top), 0px); }
+
+    /* HEADER */
+    .mobile-header {
+      background: linear-gradient(90deg, #0d5c7e 0%, #1a6b8a 100%);
+      color: white;
+      padding: 12px 16px max(env(safe-area-inset-right), 16px) 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .header-title { font-size: 16px; font-weight: 700; }
+    .header-time { font-size: 11px; opacity: 0.8; }
+
+    .header-user {
+      background: rgba(255,255,255,0.1);
+      padding: 4px 12px;
+      border-radius: 16px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .search-box {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 6px 12px;
+      border-radius: 6px;
+      color: white;
+      font-size: 13px;
+      width: 100%;
+    }
+
+    .search-box::placeholder { color: rgba(255,255,255,0.5); }
+
+    /* MAIN CONTENT */
+    .mobile-content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px;
+      padding-bottom: max(env(safe-area-inset-bottom), 12px) + 60px;
+    }
+
+    /* QUICK ACTIONS */
+    .quick-actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .action-btn {
+      background: white;
+      border: 1px solid #e0e0e0;
+      padding: 16px;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .action-btn:active { background: #f5f7fa; transform: scale(0.98); }
+
+    .action-icon { font-size: 28px; margin-bottom: 8px; }
+    .action-label { font-size: 12px; font-weight: 600; color: #0d5c7e; }
+
+    /* VOICE ASSISTANT */
+    .voice-section {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .voice-title { font-size: 14px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px; }
+
+    .voice-button {
+      width: 100%;
+      padding: 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00d4aa 0%, #00a88a 100%);
+      border: none;
+      color: white;
+      font-size: 32px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,212,170,0.3);
+      transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+
+    .voice-button:active {
+      transform: scale(0.95);
+      box-shadow: 0 2px 4px rgba(0,212,170,0.5);
+    }
+
+    .voice-button.recording {
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    .voice-status {
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    /* CLIENT LIST */
+    .client-card {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      border-left: 4px solid #00d4aa;
+    }
+
+    .client-name { font-size: 14px; font-weight: 600; color: #0d5c7e; margin-bottom: 4px; }
+    .client-info { font-size: 12px; color: #666; margin-bottom: 8px; }
+
+    .status-buttons {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    .status-btn {
+      padding: 6px;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+      background: white;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .status-btn:active { background: #f5f7fa; }
+    .status-btn.success { background: #d4edda; border-color: #28a745; color: #155724; }
+
+    /* BOTTOM NAVIGATION */
+    .mobile-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      border-top: 1px solid #e0e0e0;
+      padding: 0 0 max(env(safe-area-inset-bottom), 8px) 0;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      height: 60px;
+    }
+
+    .nav-item {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 11px;
+      color: #666;
+    }
+
+    .nav-item.active { color: #00d4aa; font-weight: 700; }
+
+    .nav-icon { font-size: 20px; margin-bottom: 2px; }
+
+    /* NOTIFICATIONS */
+    .notification {
+      position: fixed;
+      top: max(env(safe-area-inset-top), 0px) + 60px;
+      left: 12px;
+      right: 12px;
+      background: #00d4aa;
+      color: white;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      animation: slideDown 0.3s ease;
+      z-index: 200;
+    }
+
+    @keyframes slideDown {
+      from { transform: translateY(-100%); }
+      to { transform: translateY(0); }
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 480px) {
+      .quick-actions { grid-template-columns: 1fr; }
+      .status-buttons { grid-template-columns: 1fr; }
+    }
+
+    /* PAGES */
+    .page { display: none; }
+    .page.active { display: block; }
+  </style>
+</head>
+<body>
+  <!-- HEADER -->
+  <div class="mobile-header">
+    <div class="header-top">
+      <div class="header-title">📊 ArthaInvest CRM</div>
+      <div class="header-time" id="currentTime">14:30</div>
+    </div>
+    <div style="margin-bottom: 8px;">
+      <div class="header-user" id="userDisplay">Rajesh</div>
+    </div>
+    <input type="text" class="search-box" placeholder="Search clients...">
+  </div>
+
+  <!-- CONTENT -->
+  <div class="mobile-content">
+
+    <!-- HOME PAGE -->
+    <div id="home" class="page active">
+      <!-- QUICK ACTIONS -->
+      <div class="quick-actions">
+        <div class="action-btn" onclick="switchMobilePage('clients')">
+          <div class="action-icon">👥</div>
+          <div class="action-label">My Clients</div>
+        </div>
+        <div class="action-btn" onclick="switchMobilePage('voice')">
+          <div class="action-icon">🎤</div>
+          <div class="action-label">Voice Update</div>
+        </div>
+        <div class="action-btn" onclick="switchMobilePage('digilocker')">
+          <div class="action-icon">🔐</div>
+          <div class="action-label">DigiLocker</div>
+        </div>
+        <div class="action-btn" onclick="switchMobilePage('invoices')">
+          <div class="action-icon">📄</div>
+          <div class="action-label">Invoices</div>
+        </div>
+      </div>
+
+      <!-- TODAY'S STATS -->
+      <div class="voice-section">
+        <div class="voice-title">📊 Today's Activity</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div style="background: #f5f7fa; padding: 12px; border-radius: 6px; text-align: center;">
+            <div style="font-size: 18px; font-weight: 700; color: #00d4aa;">5</div>
+            <div style="font-size: 11px; color: #666;">Calls Made</div>
+          </div>
+          <div style="background: #f5f7fa; padding: 12px; border-radius: 6px; text-align: center;">
+            <div style="font-size: 18px; font-weight: 700; color: #0d5c7e;">3</div>
+            <div style="font-size: 11px; color: #666;">Deals Progressed</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RECENT CLIENTS -->
+      <div>
+        <div style="font-size: 14px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px;">Recent Clients</div>
+        <div class="client-card">
+          <div class="client-name">Rajesh Kumar</div>
+          <div class="client-info">Phone: 9876543210 | Status: Active</div>
+          <div class="status-buttons">
+            <button class="status-btn" onclick="updateStatus('Rajesh Kumar', 'call_completed')">📞 Call</button>
+            <button class="status-btn" onclick="updateStatus('Rajesh Kumar', 'proposal_sent')">📄 Proposal</button>
+          </div>
+        </div>
+        <div class="client-card">
+          <div class="client-name">Priya Sharma</div>
+          <div class="client-info">Phone: 9876543211 | Status: Follow-up</div>
+          <div class="status-buttons">
+            <button class="status-btn" onclick="updateStatus('Priya Sharma', 'follow_up_scheduled')">📅 Follow-up</button>
+            <button class="status-btn" onclick="updateStatus('Priya Sharma', 'waiting_for_response')">⏳ Wait</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLIENTS PAGE -->
+    <div id="clients" class="page">
+      <div style="margin-bottom: 16px;">
+        <div style="font-size: 14px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px;">👥 My Clients (8)</div>
+
+        <div class="client-card">
+          <div class="client-name">Rajesh Kumar</div>
+          <div class="client-info">Portfolio: ₹45,00,000 | Active</div>
+          <div class="status-buttons">
+            <button class="status-btn" onclick="updateStatus('Rajesh', 'call_completed')">📞</button>
+            <button class="status-btn" onclick="updateStatus('Rajesh', 'proposal_sent')">📄</button>
+            <button class="status-btn" onclick="updateStatus('Rajesh', 'deal_closed')">✅</button>
+            <button class="status-btn" onclick="updateStatus('Rajesh', 'follow_up_scheduled')">📅</button>
+          </div>
+        </div>
+
+        <div class="client-card">
+          <div class="client-name">Priya Sharma</div>
+          <div class="client-info">Portfolio: ₹32,50,000 | Active</div>
+          <div class="status-buttons">
+            <button class="status-btn" onclick="updateStatus('Priya', 'call_completed')">📞</button>
+            <button class="status-btn" onclick="updateStatus('Priya', 'waiting_for_response')">⏳</button>
+            <button class="status-btn" onclick="updateStatus('Priya', 'follow_up_scheduled')">📅</button>
+            <button class="status-btn" onclick="updateStatus('Priya', 'deal_closed')">✅</button>
+          </div>
+        </div>
+
+        <div class="client-card">
+          <div class="client-name">Amit Patel</div>
+          <div class="client-info">Portfolio: ₹28,75,000 | Follow-up</div>
+          <div class="status-buttons">
+            <button class="status-btn" onclick="updateStatus('Amit', 'call_completed')">📞</button>
+            <button class="status-btn" onclick="updateStatus('Amit', 'proposal_sent')">📄</button>
+            <button class="status-btn" onclick="updateStatus('Amit', 'follow_up_scheduled')">📅</button>
+            <button class="status-btn" onclick="updateStatus('Amit', 'deal_closed')">✅</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VOICE ASSISTANT PAGE -->
+    <div id="voice" class="page">
+      <div class="voice-section">
+        <div class="voice-title">🎤 Voice Status Update</div>
+        <p style="font-size: 12px; color: #666; margin-bottom: 12px; text-align: center;">
+          Tap the button and speak your status update
+        </p>
+        <div style="text-align: center; padding: 20px 0;">
+          <button class="voice-button" onclick="startVoiceRecording()" id="voiceBtn">🎙️</button>
+          <div class="voice-status" id="voiceStatus">Ready to listen</div>
+        </div>
+      </div>
+
+      <!-- QUICK STATUS BUTTONS -->
+      <div style="margin-top: 20px;">
+        <div class="voice-title">Quick Status Buttons</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <button class="status-btn" style="padding: 12px; text-align: center; background: #d4edda;" onclick="quickUpdate('Call Completed')">📞 Call Completed</button>
+          <button class="status-btn" style="padding: 12px; text-align: center; background: #cfe2ff;" onclick="quickUpdate('Proposal Sent')">📄 Proposal Sent</button>
+          <button class="status-btn" style="padding: 12px; text-align: center; background: #fff3cd;" onclick="quickUpdate('Awaiting Response')">⏳ Awaiting Response</button>
+          <button class="status-btn" style="padding: 12px; text-align: center; background: #e7d4f5;" onclick="quickUpdate('Follow-up Scheduled')">📅 Follow-up</button>
+          <button class="status-btn" style="padding: 12px; text-align: center; background: #d1ecf1;" onclick="quickUpdate('Meeting Scheduled')">🤝 Meeting</button>
+          <button class="status-btn" style="padding: 12px; text-align: center; background: #f8d7da;" onclick="quickUpdate('Deal Closed')">✅ Deal Closed</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DIGILOCKER PAGE -->
+    <div id="digilocker" class="page">
+      <div style="font-size: 14px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px;">🔐 DigiLocker</div>
+      <div class="voice-section">
+        <div style="font-size: 12px; margin-bottom: 12px;">
+          <div style="margin-bottom: 8px;"><strong>My Documents:</strong> 8</div>
+          <div>Total Size: ~6.4 MB</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; text-align: center;">
+          <div style="background: #f5f7fa; padding: 12px; border-radius: 6px;">
+            <div style="font-size: 18px; margin-bottom: 4px;">🆔</div>
+            <div>KYC Documents (2)</div>
+          </div>
+          <div style="background: #f5f7fa; padding: 12px; border-radius: 6px;">
+            <div style="font-size: 18px; margin-bottom: 4px;">📄</div>
+            <div>Bank Statements (3)</div>
+          </div>
+          <div style="background: #f5f7fa; padding: 12px; border-radius: 6px;">
+            <div style="font-size: 18px; margin-bottom: 4px;">📋</div>
+            <div>Other Docs (2)</div>
+          </div>
+          <div style="background: #f5f7fa; padding: 12px; border-radius: 6px;">
+            <div style="font-size: 18px; margin-bottom: 4px;">📤</div>
+            <div>Upload New</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INVOICES PAGE -->
+    <div id="invoices" class="page">
+      <div style="font-size: 14px; font-weight: 700; color: #0d5c7e; margin-bottom: 12px;">📄 Invoices</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div class="voice-section">
+          <div style="font-size: 28px; font-weight: 700; color: #00d4aa;">₹5.3 L</div>
+          <div style="font-size: 12px; color: #666;">Total Invoiced</div>
+        </div>
+        <div class="voice-section">
+          <div style="font-size: 28px; font-weight: 700; color: #00a88a;">₹2.8 L</div>
+          <div style="font-size: 12px; color: #666;">Pending Amount</div>
+        </div>
+      </div>
+      <div class="voice-section">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">Recent Invoices</div>
+        <div style="font-size: 12px;">
+          <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+            <div><strong>ARTH-1001</strong> | Rajesh Kumar</div>
+            <div style="color: #00d4aa;">✓ Paid</div>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+            <div><strong>ARTH-1002</strong> | Priya Sharma</div>
+            <div style="color: #FF9800;">⏳ Pending</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM NAVIGATION -->
+  <div class="mobile-nav">
+    <div class="nav-item active" onclick="switchMobilePage('home')">
+      <div class="nav-icon">🏠</div>
+      <div>Home</div>
+    </div>
+    <div class="nav-item" onclick="switchMobilePage('clients')">
+      <div class="nav-icon">👥</div>
+      <div>Clients</div>
+    </div>
+    <div class="nav-item" onclick="switchMobilePage('voice')">
+      <div class="nav-icon">🎤</div>
+      <div>Voice</div>
+    </div>
+    <div class="nav-item" onclick="switchMobilePage('digilocker')">
+      <div class="nav-icon">🔐</div>
+      <div>Locker</div>
+    </div>
+    <div class="nav-item" onclick="switchMobilePage('invoices')">
+      <div class="nav-icon">📄</div>
+      <div>Invoices</div>
+    </div>
+  </div>
+
+  <script>
+    // Update time
+    setInterval(() => {
+      const now = new Date();
+      document.getElementById('currentTime').textContent = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    }, 1000);
+
+    // Switch pages
+    function switchMobilePage(pageId) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+      document.getElementById(pageId).classList.add('active');
+      event.target.closest('.nav-item')?.classList.add('active');
+    }
+
+    // Voice recording
+    function startVoiceRecording() {
+      const btn = document.getElementById('voiceBtn');
+      const status = document.getElementById('voiceStatus');
+
+      if (btn.classList.contains('recording')) {
+        btn.classList.remove('recording');
+        status.textContent = 'Processing...';
+        setTimeout(() => {
+          status.textContent = '✓ Status updated!';
+          showNotification('Call completed - Status updated');
+        }, 1000);
+      } else {
+        btn.classList.add('recording');
+        status.textContent = 'Listening... Speak now';
+      }
+    }
+
+    // Quick update
+    function quickUpdate(status) {
+      showNotification(`✓ Status: ${status}`);
+      document.getElementById('voiceStatus').textContent = `Last update: ${status}`;
+    }
+
+    // Update status
+    function updateStatus(client, action) {
+      showNotification(`✓ ${client} status updated`);
+    }
+
+    // Show notification
+    function showNotification(message) {
+      const notif = document.createElement('div');
+      notif.className = 'notification';
+      notif.textContent = message;
+      document.body.appendChild(notif);
+
+      setTimeout(() => notif.remove(), 2000);
+    }
+  </script>
+</body>
+</html>

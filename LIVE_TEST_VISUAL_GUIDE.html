@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArthaInvest CRM - Live Visual Testing Guide</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .content {
+      padding: 30px;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+
+    .step {
+      margin-bottom: 40px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+
+    .step-number {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      line-height: 40px;
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+
+    .step h2 {
+      color: #333;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .step-action {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 6px;
+      margin: 15px 0;
+      border-left: 4px solid #2196F3;
+    }
+
+    .step-action strong {
+      color: #1976D2;
+    }
+
+    .expected {
+      background: #e8f5e9;
+      padding: 15px;
+      border-radius: 6px;
+      margin: 15px 0;
+      border-left: 4px solid #4caf50;
+    }
+
+    .expected strong {
+      color: #388e3c;
+    }
+
+    .screen-mockup {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 15px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-x: auto;
+      background: #f5f5f5;
+    }
+
+    .verify-box {
+      background: #fff3cd;
+      padding: 15px;
+      border-radius: 6px;
+      margin: 15px 0;
+      border-left: 4px solid #ffc107;
+    }
+
+    .verify-box strong {
+      color: #856404;
+    }
+
+    .checkbox {
+      display: flex;
+      align-items: center;
+      margin: 8px 0;
+      padding: 8px;
+      cursor: pointer;
+    }
+
+    .checkbox input {
+      margin-right: 10px;
+      cursor: pointer;
+      width: 18px;
+      height: 18px;
+    }
+
+    .progress {
+      margin: 20px 0;
+      background: #f0f0f0;
+      border-radius: 8px;
+      overflow: hidden;
+      height: 30px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      transition: width 0.3s;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+
+    .status-pending {
+      background: #999;
+    }
+
+    .status-active {
+      background: #ffc107;
+      animation: pulse 1.5s infinite;
+    }
+
+    .status-success {
+      background: #4caf50;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .timer {
+      font-size: 14px;
+      color: #666;
+      margin-top: 10px;
+    }
+
+    .success-message {
+      background: #e8f5e9;
+      color: #2e7d32;
+      padding: 15px;
+      border-radius: 6px;
+      margin: 15px 0;
+      border-left: 4px solid #4caf50;
+      font-weight: bold;
+    }
+
+    .section-divider {
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #667eea, transparent);
+      margin: 30px 0;
+    }
+
+    @media (max-width: 768px) {
+      .header h1 {
+        font-size: 20px;
+      }
+      .content {
+        padding: 15px;
+      }
+      .step {
+        padding: 15px;
+      }
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: transform 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-success {
+      background: #4caf50;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎬 ArthaInvest CRM - LIVE VISUAL TEST</h1>
+      <p>Interactive Step-by-Step Testing Guide | Follow along with your desktop</p>
+    </div>
+
+    <div class="content">
+      <div class="progress">
+        <div class="progress-bar" id="progressBar" style="width: 10%;">
+          <span id="progressText">10%</span>
+        </div>
+      </div>
+
+      <!-- STEP 1 -->
+      <div class="step">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+          <span class="status-indicator status-active"></span>
+          <span class="step-number">1</span>
+          <h2 style="margin: 0;">LOGIN TO CRM</h2>
+        </div>
+
+        <div class="timer">⏱️ Expected time: 1 minute | Current step status: ACTIVE</div>
+
+        <div class="step-action">
+          <strong>📍 YOUR ACTION:</strong>
+          <p style="margin-top: 10px;">
+            1. Look at your desktop - the CRM window should be open<br>
+            2. Click in the Username field<br>
+            3. Type: <code>artha</code><br>
+            4. Click in the Password field<br>
+            5. Type: <code>artha123</code><br>
+            6. Click the <strong>[LOGIN]</strong> button<br>
+            7. Wait 1-2 seconds for dashboard to load
+          </p>
+        </div>
+
+        <div class="screen-mockup">
+┌──────────────────────────────────────────────────┐
+│ ArthaInvest CRM - Enterprise Edition             │
+│                                                  │
+│         ArthaInvest CRM                         │
+│      Enterprise Edition v2.0                    │
+│                                                  │
+│     ┌────────────────────────────────┐          │
+│     │ Username: [artha_________]     │          │
+│     │ Password: [artha123_____]      │          │
+│     │                                │          │
+│     │    [ LOGIN ]                   │          │
+│     │                                │          │
+│     │ Demo Users:                    │          │
+│     │ • artha / artha123 (Admin)     │          │
+│     │ • ravi / ravi123 (Employee)    │          │
+│     │ • priya / priya123 (Employee)  │          │
+│     └────────────────────────────────┘          │
+│                                                  │
+└──────────────────────────────────────────────────┘
+        </div>
+
+        <div class="expected">
+          <strong>✅ WHAT YOU SHOULD SEE AFTER LOGGING IN:</strong>
+          <div class="checkbox">
+            <input type="checkbox" id="step1_check1">
+            <label for="step1_check1">Dashboard loads with stats (Total Leads, Active, Closed)</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step1_check2">
+            <label for="step1_check2">Left sidebar shows menu items (Dashboard, All Leads, Team, Reports, Documents, Users, Settings)</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step1_check3">
+            <label for="step1_check3">Top-right shows "ArthaInvest Admin" (NOT "Artha Kumar")</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step1_check4">
+            <label for="step1_check4">No error messages displayed</label>
+          </div>
+        </div>
+
+        <div class="verify-box">
+          <strong>⚠️ IF LOGIN FAILS:</strong>
+          <p style="margin-top: 8px;">
+            • Check username is "artha" (lowercase, no spaces)<br>
+            • Check password is "artha123" (no spaces)<br>
+            • Try restarting the CRM application
+          </p>
+        </div>
+
+        <button class="btn btn-success" onclick="nextStep(1)">✅ Login Complete - Continue</button>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- STEP 2 -->
+      <div class="step">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+          <span class="status-indicator status-pending"></span>
+          <span class="step-number">2</span>
+          <h2 style="margin: 0;">NAVIGATE TO DOCUMENTS</h2>
+        </div>
+
+        <div class="timer">⏱️ Expected time: 30 seconds</div>
+
+        <div class="step-action">
+          <strong>📍 YOUR ACTION:</strong>
+          <p style="margin-top: 10px;">
+            1. Look at the LEFT SIDEBAR<br>
+            2. Find the menu item: <strong>📁 Documents</strong><br>
+            3. Click on it
+          </p>
+        </div>
+
+        <div class="screen-mockup">
+SIDEBAR (Left side):
+┌──────────────────┐
+│ 📱 ArthaInvest   │
+│ ArthaInvest Admin│
+│ Admin            │
+│                  │
+│ GENERAL          │
+│ • Dashboard      │
+│ • All Leads      │
+│ • Team Members   │
+│ • Reports        │
+│ • 📁 Documents ← CLICK HERE
+│                  │
+│ ADMIN            │
+│ • Manage Users   │
+│ • Settings       │
+│                  │
+│ [Logout]         │
+└──────────────────┘
+        </div>
+
+        <div class="expected">
+          <strong>✅ WHAT YOU SHOULD SEE:</strong>
+          <div class="checkbox">
+            <input type="checkbox" id="step2_check1">
+            <label for="step2_check1">Page title changes to "Client Documents"</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step2_check2">
+            <label for="step2_check2">Main content area updates to show Documents section</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step2_check3">
+            <label for="step2_check3">Documents menu item is highlighted/active</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step2_check4">
+            <label for="step2_check4">No errors in console</label>
+          </div>
+        </div>
+
+        <button class="btn btn-success" onclick="nextStep(2)">✅ Navigation Complete - Continue</button>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- STEP 3 -->
+      <div class="step">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+          <span class="status-indicator status-pending"></span>
+          <span class="step-number">3</span>
+          <h2 style="margin: 0;">CREATE TEST LEAD</h2>
+        </div>
+
+        <div class="timer">⏱️ Expected time: 1 minute</div>
+
+        <div class="step-action">
+          <strong>📍 YOUR ACTION:</strong>
+          <p style="margin-top: 10px;">
+            1. Click "All Leads" in the sidebar<br>
+            2. Click "+ Add Lead" button<br>
+            3. Fill the form with:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;- Name: <strong>Test Client</strong><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;- Phone: <strong>9876543210</strong><br>
+            4. Click "Save Lead"<br>
+            5. Go back to Documents section
+          </p>
+        </div>
+
+        <div class="expected">
+          <strong>✅ WHAT YOU SHOULD SEE:</strong>
+          <div class="checkbox">
+            <input type="checkbox" id="step3_check1">
+            <label for="step3_check1">Lead form appears when you click "+ Add Lead"</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step3_check2">
+            <label for="step3_check2">Form fields are fillable</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step3_check3">
+            <label for="step3_check3">Save button works and creates the lead</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step3_check4">
+            <label for="step3_check4">Dashboard updates showing "Total Leads: 1"</label>
+          </div>
+        </div>
+
+        <button class="btn btn-success" onclick="nextStep(3)">✅ Lead Created - Continue</button>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- STEP 4 - MAIN TEST -->
+      <div class="step" style="background: #fff3cd; border-left-color: #ff9800;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+          <span class="status-indicator status-pending"></span>
+          <span class="step-number" style="background: #ff9800;">4</span>
+          <h2 style="margin: 0; color: #ff6f00;">⭐ UPLOAD TEST DOCUMENT (MAIN TEST)</h2>
+        </div>
+
+        <div class="timer">⏱️ Expected time: 1.5 minutes | 🎯 CRITICAL TEST!</div>
+
+        <div class="step-action">
+          <strong>📍 YOUR ACTION:</strong>
+          <p style="margin-top: 10px;">
+            1. Make sure you're in the Documents section<br>
+            2. Find "Test Client" in the list<br>
+            3. Click "+ Add Document" or similar button<br>
+            4. Fill the upload form:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;- Document Name: <strong>My Test PAN Card</strong><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;- Document Type: <strong>PAN</strong> (select from dropdown)<br>
+            5. Click "Upload Document" button<br>
+            6. Wait for response
+          </p>
+        </div>
+
+        <div class="screen-mockup">
+UPLOAD MODAL (Dialog box):
+┌────────────────────────────────────────┐
+│ [✕] Add Document                       │
+├────────────────────────────────────────┤
+│                                        │
+│ Document Name *                        │
+│ [My Test PAN Card______________]      │
+│                                        │
+│ Document Type                          │
+│ [▼ PAN                            ]    │
+│   - PAN Card                           │
+│   - Aadhaar                            │
+│   - Insurance Policy                   │
+│   - Bank Statement                     │
+│   - Agreement                          │
+│   - Invoice                            │
+│   - Other                              │
+│                                        │
+├────────────────────────────────────────┤
+│    [ Cancel ]  [ Upload Document ]     │
+└────────────────────────────────────────┘
+
+AFTER SUCCESS - DOCUMENT APPEARS:
+┌──────────────────────────────────────┐
+│ Test Client                          │
+│ 📄 My Test PAN Card                  │
+│    Type: PAN                         │
+│    Uploaded: 2026-08-07 16:45:00    │
+│    By: ArthaInvest Admin             │
+│    [Delete]                          │
+└──────────────────────────────────────┘
+        </div>
+
+        <div class="expected">
+          <strong>✅ UPLOAD MUST WORK - CHECK ALL:</strong>
+          <div class="checkbox">
+            <input type="checkbox" id="step4_check1">
+            <label for="step4_check1">Upload modal/form appears</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step4_check2">
+            <label for="step4_check2">Document name field is fillable</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step4_check3">
+            <label for="step4_check3">Document type dropdown shows all 7 options</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step4_check4">
+            <label for="step4_check4">Upload button works</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step4_check5">
+            <label for="step4_check5">Success message appears: "✅ Document uploaded successfully!"</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step4_check6">
+            <label for="step4_check6">Modal closes automatically</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step4_check7">
+            <label for="step4_check7">Document appears in "Test Client" folder</label>
+          </div>
+        </div>
+
+        <div style="background: #e8f5e9; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #4caf50;">
+          <strong style="color: #388e3c;">🎯 THIS IS THE KEY TEST:</strong>
+          <p style="margin-top: 8px; color: #333;">If the document uploads and displays, the Documents feature is working! All other features build on this core functionality.</p>
+        </div>
+
+        <button class="btn btn-success" onclick="nextStep(4)">✅ Document Uploaded - Continue</button>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- STEP 5 -->
+      <div class="step">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+          <span class="status-indicator status-pending"></span>
+          <span class="step-number">5</span>
+          <h2 style="margin: 0;">VERIFY DOCUMENT DETAILS</h2>
+        </div>
+
+        <div class="timer">⏱️ Expected time: 1 minute</div>
+
+        <div class="step-action">
+          <strong>📍 YOUR ACTION:</strong>
+          <p style="margin-top: 10px;">
+            1. In Documents section, find your uploaded document<br>
+            2. Check that ALL details display correctly:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;- Document name<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;- Document type<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;- Upload timestamp<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;- Uploader name<br>
+            3. Verify delete button is present
+          </p>
+        </div>
+
+        <div class="expected">
+          <strong>✅ METADATA VERIFICATION - ALL MUST MATCH:</strong>
+          <div class="checkbox">
+            <input type="checkbox" id="step5_check1">
+            <label for="step5_check1">Document name: "My Test PAN Card"</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step5_check2">
+            <label for="step5_check2">Document type: "PAN"</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step5_check3">
+            <label for="step5_check3">Upload timestamp: Shows date and time</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step5_check4">
+            <label for="step5_check4">Uploader: "ArthaInvest Admin" (NOT "Artha Kumar")</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step5_check5">
+            <label for="step5_check5">Delete button: Present and clickable</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step5_check6">
+            <label for="step5_check6">UI is responsive (no lag)</label>
+          </div>
+          <div class="checkbox">
+            <input type="checkbox" id="step5_check7">
+            <label for="step5_check7">No console errors (F12 to check)</label>
+          </div>
+        </div>
+
+        <button class="btn btn-success" onclick="testComplete()">✅ Verification Complete - Finish Test</button>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- RESULTS -->
+      <div class="step" id="resultsStep" style="display: none;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+          <span class="status-indicator status-success"></span>
+          <h2 style="margin: 0; color: #4caf50;">🎉 TEST RESULTS</h2>
+        </div>
+
+        <div class="success-message" id="testMessage"></div>
+
+        <div style="margin-top: 20px; padding: 20px; background: #e3f2fd; border-radius: 8px;">
+          <strong style="color: #1976D2;">📊 Next Steps:</strong>
+          <ul style="margin-top: 10px; margin-left: 20px;">
+            <li>✅ Quick test complete</li>
+            <li>📖 Read DOCUMENTS_TEST_GUIDE.md for 10 comprehensive tests</li>
+            <li>👥 Prepare to share installer with team</li>
+            <li>🚀 Plan deployment timeline</li>
+          </ul>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <button class="btn btn-primary" onclick="location.href='file:///C:/Users/artha/LaptopHub/CRM_APP/DOCUMENTS_TEST_GUIDE.md'">
+            📖 Open Comprehensive Test Guide
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentStep = 1;
+
+    function nextStep(step) {
+      currentStep = step + 1;
+      updateProgress();
+    }
+
+    function updateProgress() {
+      const percentage = (currentStep / 5) * 100;
+      document.getElementById('progressBar').style.width = percentage + '%';
+      document.getElementById('progressText').textContent = Math.round(percentage) + '%';
+    }
+
+    function testComplete() {
+      const checkedBoxes = document.querySelectorAll('input[type="checkbox"]:checked').length;
+      const totalBoxes = document.querySelectorAll('input[type="checkbox"]').length;
+
+      const resultsStep = document.getElementById('resultsStep');
+      const testMessage = document.getElementById('testMessage');
+
+      if (checkedBoxes >= totalBoxes - 2) {
+        testMessage.textContent = '✅ TEST PASSED! Documents feature is working perfectly! Your CRM is ready for team deployment.';
+      } else if (checkedBoxes >= totalBoxes - 5) {
+        testMessage.textContent = '⚠️ TEST PARTIALLY PASSED. Most features working, but some issues found. Review the unchecked items above.';
+      } else {
+        testMessage.textContent = '❌ TEST FAILED. Multiple issues found. Check the troubleshooting guide in DOCUMENTS_TEST_GUIDE.md';
+      }
+
+      resultsStep.style.display = 'block';
+      document.getElementById('progressBar').style.width = '100%';
+      document.getElementById('progressText').textContent = '100%';
+
+      window.scrollTo(0, 0);
+    }
+  </script>
+</body>
+</html>

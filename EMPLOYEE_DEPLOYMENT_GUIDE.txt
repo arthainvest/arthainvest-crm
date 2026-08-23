@@ -1,0 +1,314 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║         📱 ARTHAINVEST CRM - EMPLOYEE INSTALLATION & SETUP GUIDE             ║
+║                        Complete Setup in 5 Minutes                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+VERSION: 2.0.0
+RELEASE DATE: August 7, 2026
+STATUS: Production Ready
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📥 INSTALLATION
+
+Step 1: Receive the Installer
+  • Your manager will send: arthainvest-crm-setup.exe (64.81 MB)
+  • Via: Email, OneDrive, Google Drive, USB, or Network share
+
+Step 2: Run the Installer
+  1. Double-click: arthainvest-crm-setup.exe
+  2. Windows SmartScreen may appear
+     → Click "More info" → Click "Run anyway"
+  3. Installation wizard opens
+  4. Click "Next" on each screen
+  5. Click "Install" when ready
+  6. Wait 2-3 minutes for installation
+  7. Click "Finish" (Launch app should be checked)
+
+Step 3: CRM Opens Automatically
+  • First launch may take 5-10 seconds
+  • You'll see the login screen
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔐 LOGIN
+
+When you see the login screen:
+
+Username: artha
+Password: artha123
+
+⚠️ NOTE: Your manager will update these credentials with your personal login
+        during your team training session.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✨ WHAT YOU'LL SEE AFTER LOGIN
+
+Dashboard with:
+  ┌────────────────────────────────────────────┐
+  │ ArthaInvest CRM        [User] [Logout]     │
+  ├──────────────┬─────────────────────────────┤
+  │ LEFT SIDEBAR │ MAIN CONTENT                │
+  │              │                             │
+  │ • Dashboard  │ Dashboard                  │
+  │ • All Leads  │ Stats:                     │
+  │ • Team       │ • Total Leads              │
+  │ • Reports    │ • New Leads                │
+  │ • Documents  │ • Active                   │
+  │ • Users      │ • Closed                   │
+  │ • Settings   │                            │
+  │              │ Recent Activity            │
+  │ [Logout]     │                            │
+  │              │                            │
+  └──────────────┴─────────────────────────────┘
+
+Features Available:
+  ✅ Dashboard - Overview of all leads and activity
+  ✅ All Leads - View and manage your assigned leads
+  ✅ Team - See team member information
+  ✅ Reports - View analytics and conversion metrics
+  ✅ Documents - Store and organize client documents
+  ✅ Settings - User preferences (if admin)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📁 DOCUMENTS FEATURE (NEW!)
+
+The Documents feature lets you store client files organized by folder:
+
+How to Use:
+  1. Click "Documents" in left sidebar
+  2. Select a client/lead
+  3. Click "+ Add Document"
+  4. Enter document name (e.g., "PAN Card")
+  5. Select document type from dropdown:
+     • PAN Card
+     • Aadhaar
+     • Insurance Policy
+     • Bank Statement
+     • Agreement
+     • Invoice
+     • Other
+  6. Click "Upload Document"
+  7. Document saved and appears in list
+
+Each document shows:
+  • Name of document
+  • Type
+  • Upload date/time
+  • Who uploaded it
+  • Delete button if needed
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📱 MANAGING LEADS
+
+Add a New Lead:
+  1. Click "All Leads" in sidebar
+  2. Click "+ Add Lead"
+  3. Fill in the form:
+     • Name (required)
+     • Phone
+     • Email
+     • Status
+     • Budget
+     • Other fields as needed
+  4. Click "Save Lead"
+
+Edit an Existing Lead:
+  1. Click "All Leads"
+  2. Click on the lead name
+  3. Update the information
+  4. Click "Save Lead"
+
+View Lead Status:
+  • New - Not yet contacted
+  • Contacted - You've reached out
+  • Interested - Client showed interest
+  • Meeting - Scheduled meeting
+  • Closed - Deal closed or disqualified
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 REPORTS & ANALYTICS
+
+View Your Performance:
+  1. Click "Reports" in sidebar
+  2. See your metrics:
+     • Total leads assigned
+     • Leads by status
+     • Conversion rates
+     • Performance charts
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🆘 TROUBLESHOOTING
+
+Problem: Installer won't run
+  Solution:
+    • Restart your computer
+    • Try running as Administrator (right-click installer)
+    • Check antivirus isn't blocking it
+
+Problem: SmartScreen warning appears
+  Solution:
+    • Click "More info"
+    • Click "Run anyway"
+    • This is normal for new software
+
+Problem: App won't start after installation
+  Solution:
+    • Restart your computer
+    • Look for "ArthaInvest CRM" in Start Menu
+    • Or check: C:\Program Files\ArthaInvest CRM\
+
+Problem: Login fails
+  Solution:
+    • Verify username: artha (all lowercase)
+    • Verify password: artha123
+    • No spaces before or after
+    • Contact your manager for credential updates
+
+Problem: Can't see assigned leads
+  Solution:
+    • Refresh page (F5)
+    • Restart app
+    • Contact your manager - they need to assign leads
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💡 TIPS FOR SUCCESS
+
+Best Practices:
+  ✓ Save leads immediately after entering information
+  ✓ Update lead status after every customer interaction
+  ✓ Upload important documents (PAN, Aadhaar, etc.) to Documents
+  ✓ Check Dashboard daily for your metrics
+  ✓ Use Reports to track your performance
+
+Data Safety:
+  ✓ Data is stored locally on your computer
+  ✓ No cloud dependency - works offline
+  ✓ Export data regularly as backup (CSV option available)
+  ✓ Never share your login credentials
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📞 SUPPORT
+
+If you have issues:
+
+1. First: Check the Troubleshooting section above
+
+2. Then: Contact your manager
+   - Provide: What you were doing
+   - Provide: What error you saw
+   - Provide: Screenshot if possible
+
+3. Manager will:
+   - Help you troubleshoot
+   - Update your login credentials
+   - Answer usage questions
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✨ WHAT YOU'VE INSTALLED
+
+ArthaInvest CRM v2.0.0
+
+Features:
+  ✅ Lead Management
+  ✅ Client Tracking
+  ✅ Document Storage (DigiLocker-type)
+  ✅ Team Collaboration
+  ✅ Analytics & Reports
+  ✅ Role-based Access Control
+  ✅ Offline Capability
+  ✅ Data Export (CSV)
+
+Requirements:
+  ✓ Windows 7 or later
+  ✓ 256 MB RAM (1 GB recommended)
+  ✓ 200 MB disk space
+  ✓ Internet optional (offline mode available)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 NEXT STEPS
+
+Immediately After Installation:
+  1. Login with provided credentials
+  2. Familiarize yourself with the dashboard
+  3. Practice adding a test lead
+  4. Try the Documents feature
+
+During Team Training:
+  1. Your manager will provide personalized login
+  2. Training on how to use the CRM effectively
+  3. Introduction to your assigned leads
+  4. Q&A session
+
+Daily Usage:
+  1. Check Dashboard for your metrics
+  2. Review and update leads
+  3. Add new leads as they come in
+  4. Upload documents when applicable
+  5. Track your performance in Reports
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 QUICK REFERENCE
+
+Important Locations:
+  • Dashboard - Overview of activity
+  • All Leads - Your assigned clients
+  • Documents - Store client files
+  • Reports - Your performance metrics
+  • Settings - Personal preferences
+
+Common Actions:
+  • Add Lead - "All Leads" → "+ Add Lead"
+  • Upload Document - "Documents" → "+ Add Document"
+  • View Reports - "Reports" → Your metrics
+  • Logout - Click "Logout" button (bottom of sidebar)
+
+Key Terms:
+  • Lead = Potential customer/prospect
+  • Client = Converted customer
+  • Status = Current stage of lead (New, Contacted, Interested, etc.)
+  • Assignment = Lead assigned to you by your manager
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ INSTALLATION CHECKLIST
+
+Before your first day:
+  □ Download installer file
+  □ Double-click to run installer
+  □ Follow wizard through completion
+  □ CRM launches automatically
+  □ Login with artha/artha123
+  □ See Dashboard
+  □ Explore menu items
+  □ Practice adding a test lead
+  □ Try Documents feature
+  □ Ready for team training!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Welcome to ArthaInvest CRM! 🚀
+
+We're excited to have you using this system. It will help you manage leads
+efficiently and track your performance effectively.
+
+Questions? Contact your manager!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ArthaInvest CRM v2.0.0
+Employee Installation & Setup Guide
+Build Date: August 7, 2026
+Status: Production Ready
+
+═══════════════════════════════════════════════════════════════════════════════

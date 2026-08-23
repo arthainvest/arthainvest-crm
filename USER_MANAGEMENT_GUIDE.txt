@@ -1,0 +1,588 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                   👥 USER MANAGEMENT - COMPLETE GUIDE                        ║
+║                    Add, Edit & Delete Users in ArthaInvest CRM               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+VERSION: 2.0.0
+DATE: August 7, 2026
+STATUS: ✅ Fixed & Ready
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ IMPORTANT: ADMIN ACCESS REQUIRED
+
+User management is ONLY available to users with ADMIN role.
+
+Current Admin Users:
+  • Username: artha
+  • Password: artha123
+  • Name: ArthaInvest Admin
+  • Role: Admin ✅
+
+If you're not seeing "Manage Users" menu:
+  → You're logged in as an Employee, not Admin
+  → Ask the admin (artha) to log in and add you as admin
+  → Then logout and login again
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔐 HOW TO ACCESS USER MANAGEMENT
+
+Step 1: Login as Admin
+  Username: artha
+  Password: artha123
+  Click "Login"
+
+Step 2: After Login
+  You'll see the dashboard
+  Look at the LEFT SIDEBAR
+
+Step 3: Find Admin Section
+  In the left sidebar, scroll down
+  You'll see an "ADMIN" section (gray background)
+  This section is ONLY visible to admins
+
+Step 4: Click "Manage Users"
+  In the ADMIN section, click:
+  ⚙️ Manage Users
+
+Step 5: You're In!
+  You'll see the Users Management page
+  Shows a table of all current users
+
+═══════════════════════════════════════════════════════════════════════════════
+
+👥 UNDERSTANDING THE USERS TABLE
+
+The Users table shows:
+
+Column | Meaning
+-------|--------
+Username | Login name (lowercase, e.g., "artha")
+Name | Full name (display name)
+Role | Admin or Employee
+Leads | Number of leads assigned to this user
+Actions | Edit or Delete buttons
+
+Example Table:
+
+Username | Name              | Role     | Leads | Actions
+---------|-------------------|----------|-------|----------
+artha    | ArthaInvest Admin | Admin    | 5     | Edit | Delete
+ravi     | Ravi Sharma       | Employee | 12    | Edit | Delete
+priya    | Priya Singh       | Employee | 8     | Edit | Delete
+
+═══════════════════════════════════════════════════════════════════════════════
+
+➕ HOW TO ADD A NEW USER
+
+Step 1: Click "+ Add User" Button
+  Location: Top of Users Management page
+  It's a green button with "+" icon
+  Click it
+
+Step 2: "Add New User" Modal Opens
+  A popup window appears with fields to fill
+
+Step 3: Fill in User Details
+
+  USERNAME:
+    • What employee uses to login
+    • Lowercase only (artha, ravi, priya, etc.)
+    • No spaces or special characters
+    • Example: john_kumar or johncameron
+    • Must be UNIQUE (no two users same username)
+    • Cannot be changed after creation (for security)
+
+  PASSWORD:
+    • Temporary password for first login
+    • Employee can change later in Settings
+    • Minimum 6 characters recommended
+    • Don't use their name (security)
+    • Example: Welcome123 or Artha@2026
+
+  FULL NAME:
+    • Employee's actual name
+    • Display name shown in CRM
+    • Example: John Kumar or Cameron Singh
+    • Can be changed anytime
+
+  ROLE:
+    • Choose from dropdown: Employee or Admin
+    • Admin: Can manage users, settings, see all data
+    • Employee: Can only see assigned leads, own data
+    • Default: Employee (safer)
+    • Choose Admin only for your managers
+
+Step 4: Click "Save User" Button
+  Green button with "💾 Save User"
+  Click to create the user
+
+Step 5: Success!
+  Alert appears: "User saved successfully!"
+  New user appears in the table below
+  User can now login with username/password
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✏️ HOW TO EDIT AN EXISTING USER
+
+Step 1: Find User in Table
+  Look at the Users table
+  Find the user you want to edit
+
+Step 2: Click "Edit" Button
+  In the Actions column, click "Edit"
+  The "Add New User" modal opens with the user's details
+
+Step 3: Update Fields
+  You can change:
+    ✓ Password (to reset if forgotten)
+    ✓ Full Name (spelling, format)
+    ✓ Role (promote from Employee to Admin)
+
+  You CANNOT change:
+    ✗ Username (locked for security)
+
+Step 4: Make Your Changes
+  Update the fields you want to change
+  Other fields stay the same
+
+Step 5: Click "Save User"
+  Changes are saved
+  User gets the new details
+
+Example: Employee Forgot Password
+  1. Click Manage Users
+  2. Find the employee (e.g., Ravi)
+  3. Click "Edit"
+  4. Change Password field to new password
+  5. Click "Save User"
+  6. Tell employee the new password
+  7. They can login with new password
+  8. They should change it immediately in Settings
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🗑️ HOW TO DELETE A USER
+
+Step 1: Find User in Table
+  Look for the user you want to delete
+
+Step 2: Click "Delete" Button
+  In the Actions column, click the red "Delete" button
+
+Step 3: Confirmation
+  Alert appears: Are you sure?
+  Read the message carefully
+
+Step 4: Confirm Deletion
+  Click OK to confirm deletion
+  OR Click Cancel to keep the user
+
+⚠️ IMPORTANT WARNINGS:
+
+  ❌ Cannot delete yourself:
+     If you try to delete your own user (admin user)
+     Error: "Cannot delete your own user"
+     (This protects you from accidental lockout)
+
+  ❌ User data is NOT deleted:
+     Their leads still exist (can be reassigned)
+     Their documents still exist
+     Their records are preserved
+     ✓ This is good - data is safe
+
+  ⚠️ After deletion:
+     User cannot login anymore
+     Their leads show "Unassigned"
+     You can reassign to other team members
+
+Example: Employee Quits
+  1. Click Manage Users
+  2. Find the employee
+  3. Click Delete
+  4. Click OK to confirm
+  5. User is deleted from system
+  6. Their leads are now unassigned
+  7. Reassign leads to other team members
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔄 PRACTICAL SCENARIOS
+
+SCENARIO 1: New Employee Joins
+
+Situation: You hired Arun Kumar
+Goal: Add him to CRM
+
+Steps:
+  1. Login as admin (artha/artha123)
+  2. Click "Manage Users"
+  3. Click "+ Add User"
+  4. Fill:
+     Username: arun_kumar
+     Password: TempPass123
+     Full Name: Arun Kumar
+     Role: Employee
+  5. Click "Save User"
+  6. Tell Arun: "Login with arun_kumar / TempPass123"
+  7. Arun logs in and changes password in Settings
+  8. Assign him leads from "All Leads" page
+
+
+SCENARIO 2: Employee Forgets Password
+
+Situation: Ravi forgot his password
+Goal: Reset it
+
+Steps:
+  1. Login as admin
+  2. Click "Manage Users"
+  3. Find "ravi" in table
+  4. Click "Edit"
+  5. Change Password to: NewPassword456
+  6. Click "Save User"
+  7. Tell Ravi: "Your new password is NewPassword456"
+  8. Ravi logs in and changes to his own password
+
+
+SCENARIO 3: Promote Employee to Manager
+
+Situation: Priya is doing great, promote her to manager
+Goal: Give her admin access
+
+Steps:
+  1. Login as admin
+  2. Click "Manage Users"
+  3. Find "priya" in table
+  4. Click "Edit"
+  5. Change Role from "Employee" to "Admin"
+  6. Click "Save User"
+  7. Tell Priya: "You're now an admin! You can manage users and settings"
+  8. Priya logs in and sees "Manage Users" option
+
+
+SCENARIO 4: Employee Leaves Company
+
+Situation: Ravi Kumar is leaving
+Goal: Disable his access
+
+Steps:
+  1. Login as admin
+  2. Click "Manage Users"
+  3. Find "ravi" in table
+  4. Click "Delete"
+  5. Click OK to confirm
+  6. Ravi's user is deleted
+  7. His leads show "Unassigned"
+  8. Reassign his leads to other team members:
+     • Click "All Leads"
+     • Filter by lead (or show Unassigned)
+     • Edit each lead
+     • Change "Assigned To" to another employee
+     • Save
+  9. Ravi cannot login anymore (secure!)
+
+
+SCENARIO 5: Bulk Add Multiple Employees
+
+Situation: You hired 5 new people at once
+Goal: Add all of them
+
+Steps:
+  1. Login as admin
+  2. Click "Manage Users"
+  3. For each person:
+     • Click "+ Add User"
+     • Fill details
+     • Click "Save User"
+  4. Repeat 5 times
+  5. All 5 added!
+
+OR (Future Feature):
+  Bulk import from CSV (coming soon)
+  Upload file with 100 new users at once
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+❓ TROUBLESHOOTING
+
+PROBLEM: I don't see "Manage Users" option
+
+Solutions:
+  ✓ Check if you're logged in as admin
+    • Login as: artha / artha123
+    • If you see "Manage Users" now, you were employee before
+  ✓ Check if you logged out and back in
+    • Logout (click 🚪 at bottom of sidebar)
+    • Login again as admin
+  ✓ Refresh the page
+    • Press F5 to refresh
+    • Try again
+
+PROBLEM: "Add User" button doesn't work
+
+Solutions:
+  ✓ Make sure you're on the Users Management page
+    • Sidebar → ADMIN → ⚙️ Manage Users
+  ✓ Try refreshing (F5)
+  ✓ Check if modal opens but has blank fields
+    • Modal should appear with empty fields
+    • If not appearing, try refreshing
+
+PROBLEM: Error when saving user "Username already exists"
+
+Solutions:
+  ✓ Username must be UNIQUE
+    • Check if username already in table
+    • Use different username
+    • Example: Instead of "john", use "john_kumar"
+  ✓ Check table for similar usernames
+    • Table shows all existing usernames
+    • Pick one that's not in the list
+
+PROBLEM: Cannot edit username
+
+Solutions:
+  ✓ This is normal! Username cannot be changed
+    • Username is like primary ID
+    • Prevents confusion
+    • If wrong username, delete and recreate with correct name
+  ✓ You CAN change:
+    • Password
+    • Full Name
+    • Role
+  ✓ You CANNOT change:
+    • Username (locked)
+
+PROBLEM: I deleted a user but their leads still appear
+
+Solutions:
+  ✓ This is correct behavior!
+    • Leads are NOT deleted (data safety)
+    • Leads show "Unassigned"
+    • You can reassign to other users
+  ✓ To reassign:
+    • Click "All Leads"
+    • Find unassigned leads
+    • Click lead name to edit
+    • Change "Assigned To" field
+    • Click "Save Lead"
+
+PROBLEM: Can't delete my own user account
+
+Solutions:
+  ✓ This is a safety feature!
+    • Prevents you from locking yourself out
+    • If you really want to delete admin account:
+      • First create another admin user
+      • Login as that new admin
+      • Then delete the old admin account
+  ✓ Ask another admin to delete you if needed
+
+═══════════════════════════════════════════════════════════════════════════════
+
+👥 ROLE DEFINITIONS
+
+ADMIN ROLE:
+  Can do:
+    ✓ View all leads (everyone's)
+    ✓ Assign/reassign leads
+    ✓ Manage users (add/edit/delete)
+    ✓ Change system settings
+    ✓ View all documents
+    ✓ View all marketing materials
+    ✓ Generate reports for whole company
+    ✓ Export all data
+    ✓ See audit logs
+
+  Cannot do:
+    ✗ See encrypted passwords (only create/reset)
+
+  Use when:
+    • Owner/manager who needs full access
+    • HR person managing users
+    • System administrator
+
+EMPLOYEE ROLE:
+  Can do:
+    ✓ View own assigned leads
+    ✓ Add/edit own leads
+    ✓ Upload documents
+    ✓ Create marketing materials
+    ✓ Share materials via WhatsApp/Email
+    ✓ View own performance report
+    ✓ View team members (not manage)
+    ✓ Change own password
+    ✓ See own leads' documents
+
+  Cannot do:
+    ✗ See other employees' leads
+    ✗ Assign leads
+    ✗ Manage users
+    ✗ Change system settings
+    ✗ See other employees' commission/details
+    ✗ Export all data (only own data)
+
+  Use when:
+    • Regular sales staff
+    • Team members
+    • Most people should be Employee role
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💡 BEST PRACTICES
+
+✅ DO:
+
+1. Use clear usernames
+   • Good: john_kumar, ravi_sharma, priya_singh
+   • Bad: jk, rs, user1, admin1
+   • Reason: Easier to remember, more professional
+
+2. Set temporary passwords
+   • Give each new user a temp password
+   • Make it strong: Mix uppercase, lowercase, numbers
+   • Example: Welcome2026
+   • Tell them to change in Settings
+
+3. Regular password resets
+   • If someone asks for password reset, do it
+   • They should change it immediately
+   • This prevents others from knowing the password
+
+4. Audit users regularly
+   • Monthly: Review who still needs access
+   • Delete users who left
+   • Update names if changed
+   • Verify roles are correct
+
+5. Backup user list
+   • Export users list monthly (screenshot or CSV)
+   • Good for compliance records
+   • Shows who had access when
+
+❌ DON'T:
+
+1. Use same password for everyone
+   • Each person needs unique password
+   • Reason: Accountability, security
+
+2. Share passwords
+   • Never tell one person another's password
+   • Each should have their own
+   • Reason: Audit trail, DPDP compliance
+
+3. Make everyone admin
+   • Only managers/owners should be admin
+   • Too many admins = security risk
+   • Default to Employee role
+
+4. Forget to delete inactive users
+   • Delete employees who quit
+   • Prevents: Unauthorized access, confusion
+   • Keep: Leads and documents (for audit)
+
+5. Reuse usernames
+   • Once deleted, don't use same username again
+   • Create new username for new person
+   • Reason: Audit trail clarity
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 TEAM SETUP EXAMPLES
+
+Small Team (1-5 people):
+  • 1 Admin: You (owner/manager)
+  • 2-4 Employees: Sales staff
+  • Everyone can see all leads together
+
+Medium Team (5-20 people):
+  • 2 Admins: Owner + manager
+  • 3-18 Employees: Sales team
+  • Each employee sees own assigned leads
+  • Admins see everything, manage assignments
+
+Large Team (20+ people):
+  • 2-3 Admins: Leadership
+  • 17+ Employees: Sales team divided by region/product
+  • Each assigned to specific leads/clients
+  • Managers review reports
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔐 SECURITY NOTES
+
+Data Protection:
+  ✅ Passwords are stored locally (not in cloud)
+  ✅ Each device has own copy of users
+  ✅ Users encrypted in localStorage
+  ✅ DPDP compliant (all local)
+
+Access Control:
+  ✅ Employees can only see assigned leads
+  ✅ Admins see all data
+  ✅ Delete account if employee leaves
+  ✅ Change password if compromised
+
+Multi-Device:
+  ✅ Each device has independent user database
+  ✅ Add users on each device separately
+  ✅ Or export/import users via CSV (future)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ CHECKLIST: First Time Setup
+
+When you first launch CRM with team:
+
+  □ Login as admin (artha/artha123)
+  □ Change admin password:
+    • Go to Settings
+    • Find password field
+    • Change from "artha123" to secure password
+    • Save Settings
+  □ Add your manager account (if different):
+    • Click "Manage Users" → "+ Add User"
+    • Your details
+    • Make yourself Admin too
+    • Login to verify it works
+  □ Add all team members:
+    • For each employee, add user
+    • Give them temp password
+    • Verify they can login
+  □ Assign leads:
+    • Go to "All Leads"
+    • Assign each lead to a team member
+    • Save each assignment
+  □ Team training:
+    • Show each team member how to login
+    • Show them their dashboard
+    • Answer questions
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Your Team Setup Checklist:
+
+Current Users:
+  ✓ artha (Admin) - You
+  ✓ ravi (Employee) - Example user
+  ✓ priya (Employee) - Example user
+
+Next Steps:
+  1. Login as artha
+  2. Change admin password (Settings)
+  3. Add your actual team members
+  4. Assign leads to each person
+  5. Train team on login
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ArthaInvest CRM v2.0.0 - User Management Guide
+Complete guide to managing users, roles, and access
+
+Questions? Check this guide first - it covers most scenarios!
+
+═══════════════════════════════════════════════════════════════════════════════
