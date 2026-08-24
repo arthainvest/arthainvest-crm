@@ -312,6 +312,43 @@ def init_db():
         """)
 
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                due_date DATE NOT NULL,
+                completed INTEGER DEFAULT 0,
+                created_by INTEGER,
+                assigned_team_member_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id),
+                FOREIGN KEY (assigned_team_member_id) REFERENCES team_members(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS meetings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                meeting_date DATE NOT NULL,
+                meeting_time TEXT,
+                lead_id INTEGER,
+                contact_id INTEGER,
+                location TEXT,
+                notes TEXT,
+                status TEXT DEFAULT 'Scheduled',
+                created_by INTEGER,
+                assigned_team_member_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (lead_id) REFERENCES leads(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (created_by) REFERENCES users(id),
+                FOREIGN KEY (assigned_team_member_id) REFERENCES team_members(id)
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS calls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,

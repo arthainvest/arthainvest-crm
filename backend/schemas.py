@@ -260,6 +260,67 @@ class LeadNoteResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+# Task Schemas (Today page)
+class TaskCreate(BaseModel):
+    title: str
+    due_date: str  # ISO "YYYY-MM-DD"
+    assigned_team_member_id: Optional[int] = None
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    due_date: Optional[str] = None
+    completed: Optional[bool] = None
+    assigned_team_member_id: Optional[int] = None
+
+class TaskResponse(BaseModel):
+    id: int
+    title: str
+    due_date: str
+    completed: bool
+    assigned_team_member_id: Optional[int] = None
+    assigned_team_member_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+# Meeting Schemas (Today page)
+class MeetingCreate(BaseModel):
+    title: str
+    meeting_date: str  # ISO "YYYY-MM-DD"
+    meeting_time: Optional[str] = None  # "HH:MM"
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
+    assigned_team_member_id: Optional[int] = None
+
+class MeetingUpdate(BaseModel):
+    title: Optional[str] = None
+    meeting_date: Optional[str] = None
+    meeting_time: Optional[str] = None
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None  # Scheduled, Conducted, Cancelled
+    assigned_team_member_id: Optional[int] = None
+
+class MeetingResponse(BaseModel):
+    id: int
+    title: str
+    meeting_date: str
+    meeting_time: Optional[str] = None
+    lead_id: Optional[int] = None
+    lead_name: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
+    status: str = "Scheduled"
+    assigned_team_member_id: Optional[int] = None
+    assigned_team_member_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
 # Call Schemas
 class CallCreate(BaseModel):
     name: str

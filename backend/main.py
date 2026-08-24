@@ -25,6 +25,8 @@ from schemas import (
     ContactCreate, ContactUpdate, ContactAssign, ContactResponse, RenewalContact,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
+    TaskCreate, TaskUpdate, TaskResponse,
+    MeetingCreate, MeetingUpdate, MeetingResponse,
     CallCreate, CallAssign, CallResponse, EmployeeCallStats,
     DialRequest, DialResponse, AISummaryResponse,
     DetectDateRequest, DetectDateResponse,
@@ -175,6 +177,37 @@ def fetch_call_with_member_name(cursor, call_id):
         WHERE calls.id = ?
         """,
         (call_id,)
+    )
+    return dict(cursor.fetchone())
+
+def fetch_task_with_member_name(cursor, task_id):
+    """Same join-by-id pattern as fetch_deal_with_member_name, for tasks."""
+    cursor.execute(
+        """
+        SELECT tasks.*, team_members.name as assigned_team_member_name
+        FROM tasks
+        LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+        WHERE tasks.id = ?
+        """,
+        (task_id,)
+    )
+    return dict(cursor.fetchone())
+
+def fetch_meeting_with_names(cursor, meeting_id):
+    """Same join-by-id pattern as fetch_deal_with_member_name, for meetings - also resolves
+    the linked lead/contact name, if any, so the Today page doesn't need a second round-trip
+    per meeting just to show who it's with."""
+    cursor.execute(
+        """
+        SELECT meetings.*, team_members.name as assigned_team_member_name,
+               leads.name as lead_name, contacts.name as contact_name
+        FROM meetings
+        LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
+        LEFT JOIN leads ON leads.id = meetings.lead_id
+        LEFT JOIN contacts ON contacts.id = meetings.contact_id
+        WHERE meetings.id = ?
+        """,
+        (meeting_id,)
     )
     return dict(cursor.fetchone())
 
@@ -1497,6 +1530,183 @@ async def ai_suggest_lead_followup(lead_id: int, token: str = Query(None)):
         notes = [dict(row) for row in cursor.fetchall()]
 
     return _generate_ai_suggestion(lead['name'], notes)
+
+# ============= TASKS & MEETINGS ENDPOINTS (TODAY PAGE) =============
+
+@app.get("/api/tasks", response_model=list[TaskResponse])
+async def get_tasks(token: str = Query(None), date: str = Query(None)):
+    """Tasks due on a given date (defaults to today if not passed) - the Today page's Tasks tab."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT tasks.*, team_members.name as assigned_team_member_name
+            FROM tasks
+            LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+            WHERE tasks.due_date = COALESCE(?, date('now'))
+            ORDER BY tasks.completed ASC, tasks.created_at ASC
+            """,
+            (date,)
+        )
+        tasks = [dict(row) for row in cursor.fetchall()]
+
+    return tasks
+
+@app.post("/api/tasks", response_model=TaskResponse)
+async def create_task(task: TaskCreate, token: str = Query(None)):
+    """Add a new task"""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO tasks (title, due_date, created_by, assigned_team_member_id) VALUES (?, ?, ?, ?)",
+            (task.title, task.due_date, current_user['user_id'], task.assigned_team_member_id)
+        )
+        conn.commit()
+        task_id = cursor.lastrowid
+        new_task = fetch_task_with_member_name(cursor, task_id)
+
+    return new_task
+
+@app.put("/api/tasks/{task_id}", response_model=TaskResponse)
+async def update_task(task_id: int, task: TaskUpdate, token: str = Query(None)):
+    """Update a task - including toggling it complete"""
+    get_current_user(token)
+
+    updates = []
+    values = []
+    for field in ['title', 'due_date', 'completed', 'assigned_team_member_id']:
+        value = getattr(task, field)
+        if value is not None:
+            updates.append(f"{field} = ?")
+            values.append(value)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(task_id)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", values)
+        conn.commit()
+
+        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        updated_task = fetch_task_with_member_name(cursor, task_id)
+
+    return updated_task
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: int, token: str = Query(None)):
+    """Remove a task"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+    return {"message": "Task deleted"}
+
+@app.get("/api/meetings", response_model=list[MeetingResponse])
+async def get_meetings(token: str = Query(None), date: str = Query(None)):
+    """Meetings scheduled on a given date (defaults to today) - the Today page's Meetings tab."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT meetings.*, team_members.name as assigned_team_member_name,
+                   leads.name as lead_name, contacts.name as contact_name
+            FROM meetings
+            LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
+            LEFT JOIN leads ON leads.id = meetings.lead_id
+            LEFT JOIN contacts ON contacts.id = meetings.contact_id
+            WHERE meetings.meeting_date = COALESCE(?, date('now'))
+            ORDER BY meetings.meeting_time ASC, meetings.created_at ASC
+            """,
+            (date,)
+        )
+        meetings = [dict(row) for row in cursor.fetchall()]
+
+    return meetings
+
+@app.post("/api/meetings", response_model=MeetingResponse)
+async def create_meeting(meeting: MeetingCreate, token: str = Query(None)):
+    """Schedule a new meeting"""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO meetings (title, meeting_date, meeting_time, lead_id, contact_id, location, notes, created_by, assigned_team_member_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (meeting.title, meeting.meeting_date, meeting.meeting_time, meeting.lead_id, meeting.contact_id,
+             meeting.location, meeting.notes, current_user['user_id'], meeting.assigned_team_member_id)
+        )
+        conn.commit()
+        meeting_id = cursor.lastrowid
+        new_meeting = fetch_meeting_with_names(cursor, meeting_id)
+
+    return new_meeting
+
+@app.put("/api/meetings/{meeting_id}", response_model=MeetingResponse)
+async def update_meeting(meeting_id: int, meeting: MeetingUpdate, token: str = Query(None)):
+    """Update a meeting - including marking it Conducted/Cancelled"""
+    get_current_user(token)
+
+    updates = []
+    values = []
+    for field in ['title', 'meeting_date', 'meeting_time', 'lead_id', 'contact_id', 'location', 'notes', 'status', 'assigned_team_member_id']:
+        value = getattr(meeting, field)
+        if value is not None:
+            updates.append(f"{field} = ?")
+            values.append(value)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(meeting_id)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE meetings SET {', '.join(updates)} WHERE id = ?", values)
+        conn.commit()
+
+        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Meeting not found")
+
+        updated_meeting = fetch_meeting_with_names(cursor, meeting_id)
+
+    return updated_meeting
+
+@app.delete("/api/meetings/{meeting_id}")
+async def delete_meeting(meeting_id: int, token: str = Query(None)):
+    """Cancel/remove a meeting"""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+
+    return {"message": "Meeting deleted"}
 
 # ============= CALLS ENDPOINTS =============
 

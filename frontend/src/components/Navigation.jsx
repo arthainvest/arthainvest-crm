@@ -23,6 +23,10 @@ export default function Navigation({ onLogout }) {
           <span className="icon">📊</span>
           <span>Dashboard</span>
         </Link>
+        <Link to="/today" className="nav-link">
+          <span className="icon">📅</span>
+          <span>Today</span>
+        </Link>
         <Link to="/contacts" className="nav-link">
           <span className="icon">👥</span>
           <span>Contacts</span>

@@ -361,6 +361,46 @@ export const getTeam = async (token) => {
   return response.data;
 };
 
+// Today page - Tasks
+export const getTasks = async (token, date) => {
+  const response = await api.get(`/api/tasks?token=${token}&date=${date}`);
+  return response.data;
+};
+
+export const createTask = async (token, taskData) => {
+  const response = await api.post(`/api/tasks?token=${token}`, taskData);
+  return response.data;
+};
+
+export const updateTask = async (token, id, taskData) => {
+  const response = await api.put(`/api/tasks/${id}?token=${token}`, taskData);
+  return response.data;
+};
+
+export const deleteTask = async (token, id) => {
+  await api.delete(`/api/tasks/${id}?token=${token}`);
+};
+
+// Today page - Meetings
+export const getMeetings = async (token, date) => {
+  const response = await api.get(`/api/meetings?token=${token}&date=${date}`);
+  return response.data;
+};
+
+export const createMeeting = async (token, meetingData) => {
+  const response = await api.post(`/api/meetings?token=${token}`, meetingData);
+  return response.data;
+};
+
+export const updateMeeting = async (token, id, meetingData) => {
+  const response = await api.put(`/api/meetings/${id}?token=${token}`, meetingData);
+  return response.data;
+};
+
+export const deleteMeeting = async (token, id) => {
+  await api.delete(`/api/meetings/${id}?token=${token}`);
+};
+
 export const createTeamMember = async (token, memberData) => {
   const response = await api.post(`/api/team?token=${token}`, memberData);
   return response.data;

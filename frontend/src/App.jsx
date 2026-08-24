@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import Today from './components/Today';
 import Contacts from './components/Contacts';
 import LeadsList from './components/LeadsList';
 import Pipeline from './components/Pipeline';
@@ -62,6 +63,7 @@ function App() {
           <div className="main-content">
             <Routes>
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/today" element={<Today />} />
               <Route path="/contacts" element={<Contacts />} />
               <Route path="/leads" element={<LeadsList />} />
               <Route path="/pipeline" element={<Pipeline />} />

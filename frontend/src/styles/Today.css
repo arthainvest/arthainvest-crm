@@ -1,0 +1,237 @@
+.today-container {
+  padding: 20px;
+  max-width: 800px;
+}
+
+.today-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.today-nav-arrow {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.today-nav-arrow:hover {
+  background: var(--bg-subtle-alt);
+}
+
+.today-date-label {
+  margin: 0;
+  font-size: 20px;
+  color: var(--text-heading);
+  text-decoration: underline;
+  text-underline-offset: 6px;
+  text-align: center;
+  min-width: 260px;
+}
+
+.today-tabs {
+  display: flex;
+  background: var(--bg-subtle-alt);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 24px;
+  gap: 4px;
+}
+
+.today-tab {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.today-tab.active {
+  background: #1976d2;
+  color: white;
+}
+
+.today-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-neutral-alt);
+  margin-bottom: 16px;
+}
+
+.today-section-header h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-heading);
+}
+
+.today-add-link {
+  background: none;
+  border: none;
+  color: #1976d2;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.today-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 60px 20px;
+  font-size: 14px;
+}
+
+.today-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.today-task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-neutral);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.today-task-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.today-task-checkbox input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.today-task-row.completed .today-task-checkbox span {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.today-assignee-badge {
+  background: var(--bg-subtle-alt);
+  color: var(--text-secondary);
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.today-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.7;
+  flex: 0 0 auto;
+}
+
+.today-delete-btn:hover {
+  opacity: 1;
+}
+
+.today-meeting-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-neutral);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.today-meeting-time {
+  font-weight: 700;
+  color: #1976d2;
+  min-width: 56px;
+  font-size: 14px;
+}
+
+.today-meeting-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.today-meeting-title {
+  font-weight: 600;
+  color: var(--text-heading);
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.today-meeting-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.today-meeting-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.today-status-badge {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.today-status-badge.status-scheduled { background: #d4e6ff; color: #1976d2; }
+.today-status-badge.status-conducted { background: #d4edda; color: #1e7e34; }
+.today-status-badge.status-cancelled { background: #f8d7da; color: #a71d2a; }
+
+.today-small-btn {
+  padding: 4px 10px;
+  border: 1px solid #1976d2;
+  background: var(--bg-surface);
+  color: #1976d2;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.today-small-btn:hover {
+  background: #1976d2;
+  color: white;
+}
+
+@media (max-width: 640px) {
+  .today-meeting-row {
+    flex-direction: column;
+  }
+  .today-meeting-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
