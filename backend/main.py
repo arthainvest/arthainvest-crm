@@ -2069,12 +2069,15 @@ async def delete_team_member(member_id: int, token: str = Query(None)):
 
 @app.get("/api/analytics/team", response_model=list[TeamProductivityRow])
 async def get_team_analytics(token: str = Query(None)):
-    """Real per-team-member productivity, computed from deals.owner_id / calls.created_by /
-    leads.created_by. Only team members linked to a real login account (team_members.user_id)
-    have any activity to report - everyone else genuinely has none yet (no assignment system
-    exists beyond the single owning login), so their fields come back as None rather than a
-    fabricated 0, and the frontend renders that as "no data yet" instead of implying poor
-    performance."""
+    """Real per-team-member productivity. Combines two signals: the original login-linked
+    counting (deals.owner_id / calls.created_by / leads.created_by, matched via
+    team_members.user_id - kept for members/records that predate assignment) and the explicit
+    assignment columns added this session (calls.team_member_id, deals/leads
+    .assigned_team_member_id), which work for every team member whether or not they have a
+    login. The "AND x IS NULL" guards prevent double-counting a record that has both an old
+    owning login and a newer explicit assignment. Every member now gets a real (possibly
+    zero) count rather than the old None-for-unlinked-members placeholder, because assignment
+    genuinely makes every member measurable now."""
     get_current_user(token)
 
     with get_db() as conn:
@@ -2084,26 +2087,37 @@ async def get_team_analytics(token: str = Query(None)):
 
         rows = []
         for m in members:
+            mid = m['id']
             uid = m.get('user_id')
-            if uid is None:
-                rows.append(TeamProductivityRow(id=m['id'], name=m['name'], role=m['role']))
-                continue
+            uid_param = uid if uid is not None else -1
 
-            cursor.execute("SELECT COUNT(*) as count FROM calls WHERE created_by = ?", (uid,))
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM calls WHERE team_member_id = ? OR (created_by = ? AND team_member_id IS NULL)",
+                (mid, uid_param)
+            )
             calls = cursor.fetchone()['count']
 
-            cursor.execute("SELECT COUNT(*) as count FROM deals WHERE owner_id = ? AND stage = 'closed'", (uid,))
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM deals WHERE stage = 'closed' AND (assigned_team_member_id = ? OR (owner_id = ? AND assigned_team_member_id IS NULL))",
+                (mid, uid_param)
+            )
             deals_closed = cursor.fetchone()['count']
 
-            cursor.execute("SELECT COALESCE(SUM(deal_value), 0) as total FROM deals WHERE owner_id = ? AND stage = 'closed'", (uid,))
+            cursor.execute(
+                "SELECT COALESCE(SUM(deal_value), 0) as total FROM deals WHERE stage = 'closed' AND (assigned_team_member_id = ? OR (owner_id = ? AND assigned_team_member_id IS NULL))",
+                (mid, uid_param)
+            )
             revenue = cursor.fetchone()['total']
 
-            cursor.execute("SELECT COUNT(*) as count FROM leads WHERE created_by = ?", (uid,))
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM leads WHERE assigned_team_member_id = ? OR (created_by = ? AND assigned_team_member_id IS NULL)",
+                (mid, uid_param)
+            )
             total_leads = cursor.fetchone()['count']
             conversion_rate = round((deals_closed / total_leads * 100), 1) if total_leads > 0 else 0.0
 
             rows.append(TeamProductivityRow(
-                id=m['id'], name=m['name'], role=m['role'],
+                id=mid, name=m['name'], role=m['role'],
                 calls=calls, deals_closed=deals_closed, revenue=revenue, conversion_rate=conversion_rate
             ))
 
