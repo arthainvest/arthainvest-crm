@@ -71,11 +71,33 @@
 }
 
 .contact-row-meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: 190px 150px 170px 1fr;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
   padding: 0 14px 10px 42px;
+}
+
+.contact-row-meta .contact-location-badge,
+.contact-row-meta .contact-amount-bank-badge,
+.contact-row-meta .contact-renewal-badge {
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contact-row-meta .status-select-compact,
+.contact-row-meta .employee-assign-select {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  .contact-row-meta {
+    grid-template-columns: 1fr;
+    row-gap: 6px;
+  }
 }
 
 .contact-name-toggle {
