@@ -623,38 +623,6 @@ export default function Contacts() {
                   <span className="score-badge-inline">{contact.score}%</span>
                 )}
 
-                {contact.city && (
-                  <span className="contact-location-badge" title="Location">📍 {contact.city}</span>
-                )}
-
-                <select
-                  className={`status-select-compact status-${statusClass(contact.status)}`}
-                  value={contact.status || 'Active'}
-                  onChange={(e) => handleStatusChange(contact.id, e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-
-                {(contact.amount != null || contact.bank) && (
-                  <span className="contact-amount-bank-badge" title="Amount / Bank">
-                    {contact.amount != null ? `₹${Number(contact.amount).toLocaleString('en-IN')}` : ''}
-                    {contact.amount != null && contact.bank ? ' · ' : ''}
-                    {contact.bank || ''}
-                  </span>
-                )}
-
-                <select
-                  className="employee-assign-select"
-                  value={contact.assigned_team_member_id || ''}
-                  onChange={(e) => handleAssignChange(contact.id, e.target.value)}
-                  title="Assigned employee"
-                >
-                  <option value="">Unassigned</option>
-                  {teamMembers.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-
                 <div className="contact-row-actions">
                   <button className="btn-action call" onClick={() => handleCall(contact)} title="Click to Call">☎️</button>
                   <button className="btn-action sms" onClick={() => handleSms(contact)} title="Send SMS">📱</button>
@@ -670,6 +638,40 @@ export default function Contacts() {
                   <button className="btn-corner edit" onClick={() => handleEditContact(contact)} title="Edit">✏️</button>
                   <button className="btn-corner delete" onClick={() => handleDeleteContact(contact.id)} title="Delete">🗑️</button>
                 </div>
+              </div>
+
+              <div className="contact-row-meta">
+                {contact.city && (
+                  <span className="contact-location-badge" title="Location">📍 {contact.city}</span>
+                )}
+
+                <select
+                  className={`status-select-compact status-${statusClass(contact.status)}`}
+                  value={contact.status || 'Active'}
+                  onChange={(e) => handleStatusChange(contact.id, e.target.value)}
+                >
+                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+
+                <select
+                  className="employee-assign-select"
+                  value={contact.assigned_team_member_id || ''}
+                  onChange={(e) => handleAssignChange(contact.id, e.target.value)}
+                  title="Assigned employee"
+                >
+                  <option value="">Unassigned</option>
+                  {teamMembers.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+
+                {(contact.amount != null || contact.bank) && (
+                  <span className="contact-amount-bank-badge" title="Amount / Bank">
+                    {contact.amount != null ? `₹${Number(contact.amount).toLocaleString('en-IN')}` : ''}
+                    {contact.amount != null && contact.bank ? ' · ' : ''}
+                    {contact.bank || ''}
+                  </span>
+                )}
               </div>
 
               {isExpanded && (

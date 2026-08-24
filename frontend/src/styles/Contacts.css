@@ -67,7 +67,15 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 10px 14px;
+  padding: 10px 14px 6px 14px;
+}
+
+.contact-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 14px 10px 42px;
 }
 
 .contact-name-toggle {
@@ -179,6 +187,7 @@
   display: flex;
   gap: 6px;
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .contact-row-corner {

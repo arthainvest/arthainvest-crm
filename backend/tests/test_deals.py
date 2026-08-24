@@ -31,6 +31,20 @@ def test_move_deal_stage(auth_client):
     assert deal["stage"] == "negotiation"
 
 
+def test_deal_process_status_persists(auth_client):
+    resp = auth_client.get("/api/deals")
+    deal = resp.json()[0]
+    assert deal["process_status"] == "Login"  # default
+
+    resp = auth_client.put(f"/api/deals/{deal['id']}/process-status", json={"process_status": "Sanction"})
+    assert resp.status_code == 200
+    assert resp.json()["process_status"] == "Sanction"
+
+    resp = auth_client.get("/api/deals")
+    updated = next(d for d in resp.json() if d["id"] == deal["id"])
+    assert updated["process_status"] == "Sanction"
+
+
 def test_delete_deal(auth_client):
     resp = auth_client.delete("/api/deals/1")
     assert resp.status_code == 200

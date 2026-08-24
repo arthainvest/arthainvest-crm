@@ -18,7 +18,7 @@ from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
     LeadCreate, LeadUpdate, LeadAssign, LeadResponse,
-    DealCreate, DealMove, DealAssign, DealResponse,
+    DealCreate, DealMove, DealAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     IntegrationToggle, IntegrationResponse,
     SettingsUpdate, SettingsResponse,
@@ -509,6 +509,27 @@ async def assign_deal(deal_id: int, assignment: DealAssign, token: str = Query(N
 
         return fetch_deal_with_member_name(cursor, deal_id)
 
+@app.put("/api/deals/{deal_id}/process-status", response_model=DealResponse)
+async def update_deal_process_status(deal_id: int, payload: DealProcessStatusUpdate, token: str = Query(None)):
+    """Update a deal's loan-specific sub-status (Login/Sanction/Hold/Disbursed), shown in the
+    Pipeline "Sales Pipeline" table. Was frontend-only state before (reset to 'Login' on every
+    page reload) - now persisted like everything else here."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        cursor.execute(
+            "UPDATE deals SET process_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (payload.process_status, deal_id)
+        )
+        conn.commit()
+
+        return fetch_deal_with_member_name(cursor, deal_id)
+
 @app.delete("/api/deals/{deal_id}")
 async def delete_deal(deal_id: int, token: str = Query(None)):
     """Delete a deal"""
@@ -525,7 +546,10 @@ async def delete_deal(deal_id: int, token: str = Query(None)):
 
 @app.get("/api/analytics/dashboard")
 async def get_dashboard_analytics(token: str = Query(None)):
-    """Get dashboard KPI data"""
+    """Get dashboard KPI data - every field here is computed live from real leads/deals/
+    contacts/campaigns rows, including the Loan Pipeline and Pipeline Status widgets (both
+    used to be hardcoded fake numbers on the frontend that never changed no matter what was
+    actually in the database)."""
     get_current_user(token)
 
     with get_db() as conn:
@@ -534,7 +558,9 @@ async def get_dashboard_analytics(token: str = Query(None)):
         cursor.execute("SELECT COUNT(*) as count FROM leads")
         total_leads = cursor.fetchone()['count']
 
-        cursor.execute("SELECT COUNT(*) as count FROM leads WHERE status = 'qualified'")
+        # status is stored Title-case ("Qualified") - this used to compare against lowercase
+        # 'qualified' and so always matched zero rows.
+        cursor.execute("SELECT COUNT(*) as count FROM leads WHERE LOWER(status) = 'qualified'")
         qualified = cursor.fetchone()['count']
 
         cursor.execute("SELECT COUNT(*) as count FROM deals WHERE stage != 'closed'")
@@ -543,11 +569,67 @@ async def get_dashboard_analytics(token: str = Query(None)):
         cursor.execute("SELECT COUNT(*) as count FROM deals WHERE stage = 'closed'")
         closed_deals = cursor.fetchone()['count']
 
+        cursor.execute("SELECT COUNT(*) as count FROM contacts")
+        total_contacts = cursor.fetchone()['count']
+
+        cursor.execute("SELECT COALESCE(SUM(deal_value), 0) as total FROM deals")
+        total_deals_value = cursor.fetchone()['total']
+
+        cursor.execute("SELECT COUNT(*) as count FROM campaigns WHERE status = 'Active'")
+        active_campaigns = cursor.fetchone()['count']
+
+        conversion_rate_pct = round((closed_deals / total_leads * 100), 1) if total_leads > 0 else 0
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) as count, COALESCE(SUM(deal_value), 0) as value FROM deals
+            WHERE stage = 'closed' AND strftime('%Y-%m', updated_at) = strftime('%Y-%m', 'now')
+            """
+        )
+        closed_this_month = dict(cursor.fetchone())
+
+        cursor.execute("SELECT COUNT(*) as count, COALESCE(SUM(deal_value), 0) as value FROM deals WHERE stage != 'closed'")
+        in_progress = dict(cursor.fetchone())
+
+        def process_status_bucket(*statuses):
+            placeholders = ",".join("?" for _ in statuses)
+            cursor.execute(
+                f"SELECT COUNT(*) as count, COALESCE(SUM(deal_value), 0) as value FROM deals WHERE process_status IN ({placeholders})",
+                statuses
+            )
+            return dict(cursor.fetchone())
+
+        loan_stages = [
+            {"label": "Deals Closed (This Month)", **closed_this_month},
+            {"label": "In Progress", **in_progress},
+            {"label": "Rejected", **process_status_bucket('Rejected')},
+            {"label": "On Hold", **process_status_bucket('Hold')},
+            {"label": "Login/Sanction", **process_status_bucket('Login', 'Sanction')},
+            {"label": "Disbursed", **process_status_bucket('Disbursed')},
+        ]
+
+        def lead_status_count(status):
+            cursor.execute("SELECT COUNT(*) as count FROM leads WHERE LOWER(status) = LOWER(?)", (status,))
+            return cursor.fetchone()['count']
+
+        pipeline_status = [
+            {"label": "New Leads", "count": lead_status_count("New")},
+            {"label": "Contacted", "count": lead_status_count("Contacted")},
+            {"label": "Interested", "count": lead_status_count("Interested")},
+            {"label": "Qualified", "count": lead_status_count("Qualified")},
+        ]
+
     return {
         "total_leads": total_leads,
         "qualified_leads": qualified,
         "active_deals": active_deals,
-        "closed_deals": closed_deals
+        "closed_deals": closed_deals,
+        "total_contacts": total_contacts,
+        "total_deals_value": total_deals_value,
+        "conversion_rate_pct": conversion_rate_pct,
+        "active_campaigns": active_campaigns,
+        "loan_stages": loan_stages,
+        "pipeline_status": pipeline_status
     }
 
 @app.get("/api/analytics/conversion-rate")
@@ -1078,6 +1160,23 @@ def _ai_configured():
     """Whether at least one text-generation AI provider is set up on this server."""
     return bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY"))
 
+def _friendly_ai_error(raw_error):
+    """Translate a raw Claude/OpenAI exception string into a short, plain-language message.
+    The raw exception (a JSON blob with request IDs, error type codes, etc.) is meaningless
+    noise to a non-technical user reading it in the chatbot or Content Studio - this is what
+    they see instead, while the real exception still gets logged server-side for debugging."""
+    print(f"[AI ERROR] {raw_error}")
+    lowered = raw_error.lower()
+    if "credit balance is too low" in lowered or "insufficient_quota" in lowered or "exceeded your current quota" in lowered:
+        return "AI credits have run out - add billing credit with the AI provider to keep using this feature."
+    if "invalid_api_key" in lowered or "incorrect api key" in lowered or "authentication_error" in lowered or "invalid x-api-key" in lowered:
+        return "The AI key saved on the server looks incorrect - double-check it in backend/.env."
+    if "rate_limit" in lowered or " 429" in raw_error:
+        return "The AI service is temporarily busy - please try again in a moment."
+    if "timeout" in lowered or "timed out" in lowered:
+        return "The AI request timed out - please try again."
+    return "AI request failed - please try again in a moment."
+
 def _call_ai_text(prompt_or_messages, max_tokens=400, system=None):
     """Shared AI call behind every text-generation feature (AI Suggest Follow-up, Detect
     Date, AI Content Studio, the CRM chatbot). Tries Claude (ANTHROPIC_API_KEY) first; if that
@@ -1121,10 +1220,10 @@ def _call_ai_text(prompt_or_messages, max_tokens=400, system=None):
             return text, None, ("OpenAI (Claude fallback)" if claude_error else "OpenAI")
         except Exception as e:
             if claude_error:
-                return None, f"Claude request failed: {claude_error}. OpenAI fallback also failed: {str(e)}", None
-            return None, f"OpenAI request failed: {str(e)}", None
+                print(f"[AI ERROR] Claude: {claude_error}")
+            return None, _friendly_ai_error(str(e)), None
 
-    return None, f"Claude request failed: {claude_error}", None
+    return None, _friendly_ai_error(claude_error), None
 
 def _generate_ai_suggestion(person_name, notes):
     """Draft a follow-up suggestion from a contact/lead's note history via Claude or OpenAI.

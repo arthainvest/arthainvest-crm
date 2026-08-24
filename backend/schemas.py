@@ -77,6 +77,9 @@ class DealMove(BaseModel):
 class DealAssign(BaseModel):
     team_member_id: Optional[int] = None  # None unassigns the deal
 
+class DealProcessStatusUpdate(BaseModel):
+    process_status: str  # Login, Sanction, Hold, Disbursed
+
 class DealResponse(BaseModel):
     id: int
     lead_id: int
@@ -88,6 +91,7 @@ class DealResponse(BaseModel):
     created_at: datetime
     assigned_team_member_id: Optional[int] = None
     assigned_team_member_name: Optional[str] = None
+    process_status: str = "Login"
 
 # Campaign Schemas
 class CampaignCreate(BaseModel):

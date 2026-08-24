@@ -84,11 +84,14 @@ export default function Team() {
     }
   };
 
+  // Every role always gets its own section, even with nobody in it yet - otherwise a role
+  // that exists in the dropdown (e.g. Business Manager) but has no one assigned looks like it
+  // was never added at all, rather than "added, just empty."
   const groupedByRole = ROLE_ORDER.map((role) => ({
     role,
     label: ROLE_LABELS[role],
     people: members.filter((m) => m.role === role)
-  })).filter((g) => g.people.length > 0);
+  }));
 
   const fmt = (v, isRevenue) => {
     if (v === null || v === undefined) return '—';
@@ -107,7 +110,10 @@ export default function Team() {
       ) : (
         groupedByRole.map((group) => (
           <div key={group.role} className="team-role-section">
-            <h2>{group.label}{group.people.length > 1 ? 's' : ''}</h2>
+            <h2>{group.label}{group.people.length !== 1 ? 's' : ''} ({group.people.length})</h2>
+            {group.people.length === 0 ? (
+              <p className="no-data team-role-empty">No one is a {group.label.toLowerCase()} yet.</p>
+            ) : (
             <div className="team-grid">
               {group.people.map((member) => {
                 const stats = productivity[member.id];
@@ -146,6 +152,7 @@ export default function Team() {
                 );
               })}
             </div>
+            )}
           </div>
         ))
       )}

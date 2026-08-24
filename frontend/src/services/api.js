@@ -130,6 +130,11 @@ export const assignDeal = async (token, dealId, teamMemberId) => {
   return response.data;
 };
 
+export const updateDealProcessStatus = async (token, dealId, processStatus) => {
+  const response = await api.put(`/api/deals/${dealId}/process-status?token=${token}`, { process_status: processStatus });
+  return response.data;
+};
+
 // Analytics
 export const getDashboardAnalytics = async (token) => {
   const response = await api.get(`/api/analytics/dashboard?token=${token}`);

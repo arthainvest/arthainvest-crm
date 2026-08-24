@@ -104,13 +104,49 @@ export default function Reports() {
     }
   };
 
+  const csvEscape = (field) => `"${String(field).replace(/"/g, '""')}"`;
+
+  const handleExportReport = () => {
+    const lines = [];
+    const tabLabel = reportTabs.find((t) => t.id === activeTab)?.label || 'Sales';
+
+    lines.push(csvEscape(`${tabLabel} Report - ${reportPeriod}`));
+    lines.push('');
+    lines.push('Metric,Value');
+    getMetrics().forEach((m) => lines.push(`${csvEscape(m.label)},${csvEscape(m.value)}`));
+    lines.push('');
+
+    lines.push('Team Productivity');
+    lines.push('Team Member,Role,Calls,Deals Closed,Revenue,Conversion Rate');
+    teamStats.forEach((m) => lines.push([
+      csvEscape(m.name), csvEscape(ROLE_LABELS[m.role] || m.role),
+      csvEscape(fmtStat(m.calls)), csvEscape(fmtStat(m.deals_closed)), csvEscape(fmtStat(m.revenue, true)),
+      csvEscape(m.conversion_rate == null ? '—' : `${m.conversion_rate}%`)
+    ].join(',')));
+    lines.push('');
+
+    lines.push('Campaign Performance');
+    lines.push('Campaign,Recipients,Opens,Clicks');
+    campaigns.forEach((c) => lines.push([csvEscape(c.name), csvEscape(c.recipients), csvEscape(c.opens), csvEscape(c.clicks)].join(',')));
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${tabLabel.toLowerCase()}-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="reports-container">
       <div className="reports-header">
         <h1>Reports</h1>
         <div className="reports-header-actions">
           <button className="btn-secondary" onClick={() => setShowSettings(true)}>⚙️ Report Settings</button>
-          <button className="btn-primary">📊 Export Report</button>
+          <button className="btn-primary" onClick={handleExportReport}>📊 Export Report</button>
         </div>
       </div>
 

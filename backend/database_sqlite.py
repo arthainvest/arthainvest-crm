@@ -161,6 +161,7 @@ def init_db():
                 owner_id INTEGER,
                 notes TEXT,
                 assigned_team_member_id INTEGER,
+                process_status TEXT DEFAULT 'Login',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (lead_id) REFERENCES leads(id),
@@ -179,6 +180,14 @@ def init_db():
             pass
         try:
             cursor.execute("ALTER TABLE deals ADD COLUMN assigned_team_member_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # Loan-specific sub-status (Login/Sanction/Hold/Disbursed) shown in the Pipeline
+            # "Sales Pipeline" table - distinct from the generic deals.stage (new/qualified/
+            # proposal/negotiation/closed). Was frontend-only state before (reset to 'Login' on
+            # every reload) - this makes it real and persisted.
+            cursor.execute("ALTER TABLE deals ADD COLUMN process_status TEXT DEFAULT 'Login'")
         except sqlite3.OperationalError:
             pass
 

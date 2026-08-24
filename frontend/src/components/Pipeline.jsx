@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal } from '../services/api';
+import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal, updateDealProcessStatus } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Pipeline.css';
 
@@ -57,7 +57,7 @@ export default function Pipeline() {
     }
   ];
 
-  const PROCESS_STATUS_OPTIONS = ['Login', 'Sanction', 'Hold', 'Disbursed'];
+  const PROCESS_STATUS_OPTIONS = ['Login', 'Sanction', 'Hold', 'Rejected', 'Disbursed'];
 
   const [deals, setDeals] = useState(mockDeals);
   const [leads, setLeads] = useState([]);
@@ -106,7 +106,7 @@ export default function Pipeline() {
       loanProduct: d.loan_product || d.loanProduct || lead?.product || 'LAP',
       stage: STAGES.find((s) => s.toLowerCase() === String(d.stage).toLowerCase()) || 'New',
       probability: d.probability > 1 ? Math.round(d.probability) : Math.round((d.probability ?? 0) * 100),
-      processStatus: d.processStatus || 'Login',
+      processStatus: d.process_status || d.processStatus || 'Login',
       assignedTeamMemberId: d.assigned_team_member_id ?? null,
       assignedTeamMemberName: d.assigned_team_member_name ?? null
     };
@@ -231,8 +231,18 @@ export default function Pipeline() {
     return { completed, total, percentage: Math.round((completed / total) * 100) };
   };
 
-  const handleProcessStatusChange = (dealId, newStatus) => {
+  const handleProcessStatusChange = async (dealId, newStatus) => {
+    const previous = deals.find((d) => d.id === dealId);
     setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, processStatus: newStatus } : d)));
+    try {
+      await updateDealProcessStatus(token, dealId, newStatus);
+    } catch (error) {
+      console.error('Error updating deal process status:', error);
+      if (previous) {
+        setDeals((prev) => prev.map((d) => (d.id === dealId ? previous : d)));
+      }
+      alert('Failed to update status. Please try again.');
+    }
   };
 
   const getDealsByStage = (stage) => {

@@ -9,6 +9,8 @@
 
 .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
 
+.team-role-empty { text-align: left; padding: 12px 0; font-size: 13px; }
+
 .team-card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 18px; }
 
 .team-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }

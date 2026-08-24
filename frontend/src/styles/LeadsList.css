@@ -192,9 +192,15 @@
   border: none;
   cursor: pointer;
   padding: 4px 0;
-  min-width: 160px;
-  flex: 1 1 auto;
+  min-width: 140px;
+  max-width: 220px;
+  flex: 0 1 auto;
   text-align: left;
+}
+
+.lead-row-main {
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 
 .expand-arrow {
@@ -253,6 +259,7 @@
   display: flex;
   gap: 6px;
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .lead-row-details {
