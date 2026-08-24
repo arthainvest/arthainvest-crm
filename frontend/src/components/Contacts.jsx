@@ -51,6 +51,23 @@ const parseCSVLine = (line) => {
   return result;
 };
 
+// Renewal dates in an imported CSV could come in as ISO (2026-09-15, matches our own Export),
+// DD/MM/YYYY or DD-MM-YYYY (common in India), or other spreadsheet date formats. Normalizes
+// to the "YYYY-MM-DD" the backend/date input expects; returns null if it can't be parsed
+// rather than silently saving a garbage date.
+const parseImportDate = (raw) => {
+  const value = (raw || '').trim();
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const dmy = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dmy) {
+    const [, d, m, y] = dmy;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+};
+
 export default function Contacts() {
   const [contacts, setContacts] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
@@ -186,6 +203,7 @@ export default function Contacts() {
             amount: obj.amount ? Number(obj.amount) : null,
             bank: obj.bank || '',
             status: obj.status || 'Active',
+            renewal_date: parseImportDate(obj['renewal date'] || obj.renewal_date || obj.renewaldate),
             assignedName
           };
         });
@@ -223,10 +241,10 @@ export default function Contacts() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Name', 'Company', 'Email', 'Phone', 'City/Area', 'Score', 'Amount', 'Bank', 'Status', 'Employee'];
+    const headers = ['Name', 'Company', 'Email', 'Phone', 'City/Area', 'Score', 'Amount', 'Bank', 'Status', 'Renewal Date', 'Employee'];
     const rows = filteredContacts.map((c) => [
       c.name, c.company || '', c.email || '', c.phone || '', c.city || '', c.score ?? '',
-      c.amount ?? '', c.bank || '', c.status || '', c.assigned_team_member_name || ''
+      c.amount ?? '', c.bank || '', c.status || '', c.renewal_date || '', c.assigned_team_member_name || ''
     ]);
     const csvContent = [headers, ...rows]
       .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
