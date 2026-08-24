@@ -47,6 +47,7 @@ def _ensure_integrations_catalog(cursor, conn):
         ('DigiLocker', '🔐', 'Secure document storage and verification', 0, 'never'),
         ('AI Voice Assistant', '🎙️', 'Automated status updates via voice notes', 0, 'never'),
         ('Google Analytics', '📊', 'Track campaign performance and ROI', 0, 'never'),
+        ('Priti (AI Voice Caller)', '📞', 'Outbound AI qualification calls via Vapi', 0, 'never'),
     ]
     existing = {row['name'] for row in cursor.execute("SELECT name FROM integrations").fetchall()}
     for name, logo, description, connected, last_sync in catalog:

@@ -299,6 +299,17 @@ class LinkedInPostResponse(BaseModel):
     message: str
     post_urn: Optional[str] = None
 
+# Priti - AI Voice Caller (Vapi)
+class VoiceCallTriggerRequest(BaseModel):
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    reason: str  # why Priti is calling this person - must be true, read out on the call
+
+class VoiceCallTriggerResponse(BaseModel):
+    configured: bool
+    message: str
+    vapi_call_id: Optional[str] = None
+
 # Team Management
 class TeamMemberCreate(BaseModel):
     name: str

@@ -30,7 +30,8 @@ from schemas import (
     SmsSendRequest, SmsSendResponse,
     MailchimpSyncResponse,
     LinkedInConnectResponse, LinkedInPostRequest, LinkedInPostResponse,
-    TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow
+    TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow,
+    VoiceCallTriggerRequest, VoiceCallTriggerResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -1480,6 +1481,110 @@ async def linkedin_post(payload: LinkedInPostRequest, token: str = Query(None)):
         return LinkedInPostResponse(configured=True, message="Posted to LinkedIn.", post_urn=post_urn)
     except Exception as e:
         return LinkedInPostResponse(configured=True, message=f"LinkedIn post failed: {str(e)}")
+
+# ============= AI VOICE CALLER (PRITI / VAPI) =============
+#
+# Outbound AI voice-agent calls via Vapi (https://vapi.ai). Deliberately does NOT include a
+# mid-call lookup endpoint that Vapi's assistant could hit during a live call - every fact
+# Priti needs (client name, why she's calling) is passed once at call-trigger time instead,
+# which keeps this endpoint's data exposure to exactly what the caller here already chose to
+# send, rather than opening a second unauthenticated endpoint into leads/contacts.
+#
+# Do not call POST /api/voice-agent/call until the compliance checklist is actually done:
+# written sign-off from your insurer(s) and DSA principal, DLT Sender registration + a
+# 140-series number wired in as the Vapi phone number, DND scrubbing on the call list, and
+# call recording turned on. See the Priti plan artifact for the full checklist.
+
+@app.post("/api/voice-agent/call", response_model=VoiceCallTriggerResponse)
+async def trigger_voice_call(payload: VoiceCallTriggerRequest, token: str = Query(None)):
+    """Trigger an outbound Priti call via Vapi for one lead or contact. Requires
+    VAPI_API_KEY, VAPI_ASSISTANT_ID and VAPI_PHONE_NUMBER_ID - returns configured=False when
+    any are missing, same fallback pattern as every other integration in this file."""
+    current_user = get_current_user(token)
+
+    api_key = os.getenv("VAPI_API_KEY")
+    assistant_id = os.getenv("VAPI_ASSISTANT_ID")
+    phone_number_id = os.getenv("VAPI_PHONE_NUMBER_ID")
+
+    if not (api_key and assistant_id and phone_number_id):
+        return VoiceCallTriggerResponse(configured=False, message="Priti (Vapi voice agent) is not configured on this server.")
+
+    if not payload.lead_id and not payload.contact_id:
+        raise HTTPException(status_code=400, detail="lead_id or contact_id is required")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if payload.lead_id:
+            cursor.execute("SELECT name, phone FROM leads WHERE id = ?", (payload.lead_id,))
+        else:
+            cursor.execute("SELECT name, phone FROM contacts WHERE id = ?", (payload.contact_id,))
+        person = cursor.fetchone()
+
+    if not person:
+        raise HTTPException(status_code=404, detail="Lead or contact not found")
+    if not person['phone']:
+        return VoiceCallTriggerResponse(configured=True, message=f"{person['name']} has no phone number on file.")
+
+    try:
+        import requests
+        resp = requests.post(
+            "https://api.vapi.ai/call",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "assistantId": assistant_id,
+                "phoneNumberId": phone_number_id,
+                "customer": {"number": person['phone'], "name": person['name']},
+                "assistantOverrides": {
+                    "variableValues": {
+                        "clientName": person['name'],
+                        "reason": payload.reason,
+                        "agentName": current_user.get('username', 'your advisor')
+                    }
+                }
+            },
+            timeout=15
+        )
+        if resp.status_code >= 400:
+            return VoiceCallTriggerResponse(configured=True, message=f"Vapi call failed: {resp.text[:200]}")
+        call_data = resp.json()
+        return VoiceCallTriggerResponse(configured=True, message=f"Priti is calling {person['name']} now.", vapi_call_id=call_data.get('id'))
+    except Exception as e:
+        return VoiceCallTriggerResponse(configured=True, message=f"Vapi call failed: {str(e)}")
+
+@app.post("/api/voice-agent/webhook")
+async def voice_agent_webhook(payload: dict):
+    """Receives Vapi's end-of-call-report webhook and logs the outcome into the same `calls`
+    table Twilio click-to-call and manual entries use. No auth token - Vapi calls this
+    server-to-server, not from a logged-in browser session; set VAPI_WEBHOOK_SECRET and check
+    it against Vapi's signature header once you've confirmed the exact header name against a
+    real account (left undocumented by Vapi's public docs as of this writing rather than
+    guessing). This endpoint must be internet-reachable to receive anything - it's unreachable
+    from Vapi's cloud while the backend only runs on localhost (see PENDING_LIST.md)."""
+    message = payload.get("message", {}) if isinstance(payload, dict) else {}
+    if message.get("type") != "end-of-call-report":
+        return {"received": True}
+
+    call = message.get("call", {}) or {}
+    customer = call.get("customer", {}) or {}
+    analysis = message.get("analysis", {}) or {}
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
+            VALUES (?, ?, ?, 'Outbound', ?, date('now'), NULL)
+            """,
+            (
+                customer.get('name') or 'Unknown',
+                customer.get('number'),
+                int(message.get('durationSeconds') or 0),
+                analysis.get('summary') or message.get('endedReason') or 'Completed',
+            )
+        )
+        conn.commit()
+
+    return {"received": True}
 
 # ============= TEAM MANAGEMENT ENDPOINTS =============
 
