@@ -235,12 +235,29 @@ def init_db():
                 phone TEXT,
                 city TEXT,
                 score INTEGER,
+                amount REAL,
+                bank TEXT,
+                status TEXT DEFAULT 'Active',
                 created_by INTEGER,
+                assigned_team_member_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (created_by) REFERENCES users(id)
+                FOREIGN KEY (created_by) REFERENCES users(id),
+                FOREIGN KEY (assigned_team_member_id) REFERENCES team_members(id)
             )
         """)
+
+        # Same "ALTER TABLE for pre-existing databases" situation as deals.assigned_team_member_id.
+        for ddl in [
+            "ALTER TABLE contacts ADD COLUMN amount REAL",
+            "ALTER TABLE contacts ADD COLUMN bank TEXT",
+            "ALTER TABLE contacts ADD COLUMN status TEXT DEFAULT 'Active'",
+            "ALTER TABLE contacts ADD COLUMN assigned_team_member_id INTEGER",
+        ]:
+            try:
+                cursor.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS contact_notes (

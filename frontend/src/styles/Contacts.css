@@ -110,6 +110,71 @@
   flex: 0 0 auto;
 }
 
+.contact-location-badge {
+  background: var(--bg-subtle-alt);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.contact-amount-bank-badge {
+  background: var(--bg-subtle-alt);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.status-select-compact {
+  padding: 6px 26px 6px 10px;
+  border-radius: 20px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background-color: var(--border-subtle);
+  color: #1976d2;
+}
+
+.status-select-compact.status-active { background-color: #d4edda; color: #1e7e34; }
+.status-select-compact.status-renewal-due { background-color: #fff3cd; color: #856404; }
+.status-select-compact.status-lapsed { background-color: #f8d7da; color: #a71d2a; }
+.status-select-compact.status-inactive { background-color: var(--border-subtle); color: var(--text-muted); }
+
+.employee-assign-select {
+  padding: 5px 22px 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-neutral);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  max-width: 130px;
+  flex: 0 0 auto;
+}
+
+.contact-row-main {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
 .contact-row-actions {
   display: flex;
   gap: 6px;

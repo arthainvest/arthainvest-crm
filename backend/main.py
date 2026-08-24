@@ -21,7 +21,7 @@ from schemas import (
     CampaignCreate, CampaignUpdate, CampaignResponse,
     IntegrationToggle, IntegrationResponse,
     SettingsUpdate, SettingsResponse,
-    ContactCreate, ContactUpdate, ContactResponse,
+    ContactCreate, ContactUpdate, ContactAssign, ContactResponse,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     CallCreate, CallAssign, CallResponse, EmployeeCallStats,
@@ -126,6 +126,20 @@ def fetch_lead_with_member_name(cursor, lead_id):
         WHERE leads.id = ?
         """,
         (lead_id,)
+    )
+    return dict(cursor.fetchone())
+
+def fetch_contact_with_member_name(cursor, contact_id):
+    """Same join-by-id pattern as fetch_deal_with_member_name, for contacts - so admins/team
+    leads can see which employee owns each contact in the client book."""
+    cursor.execute(
+        """
+        SELECT contacts.*, team_members.name as assigned_team_member_name
+        FROM contacts
+        LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
+        WHERE contacts.id = ?
+        """,
+        (contact_id,)
     )
     return dict(cursor.fetchone())
 
@@ -793,7 +807,14 @@ async def get_contacts(token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM contacts ORDER BY created_at DESC")
+        cursor.execute(
+            """
+            SELECT contacts.*, team_members.name as assigned_team_member_name
+            FROM contacts
+            LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
+            ORDER BY contacts.created_at DESC
+            """
+        )
         contacts = [dict(row) for row in cursor.fetchall()]
 
     return contacts
@@ -807,18 +828,18 @@ async def create_contact(contact: ContactCreate, token: str = Query(None)):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO contacts (name, company, email, phone, city, created_by)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO contacts (name, company, email, phone, city, amount, bank, status, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (contact.name, contact.company, contact.email, contact.phone, contact.city, current_user['user_id'])
+            (contact.name, contact.company, contact.email, contact.phone, contact.city,
+             contact.amount, contact.bank, contact.status or 'Active', current_user['user_id'])
         )
         conn.commit()
         contact_id = cursor.lastrowid
 
-        cursor.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,))
-        new_contact = cursor.fetchone()
+        new_contact = fetch_contact_with_member_name(cursor, contact_id)
 
-    return dict(new_contact)
+    return new_contact
 
 @app.put("/api/contacts/{contact_id}", response_model=ContactResponse)
 async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Query(None)):
@@ -828,7 +849,7 @@ async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Q
     updates = []
     values = []
 
-    for field in ['name', 'company', 'email', 'phone', 'city', 'score']:
+    for field in ['name', 'company', 'email', 'phone', 'city', 'score', 'amount', 'bank', 'status']:
         value = getattr(contact, field)
         if value is not None:
             updates.append(f"{field} = ?")
@@ -845,13 +866,38 @@ async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Q
         cursor.execute(f"UPDATE contacts SET {', '.join(updates)} WHERE id = ?", values)
         conn.commit()
 
-        cursor.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,))
-        updated_contact = cursor.fetchone()
+        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
 
-    if not updated_contact:
-        raise HTTPException(status_code=404, detail="Contact not found")
+        updated_contact = fetch_contact_with_member_name(cursor, contact_id)
 
-    return dict(updated_contact)
+    return updated_contact
+
+@app.put("/api/contacts/{contact_id}/assign", response_model=ContactResponse)
+async def assign_contact(contact_id: int, assignment: ContactAssign, token: str = Query(None)):
+    """Assign (or unassign, if team_member_id is null) a contact to a team member, so admins
+    and the team lead can see who owns each client in the contact book."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        if assignment.team_member_id is not None:
+            cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (assignment.team_member_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Team member not found")
+
+        cursor.execute(
+            "UPDATE contacts SET assigned_team_member_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (assignment.team_member_id, contact_id)
+        )
+        conn.commit()
+
+        return fetch_contact_with_member_name(cursor, contact_id)
 
 @app.delete("/api/contacts/{contact_id}")
 async def delete_contact(contact_id: int, token: str = Query(None)):

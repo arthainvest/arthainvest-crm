@@ -208,6 +208,11 @@ export const deleteContact = async (token, id) => {
   await api.delete(`/api/contacts/${id}?token=${token}`);
 };
 
+export const assignContact = async (token, contactId, teamMemberId) => {
+  const response = await api.put(`/api/contacts/${contactId}/assign?token=${token}`, { team_member_id: teamMemberId });
+  return response.data;
+};
+
 // Contact notes
 export const getContactNotes = async (token, contactId) => {
   const response = await api.get(`/api/contacts/${contactId}/notes?token=${token}`);

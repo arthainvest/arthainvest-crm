@@ -164,6 +164,9 @@ class ContactCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     city: Optional[str] = None
+    amount: Optional[float] = None
+    bank: Optional[str] = None
+    status: Optional[str] = None
 
 class ContactUpdate(BaseModel):
     name: Optional[str] = None
@@ -172,6 +175,12 @@ class ContactUpdate(BaseModel):
     phone: Optional[str] = None
     city: Optional[str] = None
     score: Optional[int] = None
+    amount: Optional[float] = None
+    bank: Optional[str] = None
+    status: Optional[str] = None
+
+class ContactAssign(BaseModel):
+    team_member_id: Optional[int] = None  # None unassigns the contact
 
 class ContactResponse(BaseModel):
     id: int
@@ -181,8 +190,13 @@ class ContactResponse(BaseModel):
     phone: Optional[str]
     city: Optional[str]
     score: Optional[int]
+    amount: Optional[float] = None
+    bank: Optional[str] = None
+    status: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    assigned_team_member_id: Optional[int] = None
+    assigned_team_member_name: Optional[str] = None
 
 # Contact Note Schemas
 class ContactNoteCreate(BaseModel):

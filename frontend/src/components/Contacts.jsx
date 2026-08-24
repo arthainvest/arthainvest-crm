@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  getContactsList, createContact, updateContact, deleteContact,
+  getContactsList, createContact, updateContact, deleteContact, assignContact, getTeam,
   getContactNotes, createContactNote, updateContactNote, deleteContactNote,
   uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup,
   sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate
 } from '../services/api';
 import '../styles/Contacts.css';
+
+const STATUS_OPTIONS = ['Active', 'Renewal Due', 'Lapsed', 'Inactive'];
+const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
 
 const WhatsAppIcon = () => (
   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -13,7 +16,7 @@ const WhatsAppIcon = () => (
   </svg>
 );
 
-const emptyContactForm = { name: '', company: '', email: '', phone: '', city: '' };
+const emptyContactForm = { name: '', company: '', email: '', phone: '', city: '', amount: '', bank: '', status: 'Active' };
 const emptyNoteDraft = { callDateTime: '', nextConversation: '', transcript: '' };
 
 // A naive line.split(',') breaks on quoted fields containing commas (e.g. "Doe, John") or
@@ -50,6 +53,7 @@ const parseCSVLine = (line) => {
 
 export default function Contacts() {
   const [contacts, setContacts] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const token = localStorage.getItem('token');
 
@@ -94,6 +98,7 @@ export default function Contacts() {
 
   useEffect(() => {
     fetchContacts();
+    fetchTeamMembers();
   }, []);
 
   const fetchContacts = async () => {
@@ -102,6 +107,46 @@ export default function Contacts() {
       setContacts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching contacts:', error);
+    }
+  };
+
+  const fetchTeamMembers = async () => {
+    try {
+      const data = await getTeam(token);
+      setTeamMembers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching team members:', error);
+    }
+  };
+
+  const handleAssignChange = async (contactId, teamMemberIdRaw) => {
+    const teamMemberId = teamMemberIdRaw ? Number(teamMemberIdRaw) : null;
+    const previous = contacts.find((c) => c.id === contactId);
+    setContacts((prev) => prev.map((c) => (c.id === contactId
+      ? { ...c, assigned_team_member_id: teamMemberId, assigned_team_member_name: teamMembers.find((m) => m.id === teamMemberId)?.name || null }
+      : c)));
+    try {
+      await assignContact(token, contactId, teamMemberId);
+    } catch (error) {
+      console.error('Error assigning contact:', error);
+      if (previous) {
+        setContacts((prev) => prev.map((c) => (c.id === contactId ? previous : c)));
+      }
+      alert('Failed to assign contact. Please try again.');
+    }
+  };
+
+  const handleStatusChange = async (contactId, newStatus) => {
+    const previous = contacts.find((c) => c.id === contactId);
+    setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, status: newStatus } : c)));
+    try {
+      await updateContact(token, contactId, { status: newStatus });
+    } catch (error) {
+      console.error('Error updating contact status:', error);
+      if (previous) {
+        setContacts((prev) => prev.map((c) => (c.id === contactId ? previous : c)));
+      }
+      alert('Failed to update status. Please try again.');
     }
   };
 
@@ -130,13 +175,18 @@ export default function Contacts() {
           const cols = parseCSVLine(row);
           const obj = {};
           headers.forEach((h, i) => { obj[h] = cols[i] || ''; });
+          const assignedName = (obj.employee || obj['assigned to'] || obj['assigned employee'] || '').trim();
           return {
             name: obj.name || 'Unnamed Contact',
             company: obj.company || '',
             email: obj.email || '',
             phone: obj.phone || '',
-            city: obj.city || obj['city/area'] || '',
-            score: obj.score ? Number(obj.score) : null
+            city: obj.city || obj['city/area'] || obj.location || '',
+            score: obj.score ? Number(obj.score) : null,
+            amount: obj.amount ? Number(obj.amount) : null,
+            bank: obj.bank || '',
+            status: obj.status || 'Active',
+            assignedName
           };
         });
 
@@ -144,10 +194,14 @@ export default function Contacts() {
         let failed = 0;
         for (const row of imported) {
           try {
-            const { score, ...contactData } = row;
+            const { score, assignedName, ...contactData } = row;
             const newContact = await createContact(token, contactData);
             if (score !== null && !Number.isNaN(score)) {
               await updateContact(token, newContact.id, { score });
+            }
+            if (assignedName) {
+              const match = teamMembers.find((m) => m.name.toLowerCase() === assignedName.toLowerCase());
+              if (match) await assignContact(token, newContact.id, match.id);
             }
             created++;
           } catch (rowErr) {
@@ -169,8 +223,11 @@ export default function Contacts() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Name', 'Company', 'Email', 'Phone', 'City/Area', 'Score'];
-    const rows = filteredContacts.map((c) => [c.name, c.company || '', c.email || '', c.phone || '', c.city || '', c.score ?? '']);
+    const headers = ['Name', 'Company', 'Email', 'Phone', 'City/Area', 'Score', 'Amount', 'Bank', 'Status', 'Employee'];
+    const rows = filteredContacts.map((c) => [
+      c.name, c.company || '', c.email || '', c.phone || '', c.city || '', c.score ?? '',
+      c.amount ?? '', c.bank || '', c.status || '', c.assigned_team_member_name || ''
+    ]);
     const csvContent = [headers, ...rows]
       .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
       .join('\n');
@@ -288,7 +345,10 @@ export default function Contacts() {
       company: contact.company || '',
       email: contact.email || '',
       phone: contact.phone || '',
-      city: contact.city || ''
+      city: contact.city || '',
+      amount: contact.amount ?? '',
+      bank: contact.bank || '',
+      status: contact.status || 'Active'
     });
     setShowForm(true);
   };
@@ -308,11 +368,13 @@ export default function Contacts() {
     e.preventDefault();
     if (!contactForm.name.trim()) return;
 
+    const payload = { ...contactForm, amount: contactForm.amount === '' ? null : Number(contactForm.amount) };
+
     try {
       if (editingContactId) {
-        await updateContact(token, editingContactId, contactForm);
+        await updateContact(token, editingContactId, payload);
       } else {
-        await createContact(token, contactForm);
+        await createContact(token, payload);
       }
       setShowForm(false);
       setContactForm(emptyContactForm);
@@ -561,6 +623,38 @@ export default function Contacts() {
                   <span className="score-badge-inline">{contact.score}%</span>
                 )}
 
+                {contact.city && (
+                  <span className="contact-location-badge" title="Location">📍 {contact.city}</span>
+                )}
+
+                <select
+                  className={`status-select-compact status-${statusClass(contact.status)}`}
+                  value={contact.status || 'Active'}
+                  onChange={(e) => handleStatusChange(contact.id, e.target.value)}
+                >
+                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+
+                {(contact.amount != null || contact.bank) && (
+                  <span className="contact-amount-bank-badge" title="Amount / Bank">
+                    {contact.amount != null ? `₹${Number(contact.amount).toLocaleString('en-IN')}` : ''}
+                    {contact.amount != null && contact.bank ? ' · ' : ''}
+                    {contact.bank || ''}
+                  </span>
+                )}
+
+                <select
+                  className="employee-assign-select"
+                  value={contact.assigned_team_member_id || ''}
+                  onChange={(e) => handleAssignChange(contact.id, e.target.value)}
+                  title="Assigned employee"
+                >
+                  <option value="">Unassigned</option>
+                  {teamMembers.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+
                 <div className="contact-row-actions">
                   <button className="btn-action call" onClick={() => handleCall(contact)} title="Click to Call">☎️</button>
                   <button className="btn-action sms" onClick={() => handleSms(contact)} title="Send SMS">📱</button>
@@ -584,6 +678,10 @@ export default function Contacts() {
                   <p><strong>Email:</strong> {contact.email || '-'}</p>
                   <p><strong>Phone:</strong> {contact.phone || '-'}</p>
                   <p><strong>City/Area:</strong> 📍 {contact.city || '-'}</p>
+                  <p><strong>Amount:</strong> {contact.amount != null ? `₹${Number(contact.amount).toLocaleString('en-IN')}` : '-'}</p>
+                  <p><strong>Bank/Insurer:</strong> {contact.bank || '-'}</p>
+                  <p><strong>Status:</strong> {contact.status || '-'}</p>
+                  <p><strong>Assigned To:</strong> {contact.assigned_team_member_name || 'Unassigned'}</p>
                 </div>
               )}
             </div>
@@ -636,12 +734,39 @@ export default function Contacts() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>City/Area</label>
+                  <label>City/Area (Location)</label>
                   <input
                     type="text"
                     value={contactForm.city}
                     onChange={(e) => setContactForm({ ...contactForm, city: e.target.value })}
                   />
+                </div>
+                <div className="form-group">
+                  <label>Amount (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={contactForm.amount}
+                    onChange={(e) => setContactForm({ ...contactForm, amount: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Bank / Insurer</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. HDFC Bank, TATA AIG..."
+                    value={contactForm.bank}
+                    onChange={(e) => setContactForm({ ...contactForm, bank: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Status</label>
+                  <select
+                    value={contactForm.status}
+                    onChange={(e) => setContactForm({ ...contactForm, status: e.target.value })}
+                  >
+                    {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
               </div>
               <div className="modal-actions">
