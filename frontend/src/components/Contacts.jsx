@@ -260,6 +260,23 @@ export default function Contacts() {
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadTemplate = () => {
+    const headers = ['Name', 'Company', 'Email', 'Phone', 'City', 'Amount', 'Bank', 'Status', 'Renewal Date', 'Employee'];
+    const example = ['Rohit Sharma', 'ABC Traders', 'rohit@example.com', '9876543210', 'Pune', '500000', 'HDFC ERGO', 'Active', '2026-09-15', 'Rajesh Kumar'];
+    const csvContent = [headers, example]
+      .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'contacts-import-template.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleCall = async (contact) => {
     if (!contact.phone) {
       alert('No phone number available');
@@ -607,6 +624,9 @@ export default function Contacts() {
             onChange={handleImportFile}
             style={{ display: 'none' }}
           />
+          <button className="btn-secondary" onClick={handleDownloadTemplate} title="Download a blank CSV with the correct column headers, including Renewal Date">
+            📄 Template
+          </button>
           <button className="btn-secondary" onClick={handleImportClick}>📥 Import</button>
           {canExport && (
             <button className="btn-secondary" onClick={handleExportCSV}>📤 Export</button>
