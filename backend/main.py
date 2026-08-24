@@ -1072,89 +1072,117 @@ def _delete_audio_file(audio_url):
     except OSError as e:
         print(f"[WARN] Could not remove audio file {audio_url}: {e}")
 
+def _ai_configured():
+    """Whether at least one text-generation AI provider is set up on this server."""
+    return bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY"))
+
+def _call_ai_text(prompt, max_tokens=400):
+    """Shared AI call behind every text-generation feature (AI Suggest Follow-up, Detect
+    Date, AI Content Studio). Tries Claude (ANTHROPIC_API_KEY) first; if that key isn't set,
+    OR the Claude call itself fails for any reason (e.g. "credit balance too low"), falls back
+    to OpenAI (OPENAI_API_KEY) so the feature keeps working as long as at least one of the two
+    is funded - useful since the two are billed separately and one may run dry before the
+    other is set up. Returns (text, error_message, provider) - exactly one of text/error_message
+    is set. Caller is responsible for the configured=False case via _ai_configured()."""
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+    claude_error = None
+
+    if anthropic_key:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=anthropic_key)
+            response = client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            text = "".join(block.text for block in response.content if hasattr(block, 'text')).strip()
+            return text, None, "Claude"
+        except Exception as e:
+            claude_error = str(e)
+
+    if openai_key:
+        try:
+            import openai
+            client = openai.OpenAI(api_key=openai_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            text = (response.choices[0].message.content or "").strip()
+            return text, None, ("OpenAI (Claude fallback)" if claude_error else "OpenAI")
+        except Exception as e:
+            if claude_error:
+                return None, f"Claude request failed: {claude_error}. OpenAI fallback also failed: {str(e)}", None
+            return None, f"OpenAI request failed: {str(e)}", None
+
+    return None, f"Claude request failed: {claude_error}", None
+
 def _generate_ai_suggestion(person_name, notes):
-    """Draft a follow-up suggestion from a contact/lead's note history via Claude. Requires
-    ANTHROPIC_API_KEY - returns configured=False (not an error) when it isn't set, so the
-    frontend can show a clear "not set up" message instead of a generic failure."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return AISummaryResponse(configured=False, message="Claude AI is not configured on this server.")
+    """Draft a follow-up suggestion from a contact/lead's note history via Claude or OpenAI.
+    Returns configured=False (not an error) when neither is set, so the frontend can show a
+    clear "not set up" message instead of a generic failure."""
+    if not _ai_configured():
+        return AISummaryResponse(configured=False, message="Neither Claude AI nor OpenAI is configured on this server.")
 
     transcripts = [n['transcript'] for n in notes if n.get('transcript')]
     if not transcripts:
         return AISummaryResponse(configured=True, message="No notes yet to summarize.", suggestion=None)
 
     history = "\n".join(f"- {t}" for t in transcripts)
+    prompt = (
+        f"You are a sales assistant for an insurance/loan CRM. Here is the call "
+        f"note history for {person_name}:\n{history}\n\n"
+        "In 2-3 short sentences, suggest what the next follow-up conversation "
+        "should cover. Be specific and actionable, not generic."
+    )
 
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=300,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"You are a sales assistant for an insurance/loan CRM. Here is the call "
-                    f"note history for {person_name}:\n{history}\n\n"
-                    "In 2-3 short sentences, suggest what the next follow-up conversation "
-                    "should cover. Be specific and actionable, not generic."
-                )
-            }]
-        )
-        suggestion = "".join(block.text for block in response.content if hasattr(block, 'text')).strip()
-        return AISummaryResponse(configured=True, message="Suggestion generated.", suggestion=suggestion)
-    except Exception as e:
-        return AISummaryResponse(configured=True, message=f"Claude request failed: {str(e)}")
+    suggestion, error, provider = _call_ai_text(prompt, max_tokens=300)
+    if error:
+        return AISummaryResponse(configured=True, message=error)
+    message = "Suggestion generated." if provider == "Claude" else f"Suggestion generated (via {provider})."
+    return AISummaryResponse(configured=True, message=message, suggestion=suggestion)
 
 def _detect_followup_date(text):
-    """Ask Claude whether a note's text mentions a next-conversation date/time (e.g. someone
-    dictating "next conversation is on 25th of August" via the voice-note recorder, which only
-    transcribes speech - it doesn't itself understand instructions). Same configured=False /
-    graceful-failure pattern as every other Claude endpoint here."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return DetectDateResponse(configured=False, message="Claude AI is not configured on this server.")
+    """Ask Claude or OpenAI whether a note's text mentions a next-conversation date/time (e.g.
+    someone dictating "next conversation is on 25th of August" via the voice-note recorder,
+    which only transcribes speech - it doesn't itself understand instructions). Same
+    configured=False / graceful-failure pattern as every other AI endpoint here."""
+    if not _ai_configured():
+        return DetectDateResponse(configured=False, message="Neither Claude AI nor OpenAI is configured on this server.")
 
     if not text or not text.strip():
         return DetectDateResponse(configured=True, message="No text to check.", detected_date=None)
 
     today = datetime.now().strftime("%Y-%m-%d (%A)")
+    prompt = (
+        f"Today's date is {today}. Read this call note and check whether it "
+        f"mentions a date/time for a NEXT conversation or follow-up (not the call "
+        f"that just happened today):\n\n\"{text}\"\n\n"
+        "If it does, reply with ONLY that date/time in exactly this format: "
+        "YYYY-MM-DDTHH:MM (use 09:00 if no time was mentioned). "
+        "If it does not mention a future date, reply with exactly: NONE"
+    )
 
+    raw, error, provider = _call_ai_text(prompt, max_tokens=50)
+    if error:
+        return DetectDateResponse(configured=True, message=error)
+
+    if raw == "NONE" or not raw:
+        return DetectDateResponse(configured=True, message="No date mentioned in the note.", detected_date=None)
+
+    # Validate the model's answer is actually a parseable date before handing it to the
+    # frontend - if it replied with anything else, treat that as "nothing found" rather
+    # than risk feeding a malformed value into a date input.
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=50,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Today's date is {today}. Read this call note and check whether it "
-                    f"mentions a date/time for a NEXT conversation or follow-up (not the call "
-                    f"that just happened today):\n\n\"{text}\"\n\n"
-                    "If it does, reply with ONLY that date/time in exactly this format: "
-                    "YYYY-MM-DDTHH:MM (use 09:00 if no time was mentioned). "
-                    "If it does not mention a future date, reply with exactly: NONE"
-                )
-            }]
-        )
-        raw = "".join(block.text for block in response.content if hasattr(block, 'text')).strip()
+        datetime.strptime(raw, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return DetectDateResponse(configured=True, message="No date mentioned in the note.", detected_date=None)
 
-        if raw == "NONE" or not raw:
-            return DetectDateResponse(configured=True, message="No date mentioned in the note.", detected_date=None)
-
-        # Validate Claude's answer is actually a parseable date before handing it to the
-        # frontend - if it replied with anything else, treat that as "nothing found" rather
-        # than risk feeding a malformed value into a date input.
-        try:
-            datetime.strptime(raw, "%Y-%m-%dT%H:%M")
-        except ValueError:
-            return DetectDateResponse(configured=True, message="No date mentioned in the note.", detected_date=None)
-
-        return DetectDateResponse(configured=True, message=f"Detected {raw.replace('T', ' ')}.", detected_date=raw)
-    except Exception as e:
-        return DetectDateResponse(configured=True, message=f"Claude request failed: {str(e)}")
+    message = f"Detected {raw.replace('T', ' ')}." if provider == "Claude" else f"Detected {raw.replace('T', ' ')} (via {provider})."
+    return DetectDateResponse(configured=True, message=message, detected_date=raw)
 
 @app.post("/api/ai/detect-followup-date", response_model=DetectDateResponse)
 async def detect_followup_date(payload: DetectDateRequest, token: str = Query(None)):
@@ -1720,22 +1748,21 @@ async def linkedin_post(payload: LinkedInPostRequest, token: str = Query(None)):
 
 # ============= AI CONTENT STUDIO (MARKETING TAB) =============
 #
-# Text-content generation via Claude - drafts a WhatsApp/Email/LinkedIn-ready caption for a
-# festival, promotion, or reminder. This does NOT create graphic designs; a real "generate a
-# branded Canva creative automatically" pipeline needs Canva's Connect/Autofill API, which
-# requires a Canva Developer app + brand template setup that's a separate project from this
-# CRM. What's built here is the piece that's actually feasible today: real AI-written copy,
-# same graceful-degradation pattern as every other Claude endpoint (configured=False if
-# ANTHROPIC_API_KEY isn't set, rather than erroring).
+# Text-content generation via Claude (falling back to OpenAI - see _call_ai_text) - drafts a
+# WhatsApp/Email/LinkedIn-ready caption for a festival, promotion, or reminder. This does NOT
+# create graphic designs; a real "generate a branded Canva creative automatically" pipeline
+# needs Canva's Connect/Autofill API, which requires a Canva Developer app + brand template
+# setup that's a separate project from this CRM. What's built here is the piece that's
+# actually feasible today: real AI-written copy, same graceful-degradation pattern as every
+# other AI endpoint (configured=False if neither provider is set, rather than erroring).
 
 @app.post("/api/marketing/generate-content", response_model=GenerateContentResponse)
 async def generate_marketing_content(payload: GenerateContentRequest, token: str = Query(None)):
-    """Draft marketing copy for a festival/occasion + platform via Claude."""
+    """Draft marketing copy for a festival/occasion + platform via Claude or OpenAI."""
     get_current_user(token)
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return GenerateContentResponse(configured=False, message="Claude AI is not configured on this server.")
+    if not _ai_configured():
+        return GenerateContentResponse(configured=False, message="Neither Claude AI nor OpenAI is configured on this server.")
 
     if not payload.occasion.strip():
         return GenerateContentResponse(configured=True, message="Enter an occasion or topic first.", content=None)
@@ -1748,28 +1775,19 @@ async def generate_marketing_content(payload: GenerateContentRequest, token: str
     }.get(payload.platform, "Keep it concise and platform-appropriate.")
 
     extra = f"\nAdditional context from the user: {payload.notes.strip()}" if payload.notes else ""
+    prompt = (
+        "You are writing marketing content for a solo Indian insurance & loan "
+        f"distributor (ArthaInvest) to send to their clients for: {payload.occasion}.\n"
+        f"Platform: {payload.platform}. {platform_hint}{extra}\n\n"
+        "Write only the ready-to-send content itself - no preamble, no options, no "
+        "explanation of what you wrote."
+    )
 
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=400,
-            messages=[{
-                "role": "user",
-                "content": (
-                    "You are writing marketing content for a solo Indian insurance & loan "
-                    f"distributor (ArthaInvest) to send to their clients for: {payload.occasion}.\n"
-                    f"Platform: {payload.platform}. {platform_hint}{extra}\n\n"
-                    "Write only the ready-to-send content itself - no preamble, no options, no "
-                    "explanation of what you wrote."
-                )
-            }]
-        )
-        content = "".join(block.text for block in response.content if hasattr(block, 'text')).strip()
-        return GenerateContentResponse(configured=True, message="Content generated.", content=content)
-    except Exception as e:
-        return GenerateContentResponse(configured=True, message=f"Claude request failed: {str(e)}")
+    content, error, provider = _call_ai_text(prompt, max_tokens=400)
+    if error:
+        return GenerateContentResponse(configured=True, message=error)
+    message = "Content generated." if provider == "Claude" else f"Content generated (via {provider})."
+    return GenerateContentResponse(configured=True, message=message, content=content)
 
 # ============= AI VOICE CALLER (PRITI / VAPI) =============
 #

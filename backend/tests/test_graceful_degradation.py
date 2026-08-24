@@ -3,6 +3,8 @@ its credentials aren't set, rather than raising an error - this is what lets the
 back cleanly (tel:/wa.me/mailto: links) instead of showing a broken feature. conftest.py strips
 all credential env vars before each test, so these always exercise the unconfigured path."""
 
+from unittest.mock import patch, MagicMock
+
 
 def test_twilio_dial_unconfigured(auth_client):
     resp = auth_client.post("/api/calls/dial", json={"to": "+911234567890"})
@@ -74,6 +76,48 @@ def test_generate_marketing_content_unconfigured(auth_client):
     data = resp.json()
     assert data["configured"] is False
     assert data["content"] is None
+
+
+def test_marketing_content_falls_back_to_openai_when_claude_unconfigured(auth_client, monkeypatch):
+    """With ANTHROPIC_API_KEY unset (stripped by conftest) but OPENAI_API_KEY present, the
+    shared _call_ai_text helper must route to OpenAI instead of returning unconfigured."""
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-openai-key-for-test")
+    fake_response = MagicMock()
+    fake_response.choices = [MagicMock(message=MagicMock(content="Happy Diwali from ArthaInvest!"))]
+
+    with patch("openai.OpenAI") as mock_openai_cls:
+        mock_openai_cls.return_value.chat.completions.create.return_value = fake_response
+        resp = auth_client.post("/api/marketing/generate-content", json={"occasion": "Diwali", "platform": "WhatsApp"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["configured"] is True
+    assert data["content"] == "Happy Diwali from ArthaInvest!"
+    assert "OpenAI" in data["message"]
+
+
+def test_ai_suggestion_falls_back_to_openai_when_claude_fails(auth_client, monkeypatch):
+    """With ANTHROPIC_API_KEY set but the Claude call itself failing (e.g. low credit balance),
+    and OPENAI_API_KEY also set, the fallback must still produce a usable suggestion rather
+    than surfacing the Claude error."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-anthropic-key-for-test")
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-openai-key-for-test")
+
+    auth_client.post("/api/leads/1/notes", json={"transcript": "Client wants to review the home loan next week."})
+
+    fake_response = MagicMock()
+    fake_response.choices = [MagicMock(message=MagicMock(content="Follow up about the home loan terms."))]
+
+    with patch("anthropic.Anthropic") as mock_anthropic_cls, patch("openai.OpenAI") as mock_openai_cls:
+        mock_anthropic_cls.return_value.messages.create.side_effect = Exception("credit balance too low")
+        mock_openai_cls.return_value.chat.completions.create.return_value = fake_response
+        resp = auth_client.post("/api/leads/1/ai-suggest")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["configured"] is True
+    assert data["suggestion"] == "Follow up about the home loan terms."
+    assert "OpenAI" in data["message"]
 
 
 def test_voice_agent_call_unconfigured(auth_client):
