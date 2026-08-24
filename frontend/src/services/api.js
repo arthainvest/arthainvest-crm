@@ -120,6 +120,11 @@ export const moveDeal = async (token, dealId, stage) => {
   return response.data;
 };
 
+export const assignDeal = async (token, dealId, teamMemberId) => {
+  const response = await api.put(`/api/deals/${dealId}/assign?token=${token}`, { team_member_id: teamMemberId });
+  return response.data;
+};
+
 // Analytics
 export const getDashboardAnalytics = async (token) => {
   const response = await api.get(`/api/analytics/dashboard?token=${token}`);
@@ -258,6 +263,12 @@ export const aiSuggestContactFollowup = async (token, contactId) => {
 
 export const aiSuggestLeadFollowup = async (token, leadId) => {
   const response = await api.post(`/api/leads/${leadId}/ai-suggest?token=${token}`);
+  return response.data;
+};
+
+// Claude AI follow-up date detection (Notes modal "Detect Date" button)
+export const detectFollowupDate = async (token, text) => {
+  const response = await api.post(`/api/ai/detect-followup-date?token=${token}`, { text });
   return response.data;
 };
 

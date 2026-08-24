@@ -11,15 +11,20 @@
 
 .pipeline-overview {
   display: flex;
+  flex-direction: column;
   gap: 20px;
-  align-items: flex-start;
 }
 
 .funnel-panel {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   gap: 16px;
-  flex: 0 0 260px;
+  width: 100%;
+}
+
+.funnel-panel .funnel-card {
+  flex: 1 1 200px;
 }
 
 .funnel-card {
@@ -265,6 +270,22 @@
   transform: scale(1.15);
 }
 
+.employee-assign-select {
+  padding: 5px 22px 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-neutral);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  max-width: 140px;
+}
+
 .process-status-select {
   padding: 5px 24px 5px 10px;
   border-radius: 20px;
@@ -288,19 +309,3 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
-@media (max-width: 900px) {
-  .pipeline-overview {
-    flex-direction: column;
-  }
-
-  .funnel-panel {
-    flex-direction: row;
-    flex-wrap: wrap;
-    flex-basis: auto;
-    width: 100%;
-  }
-
-  .funnel-card {
-    flex: 1 1 200px;
-  }
-}

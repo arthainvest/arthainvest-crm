@@ -6,7 +6,7 @@ import {
 import '../styles/Reports.css';
 
 const REPORT_PERIODS = ['This Month', 'Last Month', 'Last Quarter', 'This Year'];
-const ROLE_LABELS = { admin: 'Admin', team_lead: 'Team Leader', location_head: 'Location Head', employee: 'Employee' };
+const ROLE_LABELS = { admin: 'Admin', team_lead: 'Team Leader', location_head: 'Location Head', business_manager: 'Business Manager', employee: 'Employee' };
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('sales');

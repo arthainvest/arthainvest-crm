@@ -3,7 +3,7 @@ import {
   getContactsList, createContact, updateContact, deleteContact,
   getContactNotes, createContactNote, updateContactNote, deleteContactNote,
   uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup,
-  sendWhatsApp, sendEmailReal, sendSms
+  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate
 } from '../services/api';
 import '../styles/Contacts.css';
 
@@ -75,6 +75,8 @@ export default function Contacts() {
   const [notes, setNotes] = useState([]);
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [dateDetectMessage, setDateDetectMessage] = useState(null);
+  const [dateDetecting, setDateDetecting] = useState(false);
   const [noteDraft, setNoteDraft] = useState(emptyNoteDraft);
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -327,6 +329,7 @@ export default function Contacts() {
     resetNoteDraft();
     setIsRecording(false);
     setAiSuggestion(null);
+    setDateDetectMessage(null);
     setShowNotes(true);
     try {
       const data = await getContactNotes(token, contact.id);
@@ -349,6 +352,24 @@ export default function Contacts() {
       setAiSuggestion('Failed to get a suggestion. Please try again.');
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const handleDetectDate = async () => {
+    if (!noteDraft.transcript.trim()) return;
+    setDateDetecting(true);
+    setDateDetectMessage(null);
+    try {
+      const result = await detectFollowupDate(token, noteDraft.transcript);
+      if (result.detected_date) {
+        setNoteDraft((prev) => ({ ...prev, nextConversation: result.detected_date }));
+      }
+      setDateDetectMessage(result.message);
+    } catch (error) {
+      console.error('Error detecting follow-up date:', error);
+      setDateDetectMessage('Failed to check for a date. Please try again.');
+    } finally {
+      setDateDetecting(false);
     }
   };
 
@@ -779,7 +800,19 @@ export default function Contacts() {
                   {draftAudioUrl && (
                     <audio controls src={draftAudioUrl} className="voice-playback" />
                   )}
+                  <button
+                    type="button"
+                    className="btn-detect-date"
+                    onClick={handleDetectDate}
+                    disabled={dateDetecting || !noteDraft.transcript.trim()}
+                    title="Ask Claude AI whether these notes mention a next-conversation date"
+                  >
+                    {dateDetecting ? '🗓️ Checking…' : '🗓️ Detect Date'}
+                  </button>
                 </div>
+                {dateDetectMessage && (
+                  <p className="date-detect-message">{dateDetectMessage}</p>
+                )}
 
                 <div className="modal-actions">
                   <button className="btn-primary" onClick={saveNote}>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDeals, getLeads, createDeal, createLead } from '../services/api';
+import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Pipeline.css';
 
@@ -61,6 +61,7 @@ export default function Pipeline() {
 
   const [deals, setDeals] = useState(mockDeals);
   const [leads, setLeads] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [showDigi, setShowDigi] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(null);
@@ -105,13 +106,42 @@ export default function Pipeline() {
       loanProduct: d.loan_product || d.loanProduct || lead?.product || 'LAP',
       stage: STAGES.find((s) => s.toLowerCase() === String(d.stage).toLowerCase()) || 'New',
       probability: d.probability > 1 ? Math.round(d.probability) : Math.round((d.probability ?? 0) * 100),
-      processStatus: d.processStatus || 'Login'
+      processStatus: d.processStatus || 'Login',
+      assignedTeamMemberId: d.assigned_team_member_id ?? null,
+      assignedTeamMemberName: d.assigned_team_member_name ?? null
     };
   };
 
   useEffect(() => {
     fetchDeals();
+    fetchTeamMembers();
   }, []);
+
+  const fetchTeamMembers = async () => {
+    try {
+      const data = await getTeam(token);
+      setTeamMembers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching team members:', error);
+    }
+  };
+
+  const handleAssignChange = async (dealId, teamMemberIdRaw) => {
+    const teamMemberId = teamMemberIdRaw === '' ? null : Number(teamMemberIdRaw);
+    // Optimistic update so the dropdown feels instant; fetchDeals() would also pick up the
+    // real name from the backend, but there's no need to round-trip for something this simple.
+    const member = teamMembers.find((m) => m.id === teamMemberId);
+    setDeals((prev) => prev.map((d) => (
+      d.id === dealId ? { ...d, assignedTeamMemberId: teamMemberId, assignedTeamMemberName: member?.name || null } : d
+    )));
+    try {
+      await assignDeal(token, dealId, teamMemberId);
+    } catch (error) {
+      console.error('Error assigning deal:', error);
+      alert('Failed to update assignment. Please try again.');
+      fetchDeals();
+    }
+  };
 
   const fetchDeals = async () => {
     try {
@@ -255,6 +285,7 @@ export default function Pipeline() {
                   <th>Client</th>
                   <th>Amount</th>
                   <th>Type of Loan</th>
+                  <th>Employee</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -276,6 +307,18 @@ export default function Pipeline() {
                       <td className="pipeline-client-name">{deal.name}</td>
                       <td>₹{deal.value}K</td>
                       <td>{loanInfo?.icon} {loanInfo?.name}</td>
+                      <td>
+                        <select
+                          className="employee-assign-select"
+                          value={deal.assignedTeamMemberId ?? ''}
+                          onChange={(e) => handleAssignChange(deal.id, e.target.value)}
+                        >
+                          <option value="">Unassigned</option>
+                          {teamMembers.map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      </td>
                       <td>
                         <select
                           className={`process-status-select status-${(deal.processStatus || 'Login').toLowerCase()}`}

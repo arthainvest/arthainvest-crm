@@ -139,10 +139,12 @@ def init_db():
                 expected_close_date DATE,
                 owner_id INTEGER,
                 notes TEXT,
+                assigned_team_member_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (lead_id) REFERENCES leads(id),
-                FOREIGN KEY (owner_id) REFERENCES users(id)
+                FOREIGN KEY (owner_id) REFERENCES users(id),
+                FOREIGN KEY (assigned_team_member_id) REFERENCES team_members(id)
             )
         """)
 
@@ -152,6 +154,10 @@ def init_db():
         # the expected/safe outcome on every startup after the first.
         try:
             cursor.execute("ALTER TABLE deals ADD COLUMN loan_product TEXT DEFAULT 'LAP'")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE deals ADD COLUMN assigned_team_member_id INTEGER")
         except sqlite3.OperationalError:
             pass
 

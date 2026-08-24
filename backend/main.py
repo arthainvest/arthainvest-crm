@@ -9,6 +9,7 @@ import os
 import uuid
 import smtplib
 import hashlib
+from datetime import datetime
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
@@ -16,7 +17,7 @@ from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
     LeadCreate, LeadUpdate, LeadResponse,
-    DealCreate, DealMove, DealResponse,
+    DealCreate, DealMove, DealAssign, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     IntegrationToggle, IntegrationResponse,
     SettingsUpdate, SettingsResponse,
@@ -25,6 +26,7 @@ from schemas import (
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     CallCreate, CallResponse,
     DialRequest, DialResponse, AISummaryResponse,
+    DetectDateRequest, DetectDateResponse,
     WhatsAppSendRequest, WhatsAppSendResponse,
     EmailSendRequest, EmailSendResponse,
     SmsSendRequest, SmsSendResponse,
@@ -96,6 +98,21 @@ def get_current_user(token: str = None):
         raise HTTPException(status_code=401, detail="Invalid token")
 
     return user_data
+
+def fetch_deal_with_member_name(cursor, deal_id):
+    """Read one deal back out joined against team_members, so the frontend gets the assigned
+    employee's name alongside the raw id - avoids a second round-trip per row on the Pipeline
+    table just to resolve id -> name."""
+    cursor.execute(
+        """
+        SELECT deals.*, team_members.name as assigned_team_member_name
+        FROM deals
+        LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
+        WHERE deals.id = ?
+        """,
+        (deal_id,)
+    )
+    return dict(cursor.fetchone())
 
 def campaign_row_to_dict(row):
     """Attach computed engagement/progress to a raw campaign row"""
@@ -327,10 +344,15 @@ async def get_deals(stage: str = Query(None), token: str = Query(None)):
     with get_db() as conn:
         cursor = conn.cursor()
 
+        base_query = """
+            SELECT deals.*, team_members.name as assigned_team_member_name
+            FROM deals
+            LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
+        """
         if stage:
-            cursor.execute("SELECT * FROM deals WHERE stage = ? ORDER BY created_at DESC", (stage,))
+            cursor.execute(base_query + " WHERE deals.stage = ? ORDER BY deals.created_at DESC", (stage,))
         else:
-            cursor.execute("SELECT * FROM deals ORDER BY created_at DESC")
+            cursor.execute(base_query + " ORDER BY deals.created_at DESC")
 
         deals = [dict(row) for row in cursor.fetchall()]
 
@@ -358,11 +380,9 @@ async def create_deal(deal: DealCreate, token: str = Query(None)):
         )
         conn.commit()
         deal_id = cursor.lastrowid
+        new_deal = fetch_deal_with_member_name(cursor, deal_id)
 
-        cursor.execute("SELECT * FROM deals WHERE id = ?", (deal_id,))
-        new_deal = cursor.fetchone()
-
-    return dict(new_deal)
+    return new_deal
 
 @app.put("/api/deals/{deal_id}/move")
 async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
@@ -383,13 +403,38 @@ async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
         )
         conn.commit()
 
-        cursor.execute("SELECT * FROM deals WHERE id = ?", (deal_id,))
-        updated_deal = cursor.fetchone()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
 
-    if not updated_deal:
-        raise HTTPException(status_code=404, detail="Deal not found")
+        updated_deal = fetch_deal_with_member_name(cursor, deal_id)
 
-    return dict(updated_deal)
+    return updated_deal
+
+@app.put("/api/deals/{deal_id}/assign", response_model=DealResponse)
+async def assign_deal(deal_id: int, assignment: DealAssign, token: str = Query(None)):
+    """Assign (or unassign, if team_member_id is null) a deal to a team member, so admins and
+    the team lead can see who's working each deal in the Pipeline table."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        if assignment.team_member_id is not None:
+            cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (assignment.team_member_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Team member not found")
+
+        cursor.execute(
+            "UPDATE deals SET assigned_team_member_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (assignment.team_member_id, deal_id)
+        )
+        conn.commit()
+
+        return fetch_deal_with_member_name(cursor, deal_id)
 
 @app.delete("/api/deals/{deal_id}")
 async def delete_deal(deal_id: int, token: str = Query(None)):
@@ -958,6 +1003,62 @@ def _generate_ai_suggestion(person_name, notes):
         return AISummaryResponse(configured=True, message="Suggestion generated.", suggestion=suggestion)
     except Exception as e:
         return AISummaryResponse(configured=True, message=f"Claude request failed: {str(e)}")
+
+def _detect_followup_date(text):
+    """Ask Claude whether a note's text mentions a next-conversation date/time (e.g. someone
+    dictating "next conversation is on 25th of August" via the voice-note recorder, which only
+    transcribes speech - it doesn't itself understand instructions). Same configured=False /
+    graceful-failure pattern as every other Claude endpoint here."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return DetectDateResponse(configured=False, message="Claude AI is not configured on this server.")
+
+    if not text or not text.strip():
+        return DetectDateResponse(configured=True, message="No text to check.", detected_date=None)
+
+    today = datetime.now().strftime("%Y-%m-%d (%A)")
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=50,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Today's date is {today}. Read this call note and check whether it "
+                    f"mentions a date/time for a NEXT conversation or follow-up (not the call "
+                    f"that just happened today):\n\n\"{text}\"\n\n"
+                    "If it does, reply with ONLY that date/time in exactly this format: "
+                    "YYYY-MM-DDTHH:MM (use 09:00 if no time was mentioned). "
+                    "If it does not mention a future date, reply with exactly: NONE"
+                )
+            }]
+        )
+        raw = "".join(block.text for block in response.content if hasattr(block, 'text')).strip()
+
+        if raw == "NONE" or not raw:
+            return DetectDateResponse(configured=True, message="No date mentioned in the note.", detected_date=None)
+
+        # Validate Claude's answer is actually a parseable date before handing it to the
+        # frontend - if it replied with anything else, treat that as "nothing found" rather
+        # than risk feeding a malformed value into a date input.
+        try:
+            datetime.strptime(raw, "%Y-%m-%dT%H:%M")
+        except ValueError:
+            return DetectDateResponse(configured=True, message="No date mentioned in the note.", detected_date=None)
+
+        return DetectDateResponse(configured=True, message=f"Detected {raw.replace('T', ' ')}.", detected_date=raw)
+    except Exception as e:
+        return DetectDateResponse(configured=True, message=f"Claude request failed: {str(e)}")
+
+@app.post("/api/ai/detect-followup-date", response_model=DetectDateResponse)
+async def detect_followup_date(payload: DetectDateRequest, token: str = Query(None)):
+    """Check a note's text for a mentioned next-conversation date. Used by the Notes modal's
+    "Detect Date" button on both Contacts and Leads."""
+    get_current_user(token)
+    return _detect_followup_date(payload.text)
 
 # ============= LEAD NOTES ENDPOINTS =============
 
@@ -1588,7 +1689,7 @@ async def voice_agent_webhook(payload: dict):
 
 # ============= TEAM MANAGEMENT ENDPOINTS =============
 
-TEAM_ROLE_ORDER = {"admin": 0, "team_lead": 1, "location_head": 2, "employee": 3}
+TEAM_ROLE_ORDER = {"admin": 0, "team_lead": 1, "location_head": 2, "business_manager": 3, "employee": 4}
 
 @app.get("/api/team", response_model=list[TeamMemberResponse])
 async def get_team(token: str = Query(None)):

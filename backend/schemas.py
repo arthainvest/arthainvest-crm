@@ -69,6 +69,9 @@ class DealCreate(BaseModel):
 class DealMove(BaseModel):
     stage: str  # new, qualified, proposal, negotiation, closed
 
+class DealAssign(BaseModel):
+    team_member_id: Optional[int] = None  # None unassigns the deal
+
 class DealResponse(BaseModel):
     id: int
     lead_id: int
@@ -78,6 +81,8 @@ class DealResponse(BaseModel):
     loan_product: str
     expected_close_date: Optional[datetime]
     created_at: datetime
+    assigned_team_member_id: Optional[int] = None
+    assigned_team_member_name: Optional[str] = None
 
 # Campaign Schemas
 class CampaignCreate(BaseModel):
@@ -250,6 +255,15 @@ class AISummaryResponse(BaseModel):
     configured: bool
     message: str
     suggestion: Optional[str] = None
+
+# Claude AI follow-up date detection (Notes modal - "did you mention a date in that note?")
+class DetectDateRequest(BaseModel):
+    text: str
+
+class DetectDateResponse(BaseModel):
+    configured: bool
+    message: str
+    detected_date: Optional[str] = None  # ISO "YYYY-MM-DDTHH:MM" if a date/time was found
 
 # WhatsApp Business API (Meta Cloud API)
 class WhatsAppSendRequest(BaseModel):

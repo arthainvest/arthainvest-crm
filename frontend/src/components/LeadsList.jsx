@@ -3,7 +3,7 @@ import {
   getLeads, createLead, updateLead,
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
   uploadLeadNoteAudio, API_URL, dialCall, aiSuggestLeadFollowup,
-  sendWhatsApp, sendEmailReal, sendSms
+  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/LeadsList.css';
@@ -84,6 +84,8 @@ export default function LeadsList() {
   const [notes, setNotes] = useState([]);
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [dateDetectMessage, setDateDetectMessage] = useState(null);
+  const [dateDetecting, setDateDetecting] = useState(false);
   const [noteDraft, setNoteDraft] = useState({ callDateTime: '', nextConversation: '', transcript: '' });
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -331,6 +333,7 @@ export default function LeadsList() {
     resetNoteDraft();
     setIsRecording(false);
     setAiSuggestion(null);
+    setDateDetectMessage(null);
     setShowNotes(true);
     try {
       const data = await getLeadNotes(token, lead.id);
@@ -353,6 +356,24 @@ export default function LeadsList() {
       setAiSuggestion('Failed to get a suggestion. Please try again.');
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const handleDetectDate = async () => {
+    if (!noteDraft.transcript.trim()) return;
+    setDateDetecting(true);
+    setDateDetectMessage(null);
+    try {
+      const result = await detectFollowupDate(token, noteDraft.transcript);
+      if (result.detected_date) {
+        setNoteDraft((prev) => ({ ...prev, nextConversation: result.detected_date }));
+      }
+      setDateDetectMessage(result.message);
+    } catch (error) {
+      console.error('Error detecting follow-up date:', error);
+      setDateDetectMessage('Failed to check for a date. Please try again.');
+    } finally {
+      setDateDetecting(false);
     }
   };
 
@@ -743,7 +764,19 @@ export default function LeadsList() {
                 {draftAudioUrl && (
                   <audio controls src={draftAudioUrl} className="voice-playback" />
                 )}
+                <button
+                  type="button"
+                  className="btn-detect-date"
+                  onClick={handleDetectDate}
+                  disabled={dateDetecting || !noteDraft.transcript.trim()}
+                  title="Ask Claude AI whether these notes mention a next-conversation date"
+                >
+                  {dateDetecting ? '🗓️ Checking…' : '🗓️ Detect Date'}
+                </button>
               </div>
+              {dateDetectMessage && (
+                <p className="date-detect-message">{dateDetectMessage}</p>
+              )}
 
               <div className="modal-actions">
                 <button className="btn-primary" onClick={saveNote}>

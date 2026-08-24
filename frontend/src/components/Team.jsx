@@ -6,10 +6,11 @@ const ROLE_LABELS = {
   admin: 'Admin',
   team_lead: 'Team Leader',
   location_head: 'Location Head',
+  business_manager: 'Business Manager',
   employee: 'Employee'
 };
 
-const ROLE_ORDER = ['admin', 'team_lead', 'location_head', 'employee'];
+const ROLE_ORDER = ['admin', 'team_lead', 'location_head', 'business_manager', 'employee'];
 
 const emptyForm = { name: '', role: 'employee', email: '', phone: '' };
 
