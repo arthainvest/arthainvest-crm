@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getCampaigns, createCampaign, updateCampaign, deleteCampaign, syncMailchimp } from '../services/api';
+import {
+  getCampaigns, createCampaign, updateCampaign, deleteCampaign, syncMailchimp,
+  getSettings, getLinkedInConnectUrl, postToLinkedIn
+} from '../services/api';
 import '../styles/Marketing.css';
 
 const emptyCampaignForm = { name: '', type: 'Email', status: 'Active', recipients: '' };
@@ -10,6 +13,11 @@ export default function Marketing() {
   const [editingId, setEditingId] = useState(null);
   const [campaignForm, setCampaignForm] = useState(emptyCampaignForm);
   const [mailchimpSyncing, setMailchimpSyncing] = useState(false);
+
+  const [linkedInConnected, setLinkedInConnected] = useState(false);
+  const [linkedInConnecting, setLinkedInConnecting] = useState(false);
+  const [linkedInPostText, setLinkedInPostText] = useState('');
+  const [linkedInPosting, setLinkedInPosting] = useState(false);
 
   const token = localStorage.getItem('token');
 
@@ -26,8 +34,64 @@ export default function Marketing() {
     }
   };
 
+  const fetchLinkedInStatus = async () => {
+    try {
+      const settings = await getSettings(token);
+      setLinkedInConnected(!!settings.linkedin_connected);
+    } catch (error) {
+      console.error('Error fetching LinkedIn status:', error);
+    }
+  };
+
+  const handleConnectLinkedIn = async () => {
+    setLinkedInConnecting(true);
+    try {
+      const result = await getLinkedInConnectUrl(token);
+      if (result.configured && result.auth_url) {
+        window.location.href = result.auth_url;
+        return;
+      }
+      alert(result.message);
+    } catch (error) {
+      console.error('Error starting LinkedIn connect:', error);
+      alert('Failed to start LinkedIn connection. Please try again.');
+    } finally {
+      setLinkedInConnecting(false);
+    }
+  };
+
+  const handlePostToLinkedIn = async () => {
+    if (!linkedInPostText.trim()) return;
+    setLinkedInPosting(true);
+    try {
+      const result = await postToLinkedIn(token, linkedInPostText);
+      alert(result.message);
+      if (result.configured && result.post_urn) {
+        setLinkedInPostText('');
+      }
+    } catch (error) {
+      console.error('Error posting to LinkedIn:', error);
+      alert('Failed to post to LinkedIn. Please try again.');
+    } finally {
+      setLinkedInPosting(false);
+    }
+  };
+
   useEffect(() => {
     fetchCampaigns();
+    fetchLinkedInStatus();
+
+    // LinkedIn's OAuth redirect lands back here with ?linkedin=connected|error - surface it
+    // once, then clean the URL so a refresh doesn't re-show the same message.
+    const params = new URLSearchParams(window.location.search);
+    const linkedinResult = params.get('linkedin');
+    if (linkedinResult === 'connected') {
+      alert('LinkedIn connected successfully.');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (linkedinResult === 'error') {
+      alert('LinkedIn connection failed - please try again.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const fetchCampaigns = async () => {
@@ -122,6 +186,37 @@ export default function Marketing() {
         <button className="btn-secondary" onClick={handleMailchimpSync} disabled={mailchimpSyncing}>
           {mailchimpSyncing ? 'Syncing…' : 'Sync Contacts to Mailchimp'}
         </button>
+      </div>
+
+      <div className="linkedin-card">
+        <div className="linkedin-info">
+          <span className="linkedin-icon">💼</span>
+          <div>
+            <h3>LinkedIn</h3>
+            <p>
+              {linkedInConnected
+                ? 'Connected - post updates straight to your LinkedIn profile.'
+                : 'Connect your LinkedIn account to post updates from here.'}
+            </p>
+          </div>
+        </div>
+        {!linkedInConnected ? (
+          <button className="btn-secondary linkedin-btn" onClick={handleConnectLinkedIn} disabled={linkedInConnecting}>
+            {linkedInConnecting ? 'Redirecting…' : 'Connect LinkedIn'}
+          </button>
+        ) : (
+          <div className="linkedin-post-box">
+            <textarea
+              placeholder="Write an update to post to LinkedIn..."
+              value={linkedInPostText}
+              onChange={(e) => setLinkedInPostText(e.target.value)}
+              rows={3}
+            />
+            <button className="btn-secondary linkedin-btn" onClick={handlePostToLinkedIn} disabled={linkedInPosting || !linkedInPostText.trim()}>
+              {linkedInPosting ? 'Posting…' : 'Post to LinkedIn'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="stats-grid">

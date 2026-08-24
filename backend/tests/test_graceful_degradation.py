@@ -50,6 +50,24 @@ def test_claude_ai_suggest_unconfigured_for_lead(auth_client):
     assert resp.json()["configured"] is False
 
 
+def test_linkedin_connect_unconfigured(auth_client):
+    resp = auth_client.get("/api/integrations/linkedin/connect")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["configured"] is False
+    assert data["auth_url"] is None
+
+
+def test_linkedin_post_not_connected(auth_client):
+    """Even with LINKEDIN_CLIENT_ID/SECRET set, posting must fail gracefully (not crash) if
+    this particular user never completed the OAuth connect flow."""
+    resp = auth_client.post("/api/marketing/linkedin/post", json={"text": "Hello LinkedIn"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["configured"] is False
+    assert "connect" in data["message"].lower()
+
+
 def test_dial_requires_agent_phone_number(auth_client):
     """Even with Twilio env vars set, dialing must fail gracefully (not crash) if the agent
     hasn't saved their own phone number in Settings yet."""

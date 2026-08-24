@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from contextlib import asynccontextmanager
 import sqlite3
 from typing import List
@@ -28,6 +29,7 @@ from schemas import (
     EmailSendRequest, EmailSendResponse,
     SmsSendRequest, SmsSendResponse,
     MailchimpSyncResponse,
+    LinkedInConnectResponse, LinkedInPostRequest, LinkedInPostResponse,
     TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
@@ -633,6 +635,7 @@ async def get_settings(token: str = Query(None)):
     result['notifications'] = bool(result['notifications'])
     result['email_notifications'] = bool(result['email_notifications'])
     result['sms_notifications'] = bool(result['sms_notifications'])
+    result['linkedin_connected'] = bool(result.get('linkedin_access_token'))
     return result
 
 @app.put("/api/settings", response_model=SettingsResponse)
@@ -675,6 +678,7 @@ async def update_settings(settings: SettingsUpdate, token: str = Query(None)):
     result['notifications'] = bool(result['notifications'])
     result['email_notifications'] = bool(result['email_notifications'])
     result['sms_notifications'] = bool(result['sms_notifications'])
+    result['linkedin_connected'] = bool(result.get('linkedin_access_token'))
     return result
 
 # ============= CONTACTS ENDPOINTS =============
@@ -1317,6 +1321,165 @@ async def sync_mailchimp(token: str = Query(None)):
         return MailchimpSyncResponse(configured=True, message=f"Synced {synced} of {len(contacts)} contact(s) to Mailchimp.", synced_count=synced)
     except Exception as e:
         return MailchimpSyncResponse(configured=True, message=f"Mailchimp sync failed: {str(e)}")
+
+# ============= LINKEDIN (MARKETING TAB "POST TO LINKEDIN") =============
+#
+# OAuth 2.0, unlike every other integration here - there's no static API key to paste in.
+# The user clicks "Connect LinkedIn" in the frontend, which hits /connect for an authorization
+# URL, approves access on LinkedIn's own site, and LinkedIn redirects back to /callback with a
+# code we exchange for an access token. That token (and the member's LinkedIn URN, needed to
+# post as them) is stored on user_settings. Posts to the member's personal profile
+# (w_member_social) - posting as the Company Page itself needs a separate LinkedIn approval
+# (Community Management API) that isn't guaranteed instant, so it's out of scope here.
+
+LINKEDIN_AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization"
+LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
+LINKEDIN_USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
+LINKEDIN_POSTS_URL = "https://api.linkedin.com/rest/posts"
+
+@app.get("/api/integrations/linkedin/connect", response_model=LinkedInConnectResponse)
+async def linkedin_connect(token: str = Query(None)):
+    """Build the LinkedIn OAuth authorization URL for the frontend to open. The user's own
+    auth token rides along in the `state` param (LinkedIn returns it verbatim) so the callback
+    below - which LinkedIn calls directly, not through the frontend - knows which CRM user to
+    attach the resulting LinkedIn token to."""
+    get_current_user(token)
+
+    client_id = os.getenv("LINKEDIN_CLIENT_ID")
+    redirect_uri = os.getenv("LINKEDIN_REDIRECT_URI")
+
+    if not (client_id and redirect_uri):
+        return LinkedInConnectResponse(configured=False, message="LinkedIn is not configured on this server.")
+
+    from urllib.parse import urlencode
+    params = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "state": token,
+        "scope": "openid profile w_member_social",
+    }
+    return LinkedInConnectResponse(
+        configured=True,
+        message="Redirect the user to auth_url to connect their LinkedIn account.",
+        auth_url=f"{LINKEDIN_AUTH_URL}?{urlencode(params)}"
+    )
+
+@app.get("/api/integrations/linkedin/callback")
+async def linkedin_callback(code: str = Query(None), state: str = Query(None), error: str = Query(None)):
+    """LinkedIn redirects here after the user approves (or denies) access. Exchanges the code
+    for an access token, fetches the member's LinkedIn id, stores both, then bounces the
+    browser back to the Marketing tab so the UI can show the connected state."""
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+    if error or not code:
+        return RedirectResponse(f"{frontend_url}/marketing?linkedin=error")
+
+    current_user = get_current_user(state)
+
+    client_id = os.getenv("LINKEDIN_CLIENT_ID")
+    client_secret = os.getenv("LINKEDIN_CLIENT_SECRET")
+    redirect_uri = os.getenv("LINKEDIN_REDIRECT_URI")
+
+    try:
+        import requests
+        token_resp = requests.post(
+            LINKEDIN_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=10
+        )
+        token_resp.raise_for_status()
+        token_data = token_resp.json()
+        access_token = token_data["access_token"]
+        expires_in = token_data.get("expires_in", 60 * 24 * 60 * 60)  # LinkedIn default: 60 days
+
+        userinfo_resp = requests.get(
+            LINKEDIN_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10
+        )
+        userinfo_resp.raise_for_status()
+        member_urn = userinfo_resp.json()["sub"]
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
+            if not cursor.fetchone():
+                cursor.execute("INSERT INTO user_settings (user_id) VALUES (?)", (current_user['user_id'],))
+            cursor.execute(
+                """
+                UPDATE user_settings
+                SET linkedin_access_token = ?,
+                    linkedin_token_expires_at = datetime('now', ? || ' seconds'),
+                    linkedin_member_urn = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+                """,
+                (access_token, str(expires_in), member_urn, current_user['user_id'])
+            )
+            conn.commit()
+
+        return RedirectResponse(f"{frontend_url}/marketing?linkedin=connected")
+    except Exception as e:
+        print(f"[ERROR] LinkedIn OAuth callback failed: {e}")
+        return RedirectResponse(f"{frontend_url}/marketing?linkedin=error")
+
+@app.post("/api/marketing/linkedin/post", response_model=LinkedInPostResponse)
+async def linkedin_post(payload: LinkedInPostRequest, token: str = Query(None)):
+    """Publish a text post to the connected LinkedIn member's personal profile."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT linkedin_access_token, linkedin_member_urn FROM user_settings WHERE user_id = ?",
+            (current_user['user_id'],)
+        )
+        row = cursor.fetchone()
+
+    if not row or not row['linkedin_access_token']:
+        return LinkedInPostResponse(
+            configured=False,
+            message="LinkedIn is not connected - go to Marketing and click Connect LinkedIn first."
+        )
+
+    try:
+        import requests
+        resp = requests.post(
+            LINKEDIN_POSTS_URL,
+            headers={
+                "Authorization": f"Bearer {row['linkedin_access_token']}",
+                "LinkedIn-Version": "202401",
+                "X-Restli-Protocol-Version": "2.0.0",
+                "Content-Type": "application/json",
+            },
+            json={
+                "author": f"urn:li:person:{row['linkedin_member_urn']}",
+                "commentary": payload.text,
+                "visibility": "PUBLIC",
+                "distribution": {
+                    "feedDistribution": "MAIN_FEED",
+                    "targetEntities": [],
+                    "thirdPartyDistributionChannels": []
+                },
+                "lifecycleState": "PUBLISHED",
+                "isReshareDisabledByAuthor": False
+            },
+            timeout=10
+        )
+        if resp.status_code >= 400:
+            return LinkedInPostResponse(configured=True, message=f"LinkedIn couldn't publish the post: {resp.text[:300]}")
+        post_urn = resp.headers.get("x-restli-id", "")
+        return LinkedInPostResponse(configured=True, message="Posted to LinkedIn.", post_urn=post_urn)
+    except Exception as e:
+        return LinkedInPostResponse(configured=True, message=f"LinkedIn post failed: {str(e)}")
 
 # ============= TEAM MANAGEMENT ENDPOINTS =============
 

@@ -285,6 +285,17 @@ export const syncMailchimp = async (token) => {
   return response.data;
 };
 
+// LinkedIn (OAuth - no key to pass, just kicks off the connect flow / posts once connected)
+export const getLinkedInConnectUrl = async (token) => {
+  const response = await api.get(`/api/integrations/linkedin/connect?token=${token}`);
+  return response.data;
+};
+
+export const postToLinkedIn = async (token, text) => {
+  const response = await api.post(`/api/marketing/linkedin/post?token=${token}`, { text });
+  return response.data;
+};
+
 // Team management
 export const getTeam = async (token) => {
   const response = await api.get(`/api/team?token=${token}`);

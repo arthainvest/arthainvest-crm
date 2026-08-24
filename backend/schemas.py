@@ -145,6 +145,7 @@ class SettingsResponse(BaseModel):
     sms_notifications: bool
     ga_tracking_id: Optional[str] = None
     default_report_period: Optional[str] = None
+    linkedin_connected: bool = False
 
 # Contact Schemas
 class ContactCreate(BaseModel):
@@ -283,6 +284,20 @@ class MailchimpSyncResponse(BaseModel):
     configured: bool
     message: str
     synced_count: Optional[int] = None
+
+# LinkedIn (Marketing tab "Post to LinkedIn")
+class LinkedInConnectResponse(BaseModel):
+    configured: bool
+    message: str
+    auth_url: Optional[str] = None
+
+class LinkedInPostRequest(BaseModel):
+    text: str
+
+class LinkedInPostResponse(BaseModel):
+    configured: bool
+    message: str
+    post_urn: Optional[str] = None
 
 # Team Management
 class TeamMemberCreate(BaseModel):

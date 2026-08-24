@@ -293,6 +293,18 @@ def init_db():
             cursor.execute("ALTER TABLE user_settings ADD COLUMN default_report_period TEXT DEFAULT 'This Month'")
         except sqlite3.OperationalError:
             pass
+        try:
+            cursor.execute("ALTER TABLE user_settings ADD COLUMN linkedin_access_token TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE user_settings ADD COLUMN linkedin_token_expires_at TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE user_settings ADD COLUMN linkedin_member_urn TEXT")
+        except sqlite3.OperationalError:
+            pass
 
         conn.commit()
 
