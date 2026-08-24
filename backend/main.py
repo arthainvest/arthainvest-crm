@@ -102,6 +102,25 @@ def get_current_user(token: str = None):
 
     return user_data
 
+def require_admin(token: str = None):
+    """Same as get_current_user, but additionally requires the user's account role (looked up
+    fresh from the users table, not baked into the JWT, so a role change takes effect on the
+    very next request without needing to log back in) to be 'admin'. Used to gate
+    creating/editing/removing team roster entries - currently anyone with a valid login could
+    add or delete other people's records, which is the wrong default for something that
+    affects the whole team, not just the person doing it."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT role FROM users WHERE id = ?", (current_user['user_id'],))
+        row = cursor.fetchone()
+
+    if not row or row['role'] != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    return current_user
+
 def fetch_deal_with_member_name(cursor, deal_id):
     """Read one deal back out joined against team_members, so the frontend gets the assigned
     employee's name alongside the raw id - avoids a second round-trip per row on the Pipeline
@@ -2114,8 +2133,8 @@ async def get_team(token: str = Query(None)):
 
 @app.post("/api/team", response_model=TeamMemberResponse)
 async def create_team_member(member: TeamMemberCreate, token: str = Query(None)):
-    """Add a new team member"""
-    get_current_user(token)
+    """Add a new team member - admin only"""
+    require_admin(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -2129,8 +2148,8 @@ async def create_team_member(member: TeamMemberCreate, token: str = Query(None))
 
 @app.put("/api/team/{member_id}", response_model=TeamMemberResponse)
 async def update_team_member(member_id: int, member: TeamMemberUpdate, token: str = Query(None)):
-    """Update a team member's details"""
-    get_current_user(token)
+    """Update a team member's details - admin only"""
+    require_admin(token)
 
     field_map = {
         'name': member.name, 'role': member.role, 'email': member.email, 'phone': member.phone
@@ -2154,8 +2173,8 @@ async def update_team_member(member_id: int, member: TeamMemberUpdate, token: st
 
 @app.delete("/api/team/{member_id}")
 async def delete_team_member(member_id: int, token: str = Query(None)):
-    """Remove a team member"""
-    get_current_user(token)
+    """Remove a team member - admin only"""
+    require_admin(token)
 
     with get_db() as conn:
         cursor = conn.cursor()

@@ -10,6 +10,7 @@
 .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
 
 .team-role-empty { text-align: left; padding: 12px 0; font-size: 13px; }
+.team-readonly-note { color: var(--text-muted); font-size: 13px; margin: -18px 0 24px 0; font-style: italic; }
 
 .team-card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 18px; }
 

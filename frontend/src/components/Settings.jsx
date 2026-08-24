@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, updateSettings } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import { getSettings, updateSettings, getTeam } from '../services/api';
 import { applyTheme } from '../utils/theme';
 import '../styles/Settings.css';
+
+const ROLE_LABELS = {
+  admin: 'Admin',
+  team_lead: 'Team Leader',
+  location_head: 'Location Head',
+  business_manager: 'Business Manager',
+  employee: 'Employee'
+};
+const ROLE_ORDER = ['admin', 'team_lead', 'location_head', 'business_manager', 'employee'];
 
 const defaultSettings = {
   fullName: '',
@@ -46,11 +56,24 @@ export default function Settings() {
   const [settings, setSettings] = useState(defaultSettings);
   const [savedSettings, setSavedSettings] = useState(defaultSettings);
   const [saved, setSaved] = useState(false);
+  const [teamMembers, setTeamMembers] = useState([]);
   const token = localStorage.getItem('token');
+  const isAdmin = (localStorage.getItem('role') || '').toLowerCase() === 'admin';
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchSettings();
+    if (isAdmin) fetchTeamMembers();
   }, []);
+
+  const fetchTeamMembers = async () => {
+    try {
+      const data = await getTeam(token);
+      setTeamMembers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching team members:', error);
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -183,6 +206,36 @@ export default function Settings() {
             />
           </div>
         </div>
+
+        {isAdmin && (
+          <div className="settings-section">
+            <h2>Team &amp; Access</h2>
+            <p className="settings-section-hint">
+              Only Admin can add, edit, or remove team members - here's a quick summary of who's on the roster.
+            </p>
+            {teamMembers.length === 0 ? (
+              <p className="settings-section-hint">No team members yet.</p>
+            ) : (
+              <div className="team-role-summary">
+                {ROLE_ORDER.map((role) => {
+                  const people = teamMembers.filter((m) => m.role === role);
+                  return (
+                    <div key={role} className="team-role-summary-row">
+                      <span className="team-role-summary-label">{ROLE_LABELS[role]}</span>
+                      <span className="team-role-summary-count">{people.length}</span>
+                      <span className="team-role-summary-names">
+                        {people.length > 0 ? people.map((p) => p.name).join(', ') : '—'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button type="button" className="btn-secondary team-manage-btn" onClick={() => navigate('/team')}>
+              🧑‍🤝‍🧑 Manage Team →
+            </button>
+          </div>
+        )}
 
         <div className="settings-section">
           <h2>Notifications</h2>

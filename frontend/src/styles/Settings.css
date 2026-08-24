@@ -16,3 +16,11 @@
 .settings-actions .btn-primary { flex: 1; padding: 12px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
 .settings-actions .btn-secondary { flex: 1; padding: 12px; background: var(--border-subtle); color: #1976d2; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
 .save-message { color: #1976d2; font-weight: 500; margin-left: 10px; }
+
+.settings-section-hint { color: var(--text-muted); font-size: 13px; margin: 0 0 14px 0; }
+.team-role-summary { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.team-role-summary-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; padding: 8px 10px; background: var(--bg-subtle-alt); border-radius: 6px; }
+.team-role-summary-label { font-weight: 600; color: var(--text-heading); min-width: 110px; }
+.team-role-summary-count { background: #1976d2; color: white; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700; }
+.team-role-summary-names { color: var(--text-muted); flex: 1 1 auto; }
+.team-manage-btn { width: 100%; padding: 10px; background: var(--border-subtle); color: #1976d2; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }

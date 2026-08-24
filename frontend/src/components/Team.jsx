@@ -22,6 +22,7 @@ export default function Team() {
   const [form, setForm] = useState(emptyForm);
 
   const token = localStorage.getItem('token');
+  const isAdmin = (localStorage.getItem('role') || '').toLowerCase() === 'admin';
 
   useEffect(() => {
     fetchTeam();
@@ -102,8 +103,9 @@ export default function Team() {
     <div className="team-container">
       <div className="team-header">
         <h1>Team Management</h1>
-        <button className="btn-primary" onClick={handleAddClick}>+ Add Team Member</button>
+        {isAdmin && <button className="btn-primary" onClick={handleAddClick}>+ Add Team Member</button>}
       </div>
+      {!isAdmin && <p className="team-readonly-note">Only Admin can add, edit, or remove team members. You can view everyone's details below.</p>}
 
       {members.length === 0 ? (
         <p className="no-data">No team members yet. Add one to get started.</p>
@@ -144,10 +146,12 @@ export default function Team() {
                         <span className="team-stat-label">Revenue</span>
                       </div>
                     </div>
-                    <div className="team-card-actions">
-                      <button className="btn-small" onClick={() => handleEditClick(member)}>Edit</button>
-                      <button className="btn-small delete" onClick={() => handleDelete(member.id)}>Remove</button>
-                    </div>
+                    {isAdmin && (
+                      <div className="team-card-actions">
+                        <button className="btn-small" onClick={() => handleEditClick(member)}>Edit</button>
+                        <button className="btn-small delete" onClick={() => handleDelete(member.id)}>Remove</button>
+                      </div>
+                    )}
                   </div>
                 );
               })}

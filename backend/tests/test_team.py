@@ -34,6 +34,26 @@ def test_delete_nonexistent_team_member_404s(auth_client):
     assert resp.status_code == 404
 
 
+def test_non_admin_cannot_manage_team(client):
+    """Creating/editing/removing team roster entries affects everyone, not just the person
+    doing it - only an admin account may do it."""
+    client.post("/api/auth/register", json={
+        "username": "fieldemployee", "email": "field@example.com", "password": "pw12345",
+        "full_name": "Field Employee", "role": "employee"
+    })
+    login_resp = client.post("/api/auth/login", json={"username": "fieldemployee", "password": "pw12345"})
+    employee_token = login_resp.json()["access_token"]
+
+    resp = client.post(f"/api/team?token={employee_token}", json={"name": "New Hire", "role": "employee"})
+    assert resp.status_code == 403
+
+    resp = client.put(f"/api/team/1?token={employee_token}", json={"role": "team_lead"})
+    assert resp.status_code == 403
+
+    resp = client.delete(f"/api/team/1?token={employee_token}")
+    assert resp.status_code == 403
+
+
 def test_team_analytics_counts_assigned_activity_for_every_member(auth_client):
     """Every team member is measurable now via the explicit assignment columns
     (calls.team_member_id, deals/leads.assigned_team_member_id) added alongside the
