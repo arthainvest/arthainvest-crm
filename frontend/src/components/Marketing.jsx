@@ -5,6 +5,87 @@ import {
 } from '../services/api';
 import '../styles/Marketing.css';
 
+// Occasion-themed gradient colors + a big decorative emoji, used by the client-side creative
+// generator below. This is NOT Canva - there's no Canva/design-tool API integration here (that
+// needs a Canva Developer app + Connect/Autofill API, a separate project). This is a real,
+// working alternative built with the browser's own Canvas API: composites a background,
+// optional uploaded logo (or a text wordmark if none is uploaded), the occasion, and the
+// caption text into a downloadable PNG - entirely client-side, no server round-trip.
+const OCCASION_THEMES = {
+  'Diwali': { colors: ['#8B0000', '#FF8C00'], emoji: '🪔' },
+  'Holi': { colors: ['#FF1493', '#00BFFF'], emoji: '🎨' },
+  'Raksha Bandhan': { colors: ['#D2691E', '#FFD700'], emoji: '🎉' },
+  'Ganesh Chaturthi': { colors: ['#FF6347', '#FFA500'], emoji: '🙏' },
+  'Navratri / Dussehra': { colors: ['#C71585', '#FF4500'], emoji: '🪔' },
+  'Independence Day': { colors: ['#FF9933', '#138808'], emoji: '🇮🇳' },
+  'Republic Day': { colors: ['#FF9933', '#000080'], emoji: '🇮🇳' },
+  'New Year': { colors: ['#4B0082', '#9400D3'], emoji: '🎊' },
+  'Makar Sankranti': { colors: ['#FFD700', '#FF8C00'], emoji: '🪁' },
+  'Eid': { colors: ['#006400', '#FFD700'], emoji: '🌙' },
+  'Christmas': { colors: ['#8B0000', '#006400'], emoji: '🎄' },
+};
+const DEFAULT_THEME = { colors: ['#667eea', '#764ba2'], emoji: '✨' };
+
+const drawCreative = (canvas, { occasion, content, companyName, logoImg }) => {
+  const size = 1080;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const theme = OCCASION_THEMES[occasion] || DEFAULT_THEME;
+
+  const grad = ctx.createLinearGradient(0, 0, size, size);
+  grad.addColorStop(0, theme.colors[0]);
+  grad.addColorStop(1, theme.colors[1]);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(30, 30, size - 60, size - 60);
+
+  ctx.textAlign = 'center';
+  if (logoImg) {
+    const logoH = 110;
+    const logoW = logoImg.width * (logoH / logoImg.height);
+    ctx.drawImage(logoImg, (size - logoW) / 2, 55, logoW, logoH);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 56px Arial, sans-serif';
+    ctx.fillText(companyName || 'ArthaInvest', size / 2, 135);
+  }
+
+  ctx.font = '120px Arial, sans-serif';
+  ctx.fillText(theme.emoji, size / 2, 320);
+
+  ctx.font = '38px Arial, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 6;
+  const maxWidth = size - 160;
+  const words = (content || '').replace(/\s+/g, ' ').trim().split(' ');
+  let line = '';
+  const lines = [];
+  for (const w of words) {
+    const test = line ? `${line} ${w}` : w;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  const capped = lines.slice(0, 9);
+  const lineHeight = 50;
+  const startY = size / 2 - (capped.length * lineHeight) / 2 + 40;
+  capped.forEach((l, i) => ctx.fillText(l, size / 2, startY + i * lineHeight));
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'italic 26px Arial, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillText('Your Trusted Insurance & Loan Partner', size / 2, size - 70);
+};
+
 const emptyCampaignForm = { name: '', type: 'Email', status: 'Active', recipients: '' };
 
 // Ready-to-send captions for the occasions that matter most to an Indian insurance/loan
@@ -49,6 +130,12 @@ export default function Marketing() {
   const [studioContent, setStudioContent] = useState('');
   const [studioGenerating, setStudioGenerating] = useState(false);
   const [studioMessage, setStudioMessage] = useState(null);
+
+  // Creative Generator (Canva alternative)
+  const [logoImg, setLogoImg] = useState(null);
+  const [logoFileName, setLogoFileName] = useState('');
+  const [creativeUrl, setCreativeUrl] = useState(null);
+  const [companyName, setCompanyName] = useState('ArthaInvest');
 
   const token = localStorage.getItem('token');
 
@@ -119,9 +206,33 @@ export default function Marketing() {
     try {
       const settings = await getSettings(token);
       setLinkedInConnected(!!settings.linkedin_connected);
+      if (settings.company) setCompanyName(settings.company);
     } catch (error) {
       console.error('Error fetching LinkedIn status:', error);
     }
+  };
+
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLogoFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => setLogoImg(img);
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCreateImage = () => {
+    if (!studioContent.trim()) {
+      setStudioMessage('Generate or select content first, then create the image.');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    drawCreative(canvas, { occasion: studioOccasion, content: studioContent, companyName, logoImg });
+    setCreativeUrl(canvas.toDataURL('image/png'));
   };
 
   const handleConnectLinkedIn = async () => {
@@ -381,6 +492,37 @@ export default function Marketing() {
               )}
             </div>
           )}
+
+          <div className="creative-generator">
+            <h4>🎨 Create a shareable image</h4>
+            <p className="creative-generator-hint">
+              Turns the content above into a branded image you can download and post to WhatsApp Status, Instagram, or anywhere else.
+              This composites your logo + text on the browser side - it's not Canva or ChatGPT's image tools, which would need a separate paid integration, but it's real and works right now.
+            </p>
+            <div className="creative-generator-row">
+              <label className="btn-secondary creative-upload-btn">
+                🖼️ {logoFileName || 'Upload Logo (optional)'}
+                <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: 'none' }} />
+              </label>
+              <button type="button" className="btn-secondary content-studio-ai-btn" onClick={handleCreateImage}>
+                🎨 Create Image
+              </button>
+            </div>
+            {!logoImg && <p className="creative-generator-hint">No logo uploaded - will use an "{companyName}" text wordmark instead.</p>}
+
+            {creativeUrl && (
+              <div className="creative-preview">
+                <img src={creativeUrl} alt="Generated creative" />
+                <a
+                  className="btn-secondary linkedin-btn creative-download-btn"
+                  href={creativeUrl}
+                  download={`arthainvest-${(studioOccasion || 'creative').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`}
+                >
+                  ⬇ Download Image
+                </a>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
