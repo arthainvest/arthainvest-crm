@@ -151,6 +151,11 @@ export const getSalesAnalytics = async (token) => {
   return response.data;
 };
 
+export const getLeadSourceROI = async (token) => {
+  const response = await api.get(`/api/analytics/lead-sources?token=${token}`);
+  return response.data;
+};
+
 // Campaigns
 export const getCampaigns = async (token) => {
   const response = await api.get(`/api/campaigns?token=${token}`);

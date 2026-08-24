@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   getSalesAnalytics, getContactsAnalytics, getCallsAnalytics,
-  getCampaigns, getTeamAnalytics, getSettings, updateSettings
+  getCampaigns, getTeamAnalytics, getSettings, updateSettings, getLeadSourceROI
 } from '../services/api';
 import '../styles/Reports.css';
 
@@ -15,6 +15,7 @@ export default function Reports() {
   const [callsData, setCallsData] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [teamStats, setTeamStats] = useState([]);
+  const [leadSources, setLeadSources] = useState([]);
   const [reportPeriod, setReportPeriod] = useState('This Month');
   const [showSettings, setShowSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -36,6 +37,9 @@ export default function Reports() {
     getTeamAnalytics(token)
       .then((data) => setTeamStats(Array.isArray(data) ? data : []))
       .catch((error) => console.error('Error fetching team analytics:', error));
+    getLeadSourceROI(token)
+      .then((data) => setLeadSources(Array.isArray(data) ? data : []))
+      .catch((error) => console.error('Error fetching lead source ROI:', error));
     getSettings(token)
       .then((data) => { if (data.default_report_period) setReportPeriod(data.default_report_period); })
       .catch((error) => console.error('Error fetching settings:', error));
@@ -116,6 +120,14 @@ export default function Reports() {
     getMetrics().forEach((m) => lines.push(`${csvEscape(m.label)},${csvEscape(m.value)}`));
     lines.push('');
 
+    lines.push('Lead Source ROI');
+    lines.push('Source,Leads,Converted to Deal,Conversion Rate,Pipeline Value,Closed Value');
+    leadSources.forEach((s) => lines.push([
+      csvEscape(s.source), csvEscape(s.total_leads), csvEscape(s.total_deals), csvEscape(`${s.conversion_rate}%`),
+      csvEscape(s.total_deal_value), csvEscape(s.closed_deal_value)
+    ].join(',')));
+    lines.push('');
+
     lines.push('Team Productivity');
     lines.push('Team Member,Role,Calls,Deals Closed,Revenue,Conversion Rate');
     teamStats.forEach((m) => lines.push([
@@ -175,6 +187,44 @@ export default function Reports() {
         <h3>Performance Trend</h3>
         <p className="placeholder">📈 Chart visualization - Integration with Chart.js pending</p>
         <div style={{ height: '300px', background: '#1976d2', borderRadius: '8px', opacity: 0.1 }}></div>
+      </div>
+
+      <div className="chart-container">
+        <h3>Lead Source ROI</h3>
+        <p className="lead-source-note">
+          Conversion and pipeline value by lead source - not cost-adjusted ROI, since nothing
+          in the CRM tracks what a source actually costs (ad spend, portal fee, referral payout).
+        </p>
+        {leadSources.length === 0 ? (
+          <p className="placeholder">No leads yet.</p>
+        ) : (
+          <div className="team-productivity-table-wrapper">
+            <table className="team-productivity-table">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Leads</th>
+                  <th>Converted to Deal</th>
+                  <th>Conversion Rate</th>
+                  <th>Pipeline Value</th>
+                  <th>Closed Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leadSources.map((s) => (
+                  <tr key={s.source}>
+                    <td>{s.source}</td>
+                    <td>{s.total_leads}</td>
+                    <td>{s.total_deals}</td>
+                    <td>{s.conversion_rate}%</td>
+                    <td>₹{Number(s.total_deal_value).toLocaleString('en-IN')}</td>
+                    <td>₹{Number(s.closed_deal_value).toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="chart-container">

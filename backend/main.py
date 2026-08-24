@@ -2327,6 +2327,41 @@ async def get_calls_analytics(token: str = Query(None)):
         "calls_this_month": calls_this_month
     }
 
+@app.get("/api/analytics/lead-sources")
+async def get_lead_source_roi(token: str = Query(None)):
+    """Per lead-source performance: how many leads came from each source, how many turned
+    into deals, and how much pipeline/closed value they generated. This is conversion & value
+    by source, not true ROI in the financial sense - the CRM has no field anywhere for what a
+    source actually costs (ad spend, portal subscription fee, referral payout, etc.), so a
+    real cost-adjusted ROI number can't be computed without fabricating a cost. leads.source is
+    free text (not a fixed dropdown), so this groups by the exact string typed in - blank/null
+    values are grouped together as "Not Specified" rather than dropped."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(NULLIF(TRIM(l.source), ''), 'Not Specified') as source,
+                COUNT(DISTINCT l.id) as total_leads,
+                COUNT(DISTINCT d.id) as total_deals,
+                COUNT(DISTINCT CASE WHEN d.stage = 'closed' THEN d.id END) as closed_deals,
+                COALESCE(SUM(d.deal_value), 0) as total_deal_value,
+                COALESCE(SUM(CASE WHEN d.stage = 'closed' THEN d.deal_value ELSE 0 END), 0) as closed_deal_value
+            FROM leads l
+            LEFT JOIN deals d ON d.lead_id = l.id
+            GROUP BY source
+            ORDER BY closed_deal_value DESC, total_leads DESC
+            """
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    for r in rows:
+        r['conversion_rate'] = round((r['total_deals'] / r['total_leads'] * 100), 1) if r['total_leads'] > 0 else 0.0
+
+    return rows
+
 # A call is "connected" if it has a real outcome - 'No Answer' and 'Not Connected' represent
 # an attempt that never reached the person, everything else (Interested, Not Interested,
 # Meeting Scheduled, Follow-up Needed, etc.) means someone actually picked up.

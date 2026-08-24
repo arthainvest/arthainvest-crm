@@ -13,6 +13,7 @@
 .chart-container { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
 .chart-container h3 { margin-top: 0; color: var(--text-heading); }
 .placeholder { color: var(--text-muted); }
+.lead-source-note { color: var(--text-muted); font-size: 12px; margin: -6px 0 14px 0; font-style: italic; }
 .report-controls { display: flex; align-items: center; gap: 15px; color: var(--text-primary); }
 .report-controls label { font-weight: 500; }
 .report-controls select { padding: 8px 12px; border: 1px solid #90caf9; border-radius: 4px; color: #1976d2; background: var(--bg-surface); }

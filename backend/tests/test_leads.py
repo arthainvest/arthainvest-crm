@@ -49,6 +49,29 @@ def test_delete_lead(auth_client):
     assert len(resp.json()) == 4
 
 
+def test_lead_source_roi_groups_by_source(auth_client):
+    # Seeded leads all have no source - they should all land in "Not Specified".
+    resp = auth_client.get("/api/analytics/lead-sources")
+    assert resp.status_code == 200
+    rows = resp.json()
+    not_specified = next(r for r in rows if r["source"] == "Not Specified")
+    assert not_specified["total_leads"] == 5
+    assert not_specified["total_deals"] == 4  # 4 seeded deals, one each for leads 1-4
+
+    # A new lead with a real source + a deal against it must show up as its own row.
+    lead_resp = auth_client.post("/api/leads", json={"name": "Referral Lead", "source": "Referral"})
+    lead_id = lead_resp.json()["id"]
+    auth_client.post("/api/deals", json={"lead_id": lead_id, "deal_value": 400000})
+
+    resp = auth_client.get("/api/analytics/lead-sources")
+    rows = resp.json()
+    referral = next(r for r in rows if r["source"] == "Referral")
+    assert referral["total_leads"] == 1
+    assert referral["total_deals"] == 1
+    assert referral["total_deal_value"] == 400000
+    assert referral["conversion_rate"] == 100.0
+
+
 def test_lead_notes_crud(auth_client):
     resp = auth_client.post("/api/leads/2/notes", json={"transcript": "Discussed CIBIL score."})
     assert resp.status_code == 200
