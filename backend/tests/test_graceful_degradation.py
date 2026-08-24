@@ -68,6 +68,14 @@ def test_linkedin_post_not_connected(auth_client):
     assert "connect" in data["message"].lower()
 
 
+def test_generate_marketing_content_unconfigured(auth_client):
+    resp = auth_client.post("/api/marketing/generate-content", json={"occasion": "Diwali", "platform": "WhatsApp"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["configured"] is False
+    assert data["content"] is None
+
+
 def test_voice_agent_call_unconfigured(auth_client):
     resp = auth_client.post("/api/voice-agent/call", json={"lead_id": 1, "reason": "test"})
     assert resp.status_code == 200

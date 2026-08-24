@@ -1,11 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import {
   getCampaigns, createCampaign, updateCampaign, deleteCampaign, syncMailchimp,
-  getSettings, getLinkedInConnectUrl, postToLinkedIn
+  getSettings, getLinkedInConnectUrl, postToLinkedIn, generateMarketingContent
 } from '../services/api';
 import '../styles/Marketing.css';
 
 const emptyCampaignForm = { name: '', type: 'Email', status: 'Active', recipients: '' };
+
+// Ready-to-send captions for the occasions that matter most to an Indian insurance/loan
+// distributor's clients - work instantly with no AI/billing required. "Generate with AI"
+// still gives a personalized version once Claude billing is funded; this is the fallback
+// that's usable today.
+const FESTIVE_TEMPLATES = {
+  'Diwali': "✨ Wishing you and your family a very Happy Diwali! May this festival of lights bring prosperity, good health, and financial security to your home. ArthaInvest is always here for your insurance & loan needs. 🪔",
+  'Holi': "🎨 Happy Holi! May your life be as colorful and joyful as this festival. Wishing you and your family a safe and happy celebration. - ArthaInvest",
+  'Raksha Bandhan': "🎉 Happy Raksha Bandhan! On this special day, we're reminded that protecting what matters most is what we do too - your family's financial security. Warm wishes from ArthaInvest.",
+  'Ganesh Chaturthi': "🙏 Ganpati Bappa Morya! Wishing you and your family a blessed Ganesh Chaturthi, filled with happiness and new beginnings. - ArthaInvest",
+  'Independence Day': "🇮🇳 Happy Independence Day! Celebrating the freedom we cherish - and helping you build the financial freedom you deserve. Jai Hind! - ArthaInvest",
+  'New Year': "🎊 Wishing you a very Happy New Year! May this year bring you good health, happiness, and financial growth. Looking forward to serving you again this year. - ArthaInvest",
+  'Republic Day': "🇮🇳 Happy Republic Day! Wishing you a day filled with pride and gratitude. - ArthaInvest",
+  'Policy Renewal Reminder': "Hi, this is a friendly reminder that your policy renewal is coming up soon. Renewing on time keeps your coverage active with no gap in protection. Reply here or call us and we'll take care of it for you. - ArthaInvest",
+  'Loan EMI Reminder': "Hi, this is a reminder that your loan EMI is due soon. Please ensure sufficient balance in your account to avoid any late fee. Reach out if you'd like to discuss your repayment schedule. - ArthaInvest",
+};
+
+const OCCASION_OPTIONS = [
+  'Diwali', 'Holi', 'Raksha Bandhan', 'Ganesh Chaturthi', 'Navratri / Dussehra',
+  'Independence Day', 'Republic Day', 'New Year', 'Makar Sankranti', 'Eid', 'Christmas',
+  'Policy Renewal Reminder', 'Loan EMI Reminder', 'Product Promotion', 'Client Appreciation', 'Custom'
+];
 
 export default function Marketing() {
   const [campaigns, setCampaigns] = useState([]);
@@ -19,7 +41,66 @@ export default function Marketing() {
   const [linkedInPostText, setLinkedInPostText] = useState('');
   const [linkedInPosting, setLinkedInPosting] = useState(false);
 
+  // AI Content Studio
+  const [studioOccasion, setStudioOccasion] = useState('Diwali');
+  const [studioCustomOccasion, setStudioCustomOccasion] = useState('');
+  const [studioPlatform, setStudioPlatform] = useState('WhatsApp');
+  const [studioNotes, setStudioNotes] = useState('');
+  const [studioContent, setStudioContent] = useState('');
+  const [studioGenerating, setStudioGenerating] = useState(false);
+  const [studioMessage, setStudioMessage] = useState(null);
+
   const token = localStorage.getItem('token');
+
+  const effectiveOccasion = studioOccasion === 'Custom' ? studioCustomOccasion.trim() : studioOccasion;
+
+  const handleUseFestiveTemplate = () => {
+    const template = FESTIVE_TEMPLATES[studioOccasion];
+    if (!template) {
+      setStudioMessage('No ready-made template for this occasion yet - try "Generate with AI" instead.');
+      return;
+    }
+    setStudioContent(template);
+    setStudioMessage('Template filled in below - edit as needed, or copy it to use.');
+  };
+
+  const handleGenerateContent = async () => {
+    if (!effectiveOccasion) {
+      setStudioMessage('Enter an occasion or topic first.');
+      return;
+    }
+    setStudioGenerating(true);
+    setStudioMessage(null);
+    try {
+      const result = await generateMarketingContent(token, effectiveOccasion, studioPlatform, studioNotes);
+      if (result.configured && result.content) {
+        setStudioContent(result.content);
+      }
+      setStudioMessage(result.message);
+    } catch (error) {
+      console.error('Error generating marketing content:', error);
+      setStudioMessage('Failed to generate content. Please try again.');
+    } finally {
+      setStudioGenerating(false);
+    }
+  };
+
+  const handleCopyContent = async () => {
+    if (!studioContent.trim()) return;
+    try {
+      await navigator.clipboard.writeText(studioContent);
+      setStudioMessage('Copied to clipboard.');
+    } catch (error) {
+      console.error('Error copying content:', error);
+      setStudioMessage('Could not copy automatically - select and copy the text manually.');
+    }
+  };
+
+  const handleUseInLinkedInPost = () => {
+    if (!studioContent.trim()) return;
+    setLinkedInPostText(studioContent);
+    setStudioMessage('Loaded into the LinkedIn post box above - scroll up to post it.');
+  };
 
   const handleMailchimpSync = async () => {
     setMailchimpSyncing(true);
@@ -217,6 +298,90 @@ export default function Marketing() {
             </button>
           </div>
         )}
+      </div>
+
+      <div className="content-studio-card">
+        <div className="content-studio-header">
+          <span className="content-studio-icon">🎨</span>
+          <div>
+            <h3>AI Content Studio</h3>
+            <p>Draft festive greetings and promotional content with Claude AI, or start from a ready-made festival template - no AI needed for those.</p>
+          </div>
+        </div>
+
+        <div className="content-studio-form">
+          <div className="content-studio-row">
+            <div className="form-group">
+              <label>Occasion</label>
+              <select value={studioOccasion} onChange={(e) => setStudioOccasion(e.target.value)}>
+                {OCCASION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Platform</label>
+              <select value={studioPlatform} onChange={(e) => setStudioPlatform(e.target.value)}>
+                <option value="WhatsApp">WhatsApp</option>
+                <option value="Email">Email</option>
+                <option value="LinkedIn">LinkedIn</option>
+                <option value="SMS">SMS</option>
+              </select>
+            </div>
+          </div>
+
+          {studioOccasion === 'Custom' && (
+            <div className="form-group">
+              <label>Custom occasion / topic</label>
+              <input
+                type="text"
+                placeholder="e.g. Onam, new office branch launch..."
+                value={studioCustomOccasion}
+                onChange={(e) => setStudioCustomOccasion(e.target.value)}
+              />
+            </div>
+          )}
+
+          <div className="form-group">
+            <label>Extra notes (optional)</label>
+            <input
+              type="text"
+              placeholder="e.g. mention our new health insurance plan"
+              value={studioNotes}
+              onChange={(e) => setStudioNotes(e.target.value)}
+            />
+          </div>
+
+          <div className="content-studio-actions">
+            <button type="button" className="btn-secondary" onClick={handleUseFestiveTemplate} disabled={studioOccasion === 'Custom'}>
+              📋 Use Festive Template
+            </button>
+            <button type="button" className="btn-secondary content-studio-ai-btn" onClick={handleGenerateContent} disabled={studioGenerating}>
+              {studioGenerating ? '✨ Generating…' : '✨ Generate with AI'}
+            </button>
+          </div>
+
+          {studioMessage && <p className="content-studio-message">{studioMessage}</p>}
+
+          <div className="form-group">
+            <label>Content</label>
+            <textarea
+              rows={5}
+              placeholder="Generated or template content will appear here - fully editable."
+              value={studioContent}
+              onChange={(e) => setStudioContent(e.target.value)}
+            />
+          </div>
+
+          {studioContent.trim() && (
+            <div className="content-studio-actions">
+              <button type="button" className="btn-secondary" onClick={handleCopyContent}>📄 Copy</button>
+              {studioPlatform === 'LinkedIn' && linkedInConnected && (
+                <button type="button" className="btn-secondary linkedin-btn" onClick={handleUseInLinkedInPost}>
+                  💼 Use in LinkedIn Post
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="stats-grid">

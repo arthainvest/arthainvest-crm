@@ -232,6 +232,23 @@
   color: #1976d2;
 }
 
+.employee-assign-select {
+  padding: 5px 22px 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-neutral);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  max-width: 130px;
+  flex: 0 0 auto;
+}
+
 .lead-row-actions {
   display: flex;
   gap: 6px;

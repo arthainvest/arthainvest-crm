@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  getLeads, createLead, updateLead,
+  getLeads, createLead, updateLead, assignLead, getTeam,
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
   uploadLeadNoteAudio, API_URL, dialCall, aiSuggestLeadFollowup,
   sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate
@@ -59,6 +59,7 @@ const WhatsAppIcon = () => (
 
 export default function LeadsList() {
   const [leads, setLeads] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -103,6 +104,7 @@ export default function LeadsList() {
 
   useEffect(() => {
     fetchLeads();
+    fetchTeamMembers();
   }, []);
 
   const fetchLeads = async () => {
@@ -111,6 +113,32 @@ export default function LeadsList() {
       setLeads(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to fetch leads:', err);
+    }
+  };
+
+  const fetchTeamMembers = async () => {
+    try {
+      const data = await getTeam(token);
+      setTeamMembers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch team members:', err);
+    }
+  };
+
+  const handleAssignChange = async (leadId, teamMemberIdRaw) => {
+    const teamMemberId = teamMemberIdRaw ? Number(teamMemberIdRaw) : null;
+    const previous = leads.find((l) => l.id === leadId);
+    setLeads((prev) => prev.map((l) => (l.id === leadId
+      ? { ...l, assigned_team_member_id: teamMemberId, assigned_team_member_name: teamMembers.find((m) => m.id === teamMemberId)?.name || null }
+      : l)));
+    try {
+      await assignLead(token, leadId, teamMemberId);
+    } catch (err) {
+      console.error('Failed to assign lead:', err);
+      if (previous) {
+        setLeads((prev) => prev.map((l) => (l.id === leadId ? previous : l)));
+      }
+      alert('Failed to assign lead. Please try again.');
     }
   };
 
@@ -642,6 +670,18 @@ export default function LeadsList() {
                   >
                     {STATUS_OPTIONS.map((s) => (
                       <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    className="employee-assign-select"
+                    value={lead.assigned_team_member_id || ''}
+                    onChange={(e) => handleAssignChange(lead.id, e.target.value)}
+                    title="Assigned employee"
+                  >
+                    <option value="">Unassigned</option>
+                    {teamMembers.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
                   </select>
 

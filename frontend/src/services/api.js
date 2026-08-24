@@ -69,6 +69,11 @@ export const deleteLead = async (token, id) => {
   await api.delete(`/api/leads/${id}?token=${token}`);
 };
 
+export const assignLead = async (token, leadId, teamMemberId) => {
+  const response = await api.put(`/api/leads/${leadId}/assign?token=${token}`, { team_member_id: teamMemberId });
+  return response.data;
+};
+
 // Lead notes
 export const getLeadNotes = async (token, leadId) => {
   const response = await api.get(`/api/leads/${leadId}/notes?token=${token}`);
@@ -249,6 +254,17 @@ export const deleteCall = async (token, id) => {
   await api.delete(`/api/calls/${id}?token=${token}`);
 };
 
+export const assignCall = async (token, callId, teamMemberId) => {
+  const response = await api.put(`/api/calls/${callId}/assign?token=${token}`, { team_member_id: teamMemberId });
+  return response.data;
+};
+
+// Per-employee attempted/connected call counts (today / week / month) - Calls page report
+export const getCallsByEmployee = async (token) => {
+  const response = await api.get(`/api/analytics/calls/by-employee?token=${token}`);
+  return response.data;
+};
+
 // Twilio click-to-call
 export const dialCall = async (token, to) => {
   const response = await api.post(`/api/calls/dial?token=${token}`, { to });
@@ -299,6 +315,12 @@ export const syncMailchimp = async (token) => {
 // LinkedIn (OAuth - no key to pass, just kicks off the connect flow / posts once connected)
 export const getLinkedInConnectUrl = async (token) => {
   const response = await api.get(`/api/integrations/linkedin/connect?token=${token}`);
+  return response.data;
+};
+
+// AI Content Studio - draft marketing copy for an occasion/platform via Claude
+export const generateMarketingContent = async (token, occasion, platform, notes) => {
+  const response = await api.post(`/api/marketing/generate-content?token=${token}`, { occasion, platform, notes });
   return response.data;
 };
 

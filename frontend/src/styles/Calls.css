@@ -15,6 +15,25 @@
 .btn-small.delete { color: #1976d2; border-color: #90caf9; }
 .no-data { text-align: center; color: var(--text-muted); padding: 40px; font-size: 14px; }
 
+.employee-call-report { margin-bottom: 30px; }
+.employee-call-report h3 { margin: 0 0 12px 0; color: var(--text-heading); font-size: 16px; }
+
+.employee-assign-select {
+  padding: 5px 22px 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  max-width: 140px;
+}
+
 .calls-container .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .calls-container .modal-content { background: var(--bg-surface); color: var(--text-primary); border-radius: 8px; width: 90%; max-width: 480px; max-height: 80vh; overflow-y: auto; }
 .calls-container .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-subtle); }

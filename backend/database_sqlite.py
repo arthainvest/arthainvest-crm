@@ -122,11 +122,19 @@ def init_db():
                 status TEXT DEFAULT 'new',
                 source TEXT,
                 created_by INTEGER,
+                assigned_team_member_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (created_by) REFERENCES users(id)
+                FOREIGN KEY (created_by) REFERENCES users(id),
+                FOREIGN KEY (assigned_team_member_id) REFERENCES team_members(id)
             )
         """)
+
+        # Same "ALTER TABLE for pre-existing databases" situation as deals.assigned_team_member_id below.
+        try:
+            cursor.execute("ALTER TABLE leads ADD COLUMN assigned_team_member_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS deals (
@@ -272,10 +280,18 @@ def init_db():
                 outcome TEXT,
                 call_date DATE,
                 created_by INTEGER,
+                team_member_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (created_by) REFERENCES users(id)
+                FOREIGN KEY (created_by) REFERENCES users(id),
+                FOREIGN KEY (team_member_id) REFERENCES team_members(id)
             )
         """)
+
+        # Same "ALTER TABLE for pre-existing databases" situation as deals.assigned_team_member_id.
+        try:
+            cursor.execute("ALTER TABLE calls ADD COLUMN team_member_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS team_members (

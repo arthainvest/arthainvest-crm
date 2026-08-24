@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
-    LeadCreate, LeadUpdate, LeadResponse,
+    LeadCreate, LeadUpdate, LeadAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     IntegrationToggle, IntegrationResponse,
@@ -24,9 +24,10 @@ from schemas import (
     ContactCreate, ContactUpdate, ContactResponse,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
-    CallCreate, CallResponse,
+    CallCreate, CallAssign, CallResponse, EmployeeCallStats,
     DialRequest, DialResponse, AISummaryResponse,
     DetectDateRequest, DetectDateResponse,
+    GenerateContentRequest, GenerateContentResponse,
     WhatsAppSendRequest, WhatsAppSendResponse,
     EmailSendRequest, EmailSendResponse,
     SmsSendRequest, SmsSendResponse,
@@ -111,6 +112,34 @@ def fetch_deal_with_member_name(cursor, deal_id):
         WHERE deals.id = ?
         """,
         (deal_id,)
+    )
+    return dict(cursor.fetchone())
+
+def fetch_lead_with_member_name(cursor, lead_id):
+    """Same join-by-id pattern as fetch_deal_with_member_name, for leads - so admins/team
+    leads can see which employee a lead is assigned to without a second round-trip."""
+    cursor.execute(
+        """
+        SELECT leads.*, team_members.name as assigned_team_member_name
+        FROM leads
+        LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
+        WHERE leads.id = ?
+        """,
+        (lead_id,)
+    )
+    return dict(cursor.fetchone())
+
+def fetch_call_with_member_name(cursor, call_id):
+    """Same join-by-id pattern as fetch_deal_with_member_name, for calls - so admins/team
+    leads can see who made or handled each logged call."""
+    cursor.execute(
+        """
+        SELECT calls.*, team_members.name as team_member_name
+        FROM calls
+        LEFT JOIN team_members ON team_members.id = calls.team_member_id
+        WHERE calls.id = ?
+        """,
+        (call_id,)
     )
     return dict(cursor.fetchone())
 
@@ -214,13 +243,19 @@ async def get_leads(token: str = Query(None), status: str = Query(None)):
     """Get all leads, optionally filtered by status"""
     get_current_user(token)
 
+    base_query = """
+        SELECT leads.*, team_members.name as assigned_team_member_name
+        FROM leads
+        LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
+    """
+
     with get_db() as conn:
         cursor = conn.cursor()
 
         if status:
-            cursor.execute("SELECT * FROM leads WHERE status = ? ORDER BY created_at DESC", (status,))
+            cursor.execute(base_query + " WHERE leads.status = ? ORDER BY leads.created_at DESC", (status,))
         else:
-            cursor.execute("SELECT * FROM leads ORDER BY created_at DESC")
+            cursor.execute(base_query + " ORDER BY leads.created_at DESC")
 
         leads = [dict(row) for row in cursor.fetchall()]
 
@@ -244,11 +279,9 @@ async def create_lead(lead: LeadCreate, token: str = Query(None)):
         conn.commit()
         lead_id = cursor.lastrowid
 
-        # Get created lead
-        cursor.execute("SELECT * FROM leads WHERE id = ?", (lead_id,))
-        new_lead = cursor.fetchone()
+        new_lead = fetch_lead_with_member_name(cursor, lead_id)
 
-    return dict(new_lead)
+    return new_lead
 
 @app.get("/api/leads/{lead_id}", response_model=LeadResponse)
 async def get_lead(lead_id: int, token: str = Query(None)):
@@ -257,13 +290,37 @@ async def get_lead(lead_id: int, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM leads WHERE id = ?", (lead_id,))
-        lead = cursor.fetchone()
+        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Lead not found")
+        lead = fetch_lead_with_member_name(cursor, lead_id)
 
-    if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
+    return lead
 
-    return dict(lead)
+@app.put("/api/leads/{lead_id}/assign", response_model=LeadResponse)
+async def assign_lead(lead_id: int, assignment: LeadAssign, token: str = Query(None)):
+    """Assign (or unassign, if team_member_id is null) a lead to a team member, so admins and
+    the team lead can see who owns each lead."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Lead not found")
+
+        if assignment.team_member_id is not None:
+            cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (assignment.team_member_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Team member not found")
+
+        cursor.execute(
+            "UPDATE leads SET assigned_team_member_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (assignment.team_member_id, lead_id)
+        )
+        conn.commit()
+
+        return fetch_lead_with_member_name(cursor, lead_id)
 
 @app.put("/api/leads/{lead_id}", response_model=LeadResponse)
 async def update_lead(lead_id: int, lead: LeadUpdate, token: str = Query(None)):
@@ -308,13 +365,13 @@ async def update_lead(lead_id: int, lead: LeadUpdate, token: str = Query(None)):
         cursor.execute(query, values)
         conn.commit()
 
-        cursor.execute("SELECT * FROM leads WHERE id = ?", (lead_id,))
-        updated_lead = cursor.fetchone()
+        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Lead not found")
 
-    if not updated_lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
+        updated_lead = fetch_lead_with_member_name(cursor, lead_id)
 
-    return dict(updated_lead)
+    return updated_lead
 
 @app.delete("/api/leads/{lead_id}")
 async def delete_lead(lead_id: int, token: str = Query(None)):
@@ -1211,7 +1268,14 @@ async def get_calls(token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM calls ORDER BY call_date DESC, created_at DESC")
+        cursor.execute(
+            """
+            SELECT calls.*, team_members.name as team_member_name
+            FROM calls
+            LEFT JOIN team_members ON team_members.id = calls.team_member_id
+            ORDER BY calls.call_date DESC, calls.created_at DESC
+            """
+        )
         calls = [call_row_to_dict(row) for row in cursor.fetchall()]
 
     return calls
@@ -1225,18 +1289,43 @@ async def create_call(call: CallCreate, token: str = Query(None)):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (call.name, call.phone, call.duration_seconds, call.type, call.outcome, call.call_date, current_user['user_id'])
+            (call.name, call.phone, call.duration_seconds, call.type, call.outcome, call.call_date,
+             current_user['user_id'], call.team_member_id)
         )
         conn.commit()
         call_id = cursor.lastrowid
 
-        cursor.execute("SELECT * FROM calls WHERE id = ?", (call_id,))
-        new_call = cursor.fetchone()
+        new_call = call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
 
-    return call_row_to_dict(new_call)
+    return new_call
+
+@app.put("/api/calls/{call_id}/assign", response_model=CallResponse)
+async def assign_call(call_id: int, assignment: CallAssign, token: str = Query(None)):
+    """Assign (or unassign, if team_member_id is null) a logged call to a team member, so
+    admins and the team lead can see who made/handled each call after the fact."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        if assignment.team_member_id is not None:
+            cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (assignment.team_member_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Team member not found")
+
+        cursor.execute(
+            "UPDATE calls SET team_member_id = ? WHERE id = ?",
+            (assignment.team_member_id, call_id)
+        )
+        conn.commit()
+
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
 
 @app.delete("/api/calls/{call_id}")
 async def delete_call(call_id: int, token: str = Query(None)):
@@ -1583,6 +1672,59 @@ async def linkedin_post(payload: LinkedInPostRequest, token: str = Query(None)):
     except Exception as e:
         return LinkedInPostResponse(configured=True, message=f"LinkedIn post failed: {str(e)}")
 
+# ============= AI CONTENT STUDIO (MARKETING TAB) =============
+#
+# Text-content generation via Claude - drafts a WhatsApp/Email/LinkedIn-ready caption for a
+# festival, promotion, or reminder. This does NOT create graphic designs; a real "generate a
+# branded Canva creative automatically" pipeline needs Canva's Connect/Autofill API, which
+# requires a Canva Developer app + brand template setup that's a separate project from this
+# CRM. What's built here is the piece that's actually feasible today: real AI-written copy,
+# same graceful-degradation pattern as every other Claude endpoint (configured=False if
+# ANTHROPIC_API_KEY isn't set, rather than erroring).
+
+@app.post("/api/marketing/generate-content", response_model=GenerateContentResponse)
+async def generate_marketing_content(payload: GenerateContentRequest, token: str = Query(None)):
+    """Draft marketing copy for a festival/occasion + platform via Claude."""
+    get_current_user(token)
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return GenerateContentResponse(configured=False, message="Claude AI is not configured on this server.")
+
+    if not payload.occasion.strip():
+        return GenerateContentResponse(configured=True, message="Enter an occasion or topic first.", content=None)
+
+    platform_hint = {
+        "WhatsApp": "Keep it short (under 400 characters), warm and personal, fine to use 1-2 emojis. No subject line.",
+        "Email": "Include a short subject line on the first line prefixed 'Subject: ', then a brief email body with a clear closing call-to-action.",
+        "LinkedIn": "Write it as a professional LinkedIn post, 3-6 short lines, no more than 1-2 emojis, end with a light call-to-action.",
+        "SMS": "Keep it under 160 characters, plain text, no emojis.",
+    }.get(payload.platform, "Keep it concise and platform-appropriate.")
+
+    extra = f"\nAdditional context from the user: {payload.notes.strip()}" if payload.notes else ""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=400,
+            messages=[{
+                "role": "user",
+                "content": (
+                    "You are writing marketing content for a solo Indian insurance & loan "
+                    f"distributor (ArthaInvest) to send to their clients for: {payload.occasion}.\n"
+                    f"Platform: {payload.platform}. {platform_hint}{extra}\n\n"
+                    "Write only the ready-to-send content itself - no preamble, no options, no "
+                    "explanation of what you wrote."
+                )
+            }]
+        )
+        content = "".join(block.text for block in response.content if hasattr(block, 'text')).strip()
+        return GenerateContentResponse(configured=True, message="Content generated.", content=content)
+    except Exception as e:
+        return GenerateContentResponse(configured=True, message=f"Claude request failed: {str(e)}")
+
 # ============= AI VOICE CALLER (PRITI / VAPI) =============
 #
 # Outbound AI voice-agent calls via Vapi (https://vapi.ai). Deliberately does NOT include a
@@ -1879,6 +2021,54 @@ async def get_calls_analytics(token: str = Query(None)):
         "call_success_rate": success_rate,
         "calls_this_month": calls_this_month
     }
+
+# A call is "connected" if it has a real outcome - 'No Answer' and 'Not Connected' represent
+# an attempt that never reached the person, everything else (Interested, Not Interested,
+# Meeting Scheduled, Follow-up Needed, etc.) means someone actually picked up.
+_UNCONNECTED_OUTCOMES = ('No Answer', 'Not Connected')
+
+@app.get("/api/analytics/calls/by-employee", response_model=list[EmployeeCallStats])
+async def get_calls_by_employee(token: str = Query(None)):
+    """Per-employee call attempt/connect counts (today / this week / this month), computed
+    from calls.team_member_id - the field an admin or team lead actually needs to answer
+    'who called how many people today, and how many of those actually connected'."""
+    get_current_user(token)
+
+    placeholders = ",".join("?" for _ in _UNCONNECTED_OUTCOMES)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM team_members ORDER BY name")
+        members = [dict(row) for row in cursor.fetchall()]
+
+        rows = []
+        for m in members:
+            def counts(date_filter):
+                cursor.execute(
+                    f"""
+                    SELECT
+                        COUNT(*) as attempted,
+                        SUM(CASE WHEN outcome IS NOT NULL AND outcome != '' AND outcome NOT IN ({placeholders}) THEN 1 ELSE 0 END) as connected
+                    FROM calls
+                    WHERE team_member_id = ? AND {date_filter}
+                    """,
+                    (*_UNCONNECTED_OUTCOMES, m['id'])
+                )
+                r = cursor.fetchone()
+                return r['attempted'] or 0, r['connected'] or 0
+
+            today_attempted, today_connected = counts("call_date = date('now')")
+            week_attempted, week_connected = counts("call_date >= date('now', '-6 days')")
+            month_attempted, month_connected = counts("strftime('%Y-%m', call_date) = strftime('%Y-%m', 'now')")
+
+            rows.append(EmployeeCallStats(
+                team_member_id=m['id'], name=m['name'],
+                today_attempted=today_attempted, today_connected=today_connected,
+                week_attempted=week_attempted, week_connected=week_connected,
+                month_attempted=month_attempted, month_connected=month_connected
+            ))
+
+    return rows
 
 # Run the app
 if __name__ == "__main__":

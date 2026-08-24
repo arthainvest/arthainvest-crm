@@ -44,6 +44,9 @@ class LeadUpdate(BaseModel):
     ai_score: Optional[int] = None
     lead_tier: Optional[str] = None
 
+class LeadAssign(BaseModel):
+    team_member_id: Optional[int] = None  # None unassigns the lead
+
 class LeadResponse(BaseModel):
     id: int
     name: str
@@ -57,6 +60,8 @@ class LeadResponse(BaseModel):
     source: Optional[str]
     created_at: datetime
     updated_at: datetime
+    assigned_team_member_id: Optional[int] = None
+    assigned_team_member_name: Optional[str] = None
 
 # Deal Schemas
 class DealCreate(BaseModel):
@@ -229,6 +234,10 @@ class CallCreate(BaseModel):
     type: str = "Outbound"
     outcome: Optional[str] = None
     call_date: Optional[str] = None
+    team_member_id: Optional[int] = None
+
+class CallAssign(BaseModel):
+    team_member_id: Optional[int] = None  # None unassigns the call
 
 class CallResponse(BaseModel):
     id: int
@@ -240,6 +249,19 @@ class CallResponse(BaseModel):
     outcome: Optional[str]
     call_date: Optional[str]
     created_at: datetime
+    team_member_id: Optional[int] = None
+    team_member_name: Optional[str] = None
+
+# Per-employee call attempt/connect counts, for admins and team leads
+class EmployeeCallStats(BaseModel):
+    team_member_id: int
+    name: str
+    today_attempted: int
+    today_connected: int
+    week_attempted: int
+    week_connected: int
+    month_attempted: int
+    month_connected: int
 
 # Twilio click-to-call
 class DialRequest(BaseModel):
@@ -264,6 +286,17 @@ class DetectDateResponse(BaseModel):
     configured: bool
     message: str
     detected_date: Optional[str] = None  # ISO "YYYY-MM-DDTHH:MM" if a date/time was found
+
+# Claude AI marketing content generation (Marketing tab - AI Content Studio)
+class GenerateContentRequest(BaseModel):
+    occasion: str  # e.g. "Diwali", "Policy Renewal Reminder", or free text
+    platform: str = "WhatsApp"  # WhatsApp, Email, LinkedIn, SMS
+    notes: Optional[str] = None  # extra context from the user, e.g. product to promote
+
+class GenerateContentResponse(BaseModel):
+    configured: bool
+    message: str
+    content: Optional[str] = None
 
 # WhatsApp Business API (Meta Cloud API)
 class WhatsAppSendRequest(BaseModel):

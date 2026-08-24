@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { getCallsList, createCall, deleteCall } from '../services/api';
+import { getCallsList, createCall, deleteCall, assignCall, getTeam, getCallsByEmployee } from '../services/api';
 import '../styles/Calls.css';
 
-const emptyCallForm = { name: '', phone: '', minutes: '', seconds: '', type: 'Outbound', outcome: '', call_date: '' };
+const emptyCallForm = { name: '', phone: '', minutes: '', seconds: '', type: 'Outbound', outcome: '', call_date: '', team_member_id: '' };
 
 export default function Calls() {
   const [calls, setCalls] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [callForm, setCallForm] = useState(emptyCallForm);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [employeeStats, setEmployeeStats] = useState([]);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
     fetchCalls();
+    fetchTeamMembers();
+    fetchEmployeeStats();
   }, []);
 
   const fetchCalls = async () => {
@@ -20,6 +24,42 @@ export default function Calls() {
       setCalls(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching calls:', error);
+    }
+  };
+
+  const fetchTeamMembers = async () => {
+    try {
+      const data = await getTeam(token);
+      setTeamMembers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching team members:', error);
+    }
+  };
+
+  const fetchEmployeeStats = async () => {
+    try {
+      const data = await getCallsByEmployee(token);
+      setEmployeeStats(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching per-employee call stats:', error);
+    }
+  };
+
+  const handleAssignChange = async (callId, teamMemberIdRaw) => {
+    const teamMemberId = teamMemberIdRaw ? Number(teamMemberIdRaw) : null;
+    const previous = calls.find((c) => c.id === callId);
+    setCalls((prev) => prev.map((c) => (c.id === callId
+      ? { ...c, team_member_id: teamMemberId, team_member_name: teamMembers.find((m) => m.id === teamMemberId)?.name || null }
+      : c)));
+    try {
+      await assignCall(token, callId, teamMemberId);
+      fetchEmployeeStats();
+    } catch (error) {
+      console.error('Error assigning call:', error);
+      if (previous) {
+        setCalls((prev) => prev.map((c) => (c.id === callId ? previous : c)));
+      }
+      alert('Failed to assign call. Please try again.');
     }
   };
 
@@ -56,11 +96,13 @@ export default function Calls() {
         duration_seconds,
         type: callForm.type,
         outcome: callForm.outcome,
-        call_date: callForm.call_date
+        call_date: callForm.call_date,
+        team_member_id: callForm.team_member_id ? Number(callForm.team_member_id) : null
       });
       setShowForm(false);
       setCallForm(emptyCallForm);
       fetchCalls();
+      fetchEmployeeStats();
     } catch (error) {
       console.error('Error logging call:', error);
       alert('Failed to log call. Please try again.');
@@ -72,6 +114,7 @@ export default function Calls() {
     try {
       await deleteCall(token, id);
       setCalls((prev) => prev.filter((c) => c.id !== id));
+      fetchEmployeeStats();
     } catch (error) {
       console.error('Error deleting call:', error);
       alert('Failed to delete call. Please try again.');
@@ -104,6 +147,42 @@ export default function Calls() {
         </div>
       </div>
 
+      {teamMembers.length > 0 && (
+        <div className="employee-call-report">
+          <h3>Calls by Employee</h3>
+          <div className="calls-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Today Attempted</th>
+                  <th>Today Connected</th>
+                  <th>This Week Attempted</th>
+                  <th>This Week Connected</th>
+                  <th>This Month Attempted</th>
+                  <th>This Month Connected</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employeeStats.length === 0 ? (
+                  <tr><td colSpan="7" className="no-data">No team members yet.</td></tr>
+                ) : employeeStats.map((s) => (
+                  <tr key={s.team_member_id}>
+                    <td><strong>{s.name}</strong></td>
+                    <td>{s.today_attempted}</td>
+                    <td>{s.today_connected}</td>
+                    <td>{s.week_attempted}</td>
+                    <td>{s.week_connected}</td>
+                    <td>{s.month_attempted}</td>
+                    <td>{s.month_connected}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="calls-table">
         <table>
           <thead>
@@ -114,12 +193,13 @@ export default function Calls() {
               <th>Type</th>
               <th>Outcome</th>
               <th>Date</th>
+              <th>Employee</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {calls.length === 0 ? (
-              <tr><td colSpan="7" className="no-data">No calls logged yet.</td></tr>
+              <tr><td colSpan="8" className="no-data">No calls logged yet.</td></tr>
             ) : calls.map(call => (
               <tr key={call.id}>
                 <td><strong>{call.name}</strong></td>
@@ -128,6 +208,19 @@ export default function Calls() {
                 <td><span className={`badge-${(call.type || '').toLowerCase()}`}>{call.type || 'Unknown'}</span></td>
                 <td>{call.outcome || '-'}</td>
                 <td>{call.call_date}</td>
+                <td>
+                  <select
+                    className="employee-assign-select"
+                    value={call.team_member_id || ''}
+                    onChange={(e) => handleAssignChange(call.id, e.target.value)}
+                    title="Employee who made/handled this call"
+                  >
+                    <option value="">Unassigned</option>
+                    {teamMembers.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </td>
                 <td>
                   <button className="btn-small delete" onClick={() => handleDeleteCall(call.id)}>Delete</button>
                 </td>
@@ -206,6 +299,8 @@ export default function Calls() {
                     onChange={(e) => setCallForm({ ...callForm, outcome: e.target.value })}
                   >
                     <option value="">-- Select --</option>
+                    <option value="No Answer">No Answer (not connected)</option>
+                    <option value="Not Connected">Not Connected / Busy</option>
                     <option value="Interested">Interested</option>
                     <option value="Not Interested">Not Interested</option>
                     <option value="Meeting Scheduled">Meeting Scheduled</option>
@@ -219,6 +314,18 @@ export default function Calls() {
                     value={callForm.call_date}
                     onChange={(e) => setCallForm({ ...callForm, call_date: e.target.value })}
                   />
+                </div>
+                <div className="form-group">
+                  <label>Made / Handled By</label>
+                  <select
+                    value={callForm.team_member_id}
+                    onChange={(e) => setCallForm({ ...callForm, team_member_id: e.target.value })}
+                  >
+                    <option value="">-- Unassigned --</option>
+                    {teamMembers.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="modal-actions">
