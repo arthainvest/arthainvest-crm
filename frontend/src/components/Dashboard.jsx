@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { getDashboardAnalytics, getLeads } from '../services/api';
+import { getDashboardAnalytics, getLeads, getUpcomingRenewals, sendWhatsApp, sendEmailReal } from '../services/api';
 import '../styles/Dashboard.css';
+
+const URGENCY_LABELS = {
+  overdue: 'Overdue',
+  due_soon: 'Due Soon',
+  upcoming: 'Upcoming'
+};
+
+const renewalMessage = (renewal) => {
+  const dateStr = new Date(renewal.renewal_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  const bankPart = renewal.bank ? ` with ${renewal.bank}` : '';
+  return `Hi ${renewal.name}, this is a reminder that your policy/loan${bankPart} is due for renewal on ${dateStr}. Renewing on time keeps your coverage active with no gap. Reply here or call us and we'll take care of it for you. - ArthaInvest`;
+};
 
 const emptyAnalytics = {
   total_leads: 0,
@@ -18,6 +30,8 @@ const emptyAnalytics = {
 export default function Dashboard() {
   const [analytics, setAnalytics] = useState(emptyAnalytics);
   const [recentLeads, setRecentLeads] = useState([]);
+  const [renewals, setRenewals] = useState([]);
+  const [sendingReminder, setSendingReminder] = useState(null);
   const [loading, setLoading] = useState(true);
   const token = localStorage.getItem('token');
 
@@ -29,16 +43,45 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const [analyticsData, leadsData] = await Promise.all([
+      const [analyticsData, leadsData, renewalsData] = await Promise.all([
         getDashboardAnalytics(token),
         getLeads(token),
+        getUpcomingRenewals(token),
       ]);
       setAnalytics({ ...emptyAnalytics, ...(analyticsData || {}) });
       setRecentLeads(Array.isArray(leadsData) ? leadsData.slice(0, 5) : []);
+      setRenewals(Array.isArray(renewalsData) ? renewalsData : []);
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendRenewalReminder = async (renewal, channel) => {
+    const busyKey = `${renewal.id}-${channel}`;
+    if (channel === 'whatsapp' && !renewal.phone) { alert('No phone number on file for this contact.'); return; }
+    if (channel === 'email' && !renewal.email) { alert('No email on file for this contact.'); return; }
+
+    setSendingReminder(busyKey);
+    try {
+      const message = renewalMessage(renewal);
+      const result = channel === 'whatsapp'
+        ? await sendWhatsApp(token, renewal.phone, message)
+        : await sendEmailReal(token, renewal.email, 'Your renewal is coming up', message);
+
+      if (result.configured) {
+        alert(result.message);
+      } else if (channel === 'whatsapp') {
+        window.open(`https://wa.me/${renewal.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
+      } else {
+        window.location.href = `mailto:${renewal.email}?subject=${encodeURIComponent('Your renewal is coming up')}&body=${encodeURIComponent(message)}`;
+      }
+    } catch (error) {
+      console.error('Error sending renewal reminder:', error);
+      alert('Failed to send reminder. Please try again.');
+    } finally {
+      setSendingReminder(null);
     }
   };
 
@@ -51,6 +94,61 @@ export default function Dashboard() {
         <GrowthCard title="Total Deals Value" value={formatINR(analytics.total_deals_value)} />
         <GrowthCard title="Conversion Rate" value={`${analytics.conversion_rate_pct}%`} />
         <GrowthCard title="Active Campaigns" value={analytics.active_campaigns} />
+      </div>
+
+      <div className="dashboard-section">
+        <h2>📅 Upcoming Renewals {renewals.length > 0 && `(${renewals.length})`}</h2>
+        {loading ? (
+          <p className="loading-text">Loading…</p>
+        ) : renewals.length === 0 ? (
+          <p>No renewals due in the next 30 days. Add a Renewal Date to a contact in Contacts to track it here.</p>
+        ) : (
+          <div className="renewals-table-wrapper">
+            <table className="leads-table">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Bank/Insurer</th>
+                  <th>Amount</th>
+                  <th>Renewal Date</th>
+                  <th>Status</th>
+                  <th>Send Reminder</th>
+                </tr>
+              </thead>
+              <tbody>
+                {renewals.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.name}</td>
+                    <td>{r.bank || '-'}</td>
+                    <td>{r.amount != null ? formatINR(r.amount) : '-'}</td>
+                    <td>{new Date(r.renewal_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                    <td>
+                      <span className={`renewal-urgency-badge urgency-${r.urgency}`}>
+                        {URGENCY_LABELS[r.urgency]}{r.urgency === 'overdue' ? ` ${Math.abs(r.days_until_renewal)}d` : ` ${r.days_until_renewal}d`}
+                      </span>
+                    </td>
+                    <td className="renewal-reminder-actions">
+                      <button
+                        className="btn-renewal-reminder whatsapp"
+                        onClick={() => handleSendRenewalReminder(r, 'whatsapp')}
+                        disabled={sendingReminder === `${r.id}-whatsapp`}
+                      >
+                        {sendingReminder === `${r.id}-whatsapp` ? '…' : '💬 WhatsApp'}
+                      </button>
+                      <button
+                        className="btn-renewal-reminder email"
+                        onClick={() => handleSendRenewalReminder(r, 'email')}
+                        disabled={sendingReminder === `${r.id}-email`}
+                      >
+                        {sendingReminder === `${r.id}-email` ? '…' : '📧 Email'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="dashboard-section chart-panel">

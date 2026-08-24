@@ -16,7 +16,7 @@ const WhatsAppIcon = () => (
   </svg>
 );
 
-const emptyContactForm = { name: '', company: '', email: '', phone: '', city: '', amount: '', bank: '', status: 'Active' };
+const emptyContactForm = { name: '', company: '', email: '', phone: '', city: '', amount: '', bank: '', status: 'Active', renewal_date: '' };
 const emptyNoteDraft = { callDateTime: '', nextConversation: '', transcript: '' };
 
 // A naive line.split(',') breaks on quoted fields containing commas (e.g. "Doe, John") or
@@ -348,7 +348,8 @@ export default function Contacts() {
       city: contact.city || '',
       amount: contact.amount ?? '',
       bank: contact.bank || '',
-      status: contact.status || 'Active'
+      status: contact.status || 'Active',
+      renewal_date: contact.renewal_date || ''
     });
     setShowForm(true);
   };
@@ -368,7 +369,11 @@ export default function Contacts() {
     e.preventDefault();
     if (!contactForm.name.trim()) return;
 
-    const payload = { ...contactForm, amount: contactForm.amount === '' ? null : Number(contactForm.amount) };
+    const payload = {
+      ...contactForm,
+      amount: contactForm.amount === '' ? null : Number(contactForm.amount),
+      renewal_date: contactForm.renewal_date === '' ? null : contactForm.renewal_date
+    };
 
     try {
       if (editingContactId) {
@@ -672,6 +677,12 @@ export default function Contacts() {
                     {contact.bank || ''}
                   </span>
                 )}
+
+                {contact.renewal_date && (
+                  <span className="contact-renewal-badge" title="Renewal Date">
+                    📅 Renews {new Date(contact.renewal_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                )}
               </div>
 
               {isExpanded && (
@@ -683,6 +694,7 @@ export default function Contacts() {
                   <p><strong>Amount:</strong> {contact.amount != null ? `₹${Number(contact.amount).toLocaleString('en-IN')}` : '-'}</p>
                   <p><strong>Bank/Insurer:</strong> {contact.bank || '-'}</p>
                   <p><strong>Status:</strong> {contact.status || '-'}</p>
+                  <p><strong>Renewal Date:</strong> {contact.renewal_date ? new Date(contact.renewal_date).toLocaleDateString('en-IN') : '-'}</p>
                   <p><strong>Assigned To:</strong> {contact.assigned_team_member_name || 'Unassigned'}</p>
                 </div>
               )}
@@ -769,6 +781,14 @@ export default function Contacts() {
                   >
                     {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
+                </div>
+                <div className="form-group">
+                  <label>Renewal Date</label>
+                  <input
+                    type="date"
+                    value={contactForm.renewal_date}
+                    onChange={(e) => setContactForm({ ...contactForm, renewal_date: e.target.value })}
+                  />
                 </div>
               </div>
               <div className="modal-actions">

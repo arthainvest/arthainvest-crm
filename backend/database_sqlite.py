@@ -260,6 +260,7 @@ def init_db():
                 amount REAL,
                 bank TEXT,
                 status TEXT DEFAULT 'Active',
+                renewal_date DATE,
                 created_by INTEGER,
                 assigned_team_member_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -275,6 +276,7 @@ def init_db():
             "ALTER TABLE contacts ADD COLUMN bank TEXT",
             "ALTER TABLE contacts ADD COLUMN status TEXT DEFAULT 'Active'",
             "ALTER TABLE contacts ADD COLUMN assigned_team_member_id INTEGER",
+            "ALTER TABLE contacts ADD COLUMN renewal_date DATE",
         ]:
             try:
                 cursor.execute(ddl)

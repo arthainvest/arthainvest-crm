@@ -171,6 +171,7 @@ class ContactCreate(BaseModel):
     amount: Optional[float] = None
     bank: Optional[str] = None
     status: Optional[str] = None
+    renewal_date: Optional[str] = None  # ISO "YYYY-MM-DD" - when their policy/loan is next due
 
 class ContactUpdate(BaseModel):
     name: Optional[str] = None
@@ -182,6 +183,7 @@ class ContactUpdate(BaseModel):
     amount: Optional[float] = None
     bank: Optional[str] = None
     status: Optional[str] = None
+    renewal_date: Optional[str] = None
 
 class ContactAssign(BaseModel):
     team_member_id: Optional[int] = None  # None unassigns the contact
@@ -197,9 +199,23 @@ class ContactResponse(BaseModel):
     amount: Optional[float] = None
     bank: Optional[str] = None
     status: Optional[str] = None
+    renewal_date: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     assigned_team_member_id: Optional[int] = None
+    assigned_team_member_name: Optional[str] = None
+
+# Renewal Reminders (Dashboard "Upcoming Renewals" widget)
+class RenewalContact(BaseModel):
+    id: int
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    bank: Optional[str] = None
+    amount: Optional[float] = None
+    renewal_date: str
+    days_until_renewal: int
+    urgency: str  # "overdue", "due_soon" (<=7 days), "upcoming" (<=30 days)
     assigned_team_member_name: Optional[str] = None
 
 # Contact Note Schemas

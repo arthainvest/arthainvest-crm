@@ -22,7 +22,7 @@ from schemas import (
     CampaignCreate, CampaignUpdate, CampaignResponse,
     IntegrationToggle, IntegrationResponse,
     SettingsUpdate, SettingsResponse,
-    ContactCreate, ContactUpdate, ContactAssign, ContactResponse,
+    ContactCreate, ContactUpdate, ContactAssign, ContactResponse, RenewalContact,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     CallCreate, CallAssign, CallResponse, EmployeeCallStats,
@@ -928,6 +928,41 @@ async def get_contacts(token: str = Query(None)):
 
     return contacts
 
+@app.get("/api/contacts/renewals", response_model=list[RenewalContact])
+async def get_upcoming_renewals(token: str = Query(None)):
+    """Contacts with a renewal_date set that's overdue or due within the next 30 days,
+    sorted soonest first - the Dashboard's "Upcoming Renewals" widget. Registered before
+    PUT/DELETE /api/contacts/{contact_id} isn't an issue (those are different methods), but
+    this GET must stay above any future GET /api/contacts/{contact_id} route or FastAPI would
+    try to parse "renewals" as a contact_id."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT contacts.*, team_members.name as assigned_team_member_name,
+                   CAST(julianday(contacts.renewal_date) - julianday(date('now')) AS INTEGER) as days_until_renewal
+            FROM contacts
+            LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
+            WHERE contacts.renewal_date IS NOT NULL
+              AND julianday(contacts.renewal_date) - julianday(date('now')) <= 30
+            ORDER BY contacts.renewal_date ASC
+            """
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    results = []
+    for r in rows:
+        days = r['days_until_renewal']
+        urgency = "overdue" if days < 0 else ("due_soon" if days <= 7 else "upcoming")
+        results.append(RenewalContact(
+            id=r['id'], name=r['name'], phone=r['phone'], email=r['email'], bank=r['bank'],
+            amount=r['amount'], renewal_date=r['renewal_date'], days_until_renewal=days,
+            urgency=urgency, assigned_team_member_name=r['assigned_team_member_name']
+        ))
+    return results
+
 @app.post("/api/contacts", response_model=ContactResponse)
 async def create_contact(contact: ContactCreate, token: str = Query(None)):
     """Create a new contact"""
@@ -937,11 +972,11 @@ async def create_contact(contact: ContactCreate, token: str = Query(None)):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO contacts (name, company, email, phone, city, amount, bank, status, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO contacts (name, company, email, phone, city, amount, bank, status, renewal_date, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (contact.name, contact.company, contact.email, contact.phone, contact.city,
-             contact.amount, contact.bank, contact.status or 'Active', current_user['user_id'])
+             contact.amount, contact.bank, contact.status or 'Active', contact.renewal_date, current_user['user_id'])
         )
         conn.commit()
         contact_id = cursor.lastrowid
@@ -958,7 +993,7 @@ async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Q
     updates = []
     values = []
 
-    for field in ['name', 'company', 'email', 'phone', 'city', 'score', 'amount', 'bank', 'status']:
+    for field in ['name', 'company', 'email', 'phone', 'city', 'score', 'amount', 'bank', 'status', 'renewal_date']:
         value = getattr(contact, field)
         if value is not None:
             updates.append(f"{field} = ?")

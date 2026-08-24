@@ -223,6 +223,11 @@ export const assignContact = async (token, contactId, teamMemberId) => {
   return response.data;
 };
 
+export const getUpcomingRenewals = async (token) => {
+  const response = await api.get(`/api/contacts/renewals?token=${token}`);
+  return response.data;
+};
+
 // Contact notes
 export const getContactNotes = async (token, contactId) => {
   const response = await api.get(`/api/contacts/${contactId}/notes?token=${token}`);

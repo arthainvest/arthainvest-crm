@@ -138,6 +138,16 @@
   white-space: nowrap;
 }
 
+.contact-renewal-badge {
+  background: #fff3cd;
+  color: #856404;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .status-select-compact {
   padding: 6px 26px 6px 10px;
   border-radius: 20px;

@@ -118,6 +118,35 @@
   color: #1976d2;
 }
 
+.renewals-table-wrapper { overflow-x: auto; }
+
+.renewal-urgency-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.renewal-urgency-badge.urgency-overdue { background: #f8d7da; color: #a71d2a; }
+.renewal-urgency-badge.urgency-due_soon { background: #ffe0b2; color: #b45f06; }
+.renewal-urgency-badge.urgency-upcoming { background: #fff3cd; color: #856404; }
+
+.renewal-reminder-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-renewal-reminder {
+  padding: 6px 10px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-renewal-reminder:disabled { opacity: 0.6; cursor: default; }
+.btn-renewal-reminder.whatsapp { border-color: #25D366; color: #1e9e52; }
+.btn-renewal-reminder.email { border-color: #F57C00; color: #F57C00; }
+
 .growth-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
