@@ -57,7 +57,12 @@ export default function Pipeline() {
     }
   ];
 
-  const PROCESS_STATUS_OPTIONS = ['Login', 'Sanction', 'Hold', 'Rejected', 'Disbursed'];
+  const PROCESS_STATUS_OPTIONS = [
+    'Document Collection', 'Login', 'Under Verification', 'Approved', 'Sanction',
+    'Disbursement Pending', 'Disbursed', 'Hold', 'Rejected', 'Closed - Lost'
+  ];
+
+  const processStatusClass = (status) => `status-${(status || 'Login').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
   const [deals, setDeals] = useState(mockDeals);
   const [leads, setLeads] = useState([]);
@@ -331,7 +336,7 @@ export default function Pipeline() {
                       </td>
                       <td>
                         <select
-                          className={`process-status-select status-${(deal.processStatus || 'Login').toLowerCase()}`}
+                          className={`process-status-select ${processStatusClass(deal.processStatus)}`}
                           value={deal.processStatus || 'Login'}
                           onChange={(e) => handleProcessStatusChange(deal.id, e.target.value)}
                         >

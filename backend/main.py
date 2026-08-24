@@ -621,9 +621,15 @@ async def get_dashboard_analytics(token: str = Query(None)):
         loan_stages = [
             {"label": "Deals Closed (This Month)", **closed_this_month},
             {"label": "In Progress", **in_progress},
-            {"label": "Rejected", **process_status_bucket('Rejected')},
+            {"label": "Rejected", **process_status_bucket('Rejected', 'Closed - Lost')},
             {"label": "On Hold", **process_status_bucket('Hold')},
-            {"label": "Login/Sanction", **process_status_bucket('Login', 'Sanction')},
+            # Every pre-disbursement status folds in here - Document Collection through
+            # Disbursement Pending are all "still being processed," which is what this
+            # dashboard-level bucket is meant to summarize; the full breakdown is on the
+            # Pipeline page itself.
+            {"label": "Login/Sanction", **process_status_bucket(
+                'Document Collection', 'Login', 'Under Verification', 'Approved', 'Sanction', 'Disbursement Pending'
+            )},
             {"label": "Disbursed", **process_status_bucket('Disbursed')},
         ]
 
