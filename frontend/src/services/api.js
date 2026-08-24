@@ -329,6 +329,12 @@ export const generateMarketingContent = async (token, occasion, platform, notes)
   return response.data;
 };
 
+// CRM chatbot (floating "Ask AI" widget) - read-only Q&A grounded in live CRM data
+export const chatWithAI = async (token, message, history) => {
+  const response = await api.post(`/api/ai/chat?token=${token}`, { message, history });
+  return response.data;
+};
+
 export const postToLinkedIn = async (token, text) => {
   const response = await api.post(`/api/marketing/linkedin/post?token=${token}`, { text });
   return response.data;

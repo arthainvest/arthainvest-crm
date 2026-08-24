@@ -301,6 +301,20 @@ class DetectDateResponse(BaseModel):
     message: str
     detected_date: Optional[str] = None  # ISO "YYYY-MM-DDTHH:MM" if a date/time was found
 
+# CRM chatbot (floating "Ask AI" widget, every page)
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[list[ChatMessage]] = None
+
+class ChatResponse(BaseModel):
+    configured: bool
+    message: str
+    reply: Optional[str] = None
+
 # Claude AI marketing content generation (Marketing tab - AI Content Studio)
 class GenerateContentRequest(BaseModel):
     occasion: str  # e.g. "Diwali", "Policy Renewal Reminder", or free text

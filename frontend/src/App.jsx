@@ -12,6 +12,7 @@ import Reports from './components/Reports';
 import Integrations from './components/Integrations';
 import Settings from './components/Settings';
 import Navigation from './components/Navigation';
+import ChatbotWidget from './components/ChatbotWidget';
 import { applyTheme, getStoredTheme } from './utils/theme';
 import { getSettings } from './services/api';
 import './App.css';
@@ -73,6 +74,7 @@ function App() {
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </div>
+          <ChatbotWidget />
         </div>
       ) : (
         <Routes>

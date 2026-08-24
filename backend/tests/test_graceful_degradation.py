@@ -120,6 +120,38 @@ def test_ai_suggestion_falls_back_to_openai_when_claude_fails(auth_client, monke
     assert "OpenAI" in data["message"]
 
 
+def test_ai_chat_unconfigured(auth_client):
+    resp = auth_client.post("/api/ai/chat", json={"message": "How many leads do I have?"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["configured"] is False
+    assert data["reply"] is None
+
+
+def test_ai_chat_answers_from_real_data_snapshot(auth_client, monkeypatch):
+    """The chatbot must actually build and send a snapshot of the seeded CRM data - not just
+    return a canned response - so a mocked model call still exercises the real DB query path."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-anthropic-key-for-test")
+
+    fake_content_block = MagicMock()
+    fake_content_block.text = "You have 5 leads."
+    fake_response = MagicMock()
+    fake_response.content = [fake_content_block]
+
+    with patch("anthropic.Anthropic") as mock_anthropic_cls:
+        mock_anthropic_cls.return_value.messages.create.return_value = fake_response
+        resp = auth_client.post("/api/ai/chat", json={"message": "How many leads do I have?"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["configured"] is True
+    assert data["reply"] == "You have 5 leads."
+
+    # The snapshot (seeded lead data) must have actually been sent to the model.
+    call_kwargs = mock_anthropic_cls.return_value.messages.create.call_args.kwargs
+    assert "LEADS" in call_kwargs["system"]
+
+
 def test_voice_agent_call_unconfigured(auth_client):
     resp = auth_client.post("/api/voice-agent/call", json={"lead_id": 1, "reason": "test"})
     assert resp.status_code == 200

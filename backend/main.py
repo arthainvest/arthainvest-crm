@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import sqlite3
 from typing import List
 import os
+import json
 import uuid
 import smtplib
 import hashlib
@@ -28,6 +29,7 @@ from schemas import (
     DialRequest, DialResponse, AISummaryResponse,
     DetectDateRequest, DetectDateResponse,
     GenerateContentRequest, GenerateContentResponse,
+    ChatMessage, ChatRequest, ChatResponse,
     WhatsAppSendRequest, WhatsAppSendResponse,
     EmailSendRequest, EmailSendResponse,
     SmsSendRequest, SmsSendResponse,
@@ -1076,14 +1078,18 @@ def _ai_configured():
     """Whether at least one text-generation AI provider is set up on this server."""
     return bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY"))
 
-def _call_ai_text(prompt, max_tokens=400):
+def _call_ai_text(prompt_or_messages, max_tokens=400, system=None):
     """Shared AI call behind every text-generation feature (AI Suggest Follow-up, Detect
-    Date, AI Content Studio). Tries Claude (ANTHROPIC_API_KEY) first; if that key isn't set,
-    OR the Claude call itself fails for any reason (e.g. "credit balance too low"), falls back
-    to OpenAI (OPENAI_API_KEY) so the feature keeps working as long as at least one of the two
-    is funded - useful since the two are billed separately and one may run dry before the
-    other is set up. Returns (text, error_message, provider) - exactly one of text/error_message
-    is set. Caller is responsible for the configured=False case via _ai_configured()."""
+    Date, AI Content Studio, the CRM chatbot). Tries Claude (ANTHROPIC_API_KEY) first; if that
+    key isn't set, OR the Claude call itself fails for any reason (e.g. "credit balance too
+    low"), falls back to OpenAI (OPENAI_API_KEY) so the feature keeps working as long as at
+    least one of the two is funded - useful since the two are billed separately and one may
+    run dry before the other is set up. `prompt_or_messages` is either a single prompt string
+    (wrapped as one user message) or a list of {"role", "content"} dicts for multi-turn chat;
+    `system` is an optional system prompt, passed the native way for each provider. Returns
+    (text, error_message, provider) - exactly one of text/error_message is set. Caller is
+    responsible for the configured=False case via _ai_configured()."""
+    messages = [{"role": "user", "content": prompt_or_messages}] if isinstance(prompt_or_messages, str) else prompt_or_messages
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
     openai_key = os.getenv("OPENAI_API_KEY")
     claude_error = None
@@ -1092,11 +1098,10 @@ def _call_ai_text(prompt, max_tokens=400):
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=anthropic_key)
-            response = client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            kwargs = {"model": "claude-sonnet-4-5", "max_tokens": max_tokens, "messages": messages}
+            if system:
+                kwargs["system"] = system
+            response = client.messages.create(**kwargs)
             text = "".join(block.text for block in response.content if hasattr(block, 'text')).strip()
             return text, None, "Claude"
         except Exception as e:
@@ -1106,10 +1111,11 @@ def _call_ai_text(prompt, max_tokens=400):
         try:
             import openai
             client = openai.OpenAI(api_key=openai_key)
+            openai_messages = ([{"role": "system", "content": system}] if system else []) + messages
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}]
+                messages=openai_messages
             )
             text = (response.choices[0].message.content or "").strip()
             return text, None, ("OpenAI (Claude fallback)" if claude_error else "OpenAI")
@@ -1788,6 +1794,103 @@ async def generate_marketing_content(payload: GenerateContentRequest, token: str
         return GenerateContentResponse(configured=True, message=error)
     message = "Content generated." if provider == "Claude" else f"Content generated (via {provider})."
     return GenerateContentResponse(configured=True, message=message, content=content)
+
+# ============= CRM CHATBOT (FLOATING "ASK AI" WIDGET, EVERY PAGE) =============
+#
+# Read-only Q&A over the CRM's own data - "how many leads are from Mumbai", "what's Amit
+# Patel's loan amount", etc. Grounded in a compact snapshot of leads/deals/contacts/calls/team
+# built fresh on every request (no vector DB or indexing needed at this data volume). It never
+# modifies data or takes actions - if asked to do something, it's instructed to point the user
+# at the right tab instead. Same Claude-then-OpenAI fallback as every other AI feature here.
+
+def _build_crm_snapshot(cursor):
+    """Compact text summary of current CRM data for the chatbot to ground its answers in.
+    Dumps full records rather than aggregates only, since a solo/small-team distributor's
+    dataset is small enough that this comfortably fits in a prompt - if that stops being true,
+    this should become a targeted lookup instead of a full dump."""
+    cursor.execute("SELECT id, name, company, status, product, source, ai_score FROM leads ORDER BY created_at DESC")
+    leads = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute(
+        """
+        SELECT deals.id, deals.lead_id, deals.deal_value, deals.stage, deals.loan_product,
+               leads.name as lead_name, team_members.name as assigned_to
+        FROM deals
+        LEFT JOIN leads ON leads.id = deals.lead_id
+        LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
+        ORDER BY deals.created_at DESC
+        """
+    )
+    deals = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute(
+        """
+        SELECT contacts.id, contacts.name, contacts.city, contacts.status, contacts.amount,
+               contacts.bank, team_members.name as assigned_to
+        FROM contacts
+        LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
+        ORDER BY contacts.created_at DESC
+        """
+    )
+    contacts = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute(
+        """
+        SELECT calls.name, calls.type, calls.outcome, calls.call_date, team_members.name as team_member_name
+        FROM calls
+        LEFT JOIN team_members ON team_members.id = calls.team_member_id
+        ORDER BY calls.call_date DESC
+        LIMIT 100
+        """
+    )
+    calls = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("SELECT name, role, email, phone FROM team_members")
+    team = [dict(r) for r in cursor.fetchall()]
+
+    return (
+        f"LEADS ({len(leads)}):\n{json.dumps(leads, default=str)}\n\n"
+        f"DEALS ({len(deals)}):\n{json.dumps(deals, default=str)}\n\n"
+        f"CONTACTS ({len(contacts)}):\n{json.dumps(contacts, default=str)}\n\n"
+        f"CALLS - most recent 100 ({len(calls)}):\n{json.dumps(calls, default=str)}\n\n"
+        f"TEAM ({len(team)}):\n{json.dumps(team, default=str)}"
+    )
+
+@app.post("/api/ai/chat", response_model=ChatResponse)
+async def ai_chat(payload: ChatRequest, token: str = Query(None)):
+    """Ask-AI chatbot grounded in a live snapshot of the CRM's own data. Read-only - answers
+    questions, never modifies records or triggers actions."""
+    get_current_user(token)
+
+    if not _ai_configured():
+        return ChatResponse(configured=False, message="Neither Claude AI nor OpenAI is configured on this server.")
+
+    if not payload.message.strip():
+        return ChatResponse(configured=True, message="Type a question first.", reply=None)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        snapshot = _build_crm_snapshot(cursor)
+
+    system_prompt = (
+        "You are the AI assistant built into ArthaInvest's CRM, used by a solo insurance & "
+        "loan distributor in India. Answer the user's question using ONLY the CRM data "
+        "snapshot below - never invent names, numbers, or facts that aren't in it. If the "
+        "answer isn't in the data, say so plainly instead of guessing. Keep answers short and "
+        "direct, in plain language (not JSON). You cannot create, edit, or delete any record - "
+        "if asked to do something rather than answer a question, explain that and say which "
+        "tab (Leads, Pipeline, Contacts, Calls, Marketing, Team) the user should use instead.\n\n"
+        f"CRM DATA SNAPSHOT:\n{snapshot}"
+    )
+
+    history_messages = [{"role": m.role, "content": m.content} for m in (payload.history or [])][-8:]
+    messages = history_messages + [{"role": "user", "content": payload.message}]
+
+    reply, error, provider = _call_ai_text(messages, max_tokens=500, system=system_prompt)
+    if error:
+        return ChatResponse(configured=True, message=error)
+    message = "Reply generated." if provider == "Claude" else f"Reply generated (via {provider})."
+    return ChatResponse(configured=True, message=message, reply=reply)
 
 # ============= AI VOICE CALLER (PRITI / VAPI) =============
 #

@@ -48,6 +48,19 @@ def _ensure_integrations_catalog(cursor, conn):
         ('AI Voice Assistant', '🎙️', 'Automated status updates via voice notes', 0, 'never'),
         ('Google Analytics', '📊', 'Track campaign performance and ROI', 0, 'never'),
         ('Priti (AI Voice Caller)', '📞', 'Outbound AI qualification calls via Vapi', 0, 'never'),
+        ('OpenAI', '🤖', 'Fallback AI provider for AI Suggest/Detect Date/Content Studio/chatbot', 0, 'never'),
+        # Future/roadmap - no backend integration built yet, listed here as a marketplace
+        # placeholder so they're on the radar to build later. Payment gateways (Razorpay,
+        # Stripe, PayU) deliberately excluded - Razorpay was removed from this CRM per an
+        # earlier explicit request, so no payment gateway has been re-added without asking.
+        ('Facebook Lead Ads', '📘', 'Auto-import leads from Facebook lead-gen campaigns (planned)', 0, 'never'),
+        ('IndiaMart', '🅼', 'Auto-fetch leads from your IndiaMart seller account (planned)', 0, 'never'),
+        ('TradeIndia', '🅃', 'Auto-fetch leads from your TradeIndia seller account (planned)', 0, 'never'),
+        ('Zendesk', '🎫', 'Sync support tickets for client queries (planned)', 0, 'never'),
+        ('QuickBooks', '📗', 'Sync commission/invoice records for bookkeeping (planned)', 0, 'never'),
+        ('Aircall', '☎️', 'Alternate cloud telephony provider to Twilio (planned)', 0, 'never'),
+        ('MSG91', '✉️', 'Combined SMS/WhatsApp/Email sending, alternate to Twilio/SMTP (planned)', 0, 'never'),
+        ('Apollo.io', '🎯', 'Lead enrichment and prospecting data (planned)', 0, 'never'),
     ]
     existing = {row['name'] for row in cursor.execute("SELECT name FROM integrations").fetchall()}
     for name, logo, description, connected, last_sync in catalog:
