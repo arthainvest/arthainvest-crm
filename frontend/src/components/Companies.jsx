@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyContacts } from '../services/api';
+import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyContacts, getCompanyDeals } from '../services/api';
+import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Companies.css';
 
 const emptyForm = { name: '', industry: '', city: '', phone: '', email: '', website: '', notes: '' };
 
-// Kylas parity - a standalone company/organization directory. Contacts can link to a Company
-// record (contacts.company_id, set from the Contacts page's inline "Linked company" dropdown);
-// each row here expands to show who's linked, and the count updates live as links change.
+// Kylas parity - a standalone company/organization directory. Contacts AND Deals can each
+// link to a Company record (contacts.company_id / deals.company_id, set from the inline
+// "Linked company" dropdown on their own pages); each row here expands to show both, and the
+// counts update live as links change.
 export default function Companies() {
   const [companies, setCompanies] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -14,6 +16,7 @@ export default function Companies() {
   const [form, setForm] = useState(emptyForm);
   const [expandedId, setExpandedId] = useState(null);
   const [linkedContacts, setLinkedContacts] = useState([]);
+  const [linkedDeals, setLinkedDeals] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const token = localStorage.getItem('token');
 
@@ -38,14 +41,24 @@ export default function Companies() {
     setExpandedId(companyId);
     setLoadingContacts(true);
     try {
-      const data = await getCompanyContacts(token, companyId);
-      setLinkedContacts(Array.isArray(data) ? data : []);
+      const [contactsData, dealsData] = await Promise.all([
+        getCompanyContacts(token, companyId),
+        getCompanyDeals(token, companyId),
+      ]);
+      setLinkedContacts(Array.isArray(contactsData) ? contactsData : []);
+      setLinkedDeals(Array.isArray(dealsData) ? dealsData : []);
     } catch (err) {
-      console.error('Failed to fetch linked contacts:', err);
+      console.error('Failed to fetch linked contacts/deals:', err);
       setLinkedContacts([]);
+      setLinkedDeals([]);
     } finally {
       setLoadingContacts(false);
     }
+  };
+
+  const dealLabel = (deal) => {
+    const productInfo = LOAN_PRODUCTS.find((p) => p.id === deal.loan_product);
+    return `${productInfo?.name || deal.loan_product} · ₹${(deal.deal_value || 0).toLocaleString('en-IN')} · ${deal.process_status || 'Login'}`;
   };
 
   const openAddModal = () => {
@@ -86,7 +99,7 @@ export default function Companies() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this company? Any contacts linked to it will become unlinked.')) return;
+    if (!window.confirm('Delete this company? Any contacts or deals linked to it will become unlinked.')) return;
     try {
       await deleteCompany(token, id);
       setCompanies((prev) => prev.filter((c) => c.id !== id));
@@ -119,6 +132,7 @@ export default function Companies() {
                 <th>Email</th>
                 <th>Website</th>
                 <th>Contacts</th>
+                <th>Deals</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -131,8 +145,8 @@ export default function Companies() {
                         type="button"
                         className="company-expand-toggle"
                         onClick={() => toggleExpand(c.id)}
-                        title={expandedId === c.id ? 'Hide contacts' : 'Show linked contacts'}
-                        disabled={!c.contact_count}
+                        title={expandedId === c.id ? 'Hide linked records' : 'Show linked contacts/deals'}
+                        disabled={!c.contact_count && !c.deal_count}
                       >
                         <span className={`expand-arrow ${expandedId === c.id ? 'open' : ''}`}>▸</span>
                       </button>
@@ -147,6 +161,9 @@ export default function Companies() {
                       <span className="company-contact-count">{c.contact_count} contact{c.contact_count === 1 ? '' : 's'}</span>
                     </td>
                     <td>
+                      <span className="company-contact-count">{c.deal_count} deal{c.deal_count === 1 ? '' : 's'}</span>
+                    </td>
+                    <td>
                       <button className="btn-small" onClick={() => openEditModal(c)}>Edit</button>
                       <button className="btn-small delete" onClick={() => handleDelete(c.id)}>Delete</button>
                     </td>
@@ -154,21 +171,43 @@ export default function Companies() {
                   {expandedId === c.id && (
                     <tr className="company-contacts-row">
                       <td></td>
-                      <td colSpan="8">
+                      <td colSpan="9">
                         {loadingContacts ? (
                           <span className="no-data-inline">Loading…</span>
-                        ) : linkedContacts.length === 0 ? (
-                          <span className="no-data-inline">No contacts linked to this company.</span>
                         ) : (
-                          <ul className="company-linked-contacts">
-                            {linkedContacts.map((contact) => (
-                              <li key={contact.id}>
-                                <strong>{contact.name}</strong>
-                                {contact.email && <span> · {contact.email}</span>}
-                                {contact.phone && <span> · {contact.phone}</span>}
-                              </li>
-                            ))}
-                          </ul>
+                          <div className="company-linked-groups">
+                            <div className="company-linked-group">
+                              <h4>Contacts</h4>
+                              {linkedContacts.length === 0 ? (
+                                <span className="no-data-inline">No contacts linked to this company.</span>
+                              ) : (
+                                <ul className="company-linked-contacts">
+                                  {linkedContacts.map((contact) => (
+                                    <li key={contact.id}>
+                                      <strong>{contact.name}</strong>
+                                      {contact.email && <span> · {contact.email}</span>}
+                                      {contact.phone && <span> · {contact.phone}</span>}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="company-linked-group">
+                              <h4>Deals</h4>
+                              {linkedDeals.length === 0 ? (
+                                <span className="no-data-inline">No deals linked to this company.</span>
+                              ) : (
+                                <ul className="company-linked-contacts">
+                                  {linkedDeals.map((deal) => (
+                                    <li key={deal.id}>
+                                      <strong>Deal #{deal.id}</strong>
+                                      <span> · {dealLabel(deal)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </td>
                     </tr>

@@ -70,12 +70,16 @@ class DealCreate(BaseModel):
     probability: float = 0.5
     loan_product: str = "LAP"  # LAP, OD, CC, Home, Business, Project
     stage: Optional[str] = None  # new, qualified, proposal, negotiation, closed - defaults to 'new'
+    company_id: Optional[int] = None  # linked Companies record
 
 class DealMove(BaseModel):
     stage: str  # new, qualified, proposal, negotiation, closed
 
 class DealAssign(BaseModel):
     team_member_id: Optional[int] = None  # None unassigns the deal
+
+class DealCompanyAssign(BaseModel):
+    company_id: Optional[int] = None  # None unlinks the deal from any Company record
 
 class DealProcessStatusUpdate(BaseModel):
     process_status: str  # Login, Sanction, Hold, Disbursed
@@ -93,6 +97,8 @@ class DealResponse(BaseModel):
     assigned_team_member_name: Optional[str] = None
     process_status: str = "Login"
     quotation_count: int = 0
+    company_id: Optional[int] = None
+    company_name: Optional[str] = None
 
 # Campaign Schemas
 class CampaignCreate(BaseModel):
@@ -583,6 +589,7 @@ class CompanyResponse(BaseModel):
     website: Optional[str] = None
     notes: Optional[str] = None
     contact_count: int = 0
+    deal_count: int = 0
     created_at: datetime
     updated_at: datetime
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal, updateDealProcessStatus, getDealQuotations } from '../services/api';
+import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal, updateDealProcessStatus, getDealQuotations, getCompanies, linkDealCompany } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Pipeline.css';
 
@@ -67,6 +67,7 @@ export default function Pipeline() {
   const [deals, setDeals] = useState(mockDeals);
   const [leads, setLeads] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [showDigi, setShowDigi] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(null);
@@ -117,13 +118,16 @@ export default function Pipeline() {
       processStatus: d.process_status || d.processStatus || 'Login',
       assignedTeamMemberId: d.assigned_team_member_id ?? null,
       assignedTeamMemberName: d.assigned_team_member_name ?? null,
-      quotationCount: d.quotation_count ?? 0
+      quotationCount: d.quotation_count ?? 0,
+      companyId: d.company_id ?? null,
+      companyName: d.company_name ?? null
     };
   };
 
   useEffect(() => {
     fetchDeals();
     fetchTeamMembers();
+    fetchCompanies();
   }, []);
 
   const fetchTeamMembers = async () => {
@@ -132,6 +136,32 @@ export default function Pipeline() {
       setTeamMembers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching team members:', error);
+    }
+  };
+
+  const fetchCompanies = async () => {
+    try {
+      const data = await getCompanies(token);
+      setCompanies(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+    }
+  };
+
+  const handleCompanyLinkChange = async (dealId, companyIdRaw) => {
+    const companyId = companyIdRaw ? Number(companyIdRaw) : null;
+    const previous = deals.find((d) => d.id === dealId);
+    setDeals((prev) => prev.map((d) => (d.id === dealId
+      ? { ...d, companyId, companyName: companies.find((c) => c.id === companyId)?.name || null }
+      : d)));
+    try {
+      await linkDealCompany(token, dealId, companyId);
+    } catch (error) {
+      console.error('Error linking deal to company:', error);
+      if (previous) {
+        setDeals((prev) => prev.map((d) => (d.id === dealId ? previous : d)));
+      }
+      alert('Failed to link company. Please try again.');
     }
   };
 
@@ -320,6 +350,7 @@ export default function Pipeline() {
                   <th>Amount</th>
                   <th>Type of Loan</th>
                   <th>Employee</th>
+                  <th>Company</th>
                   <th>Status</th>
                   <th>Quotations</th>
                 </tr>
@@ -351,6 +382,19 @@ export default function Pipeline() {
                           <option value="">Unassigned</option>
                           {teamMembers.map((m) => (
                             <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          className="company-link-select"
+                          value={deal.companyId ?? ''}
+                          onChange={(e) => handleCompanyLinkChange(deal.id, e.target.value)}
+                          title="Linked company"
+                        >
+                          <option value="">🏢 No linked company</option>
+                          {companies.map((co) => (
+                            <option key={co.id} value={co.id}>🏢 {co.name}</option>
                           ))}
                         </select>
                       </td>

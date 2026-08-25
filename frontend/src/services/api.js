@@ -510,6 +510,16 @@ export const linkContactCompany = async (token, contactId, companyId) => {
   return response.data;
 };
 
+export const getCompanyDeals = async (token, companyId) => {
+  const response = await api.get(`/api/companies/${companyId}/deals?token=${token}`);
+  return response.data;
+};
+
+export const linkDealCompany = async (token, dealId, companyId) => {
+  const response = await api.put(`/api/deals/${dealId}/company?token=${token}`, { company_id: companyId });
+  return response.data;
+};
+
 // Quotations (Kylas parity) - formal price quotes linked to a Lead or Contact
 export const getQuotations = async (token) => {
   const response = await api.get(`/api/quotations?token=${token}`);

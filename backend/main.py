@@ -18,7 +18,7 @@ from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
     LeadCreate, LeadUpdate, LeadAssign, LeadResponse,
-    DealCreate, DealMove, DealAssign, DealProcessStatusUpdate, DealResponse,
+    DealCreate, DealMove, DealAssign, DealCompanyAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     IntegrationToggle, IntegrationResponse,
     SettingsUpdate, SettingsResponse,
@@ -130,14 +130,16 @@ def require_admin(token: str = None):
 def fetch_deal_with_member_name(cursor, deal_id):
     """Read one deal back out joined against team_members, so the frontend gets the assigned
     employee's name alongside the raw id - avoids a second round-trip per row on the Pipeline
-    table just to resolve id -> name. Also counts linked Quotations, same subquery pattern as
-    companies.contact_count."""
+    table just to resolve id -> name. Also counts linked Quotations (same subquery pattern as
+    companies.contact_count) and resolves the linked Company's name, if any."""
     cursor.execute(
         """
         SELECT deals.*, team_members.name as assigned_team_member_name,
+               companies.name as company_name,
                (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
         FROM deals
         LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
+        LEFT JOIN companies ON companies.id = deals.company_id
         WHERE deals.id = ?
         """,
         (deal_id,)
@@ -480,9 +482,11 @@ async def get_deals(stage: str = Query(None), token: str = Query(None)):
 
         base_query = """
             SELECT deals.*, team_members.name as assigned_team_member_name,
+                   companies.name as company_name,
                    (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
             FROM deals
             LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
+            LEFT JOIN companies ON companies.id = deals.company_id
         """
         if stage:
             cursor.execute(base_query + " WHERE deals.stage = ? ORDER BY deals.created_at DESC", (stage,))
@@ -508,10 +512,10 @@ async def create_deal(deal: DealCreate, token: str = Query(None)):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO deals (lead_id, deal_value, probability, loan_product, stage, owner_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO deals (lead_id, deal_value, probability, loan_product, stage, owner_id, company_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (deal.lead_id, deal.deal_value, deal.probability, deal.loan_product, stage, current_user['user_id'])
+            (deal.lead_id, deal.deal_value, deal.probability, deal.loan_product, stage, current_user['user_id'], deal.company_id)
         )
         conn.commit()
         deal_id = cursor.lastrowid
@@ -566,6 +570,32 @@ async def assign_deal(deal_id: int, assignment: DealAssign, token: str = Query(N
         cursor.execute(
             "UPDATE deals SET assigned_team_member_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (assignment.team_member_id, deal_id)
+        )
+        conn.commit()
+
+        return fetch_deal_with_member_name(cursor, deal_id)
+
+@app.put("/api/deals/{deal_id}/company", response_model=DealResponse)
+async def link_deal_company(deal_id: int, link: DealCompanyAssign, token: str = Query(None)):
+    """Link (or unlink, if company_id is null) a deal to a Companies record - same
+    dedicated-endpoint pattern as link_contact_company, needed because a generic PUT can't
+    distinguish 'leave company_id alone' from 'clear it' once both are represented as null."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        if link.company_id is not None:
+            cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "UPDATE deals SET company_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.company_id, deal_id)
         )
         conn.commit()
 
@@ -2204,7 +2234,8 @@ async def get_activities(token: str = Query(None), channel: str = Query(None), l
 
 _COMPANY_WITH_CONTACT_COUNT_SQL = """
     SELECT companies.*,
-           (SELECT COUNT(*) FROM contacts WHERE contacts.company_id = companies.id) as contact_count
+           (SELECT COUNT(*) FROM contacts WHERE contacts.company_id = companies.id) as contact_count,
+           (SELECT COUNT(*) FROM deals WHERE deals.company_id = companies.id) as deal_count
     FROM companies
 """
 
@@ -2240,6 +2271,35 @@ async def get_company_contacts(company_id: int, token: str = Query(None)):
             LEFT JOIN companies ON companies.id = contacts.company_id
             WHERE contacts.company_id = ?
             ORDER BY contacts.name ASC
+            """,
+            (company_id,)
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    return rows
+
+@app.get("/api/companies/{company_id}/deals", response_model=list[DealResponse])
+async def get_company_deals(company_id: int, token: str = Query(None)):
+    """Deals linked to this Company record - the reverse of deals.company_id, shown on the
+    Companies page alongside linked contacts."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            """
+            SELECT deals.*, team_members.name as assigned_team_member_name,
+                   companies.name as company_name,
+                   (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
+            FROM deals
+            LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
+            LEFT JOIN companies ON companies.id = deals.company_id
+            WHERE deals.company_id = ?
+            ORDER BY deals.created_at DESC
             """,
             (company_id,)
         )
@@ -2300,9 +2360,10 @@ async def delete_company(company_id: int, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
-        # Unlink first - otherwise contacts.company_id is left pointing at a row that no
+        # Unlink first - otherwise contacts/deals.company_id is left pointing at a row that no
         # longer exists instead of a clean "not linked" state.
         cursor.execute("UPDATE contacts SET company_id = NULL WHERE company_id = ?", (company_id,))
+        cursor.execute("UPDATE deals SET company_id = NULL WHERE company_id = ?", (company_id,))
         cursor.execute("DELETE FROM companies WHERE id = ?", (company_id,))
         conn.commit()
 
