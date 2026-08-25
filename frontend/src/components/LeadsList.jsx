@@ -3,7 +3,7 @@ import {
   getLeads, createLead, updateLead, assignLead, getTeam,
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
   uploadLeadNoteAudio, API_URL, dialCall, aiSuggestLeadFollowup,
-  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate
+  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate, assignToDialer
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/LeadsList.css';
@@ -102,6 +102,12 @@ export default function LeadsList() {
   const canExport = userRole === 'admin';
   const importInputRef = useRef(null);
 
+  // Bulk selection -> "Assign to Dialer" (Kylas My Call Dialer parity)
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [showDialerModal, setShowDialerModal] = useState(false);
+  const [dialerTeamMemberId, setDialerTeamMemberId] = useState('');
+  const [assigningToDialer, setAssigningToDialer] = useState(false);
+
   useEffect(() => {
     fetchLeads();
     fetchTeamMembers();
@@ -179,6 +185,27 @@ export default function LeadsList() {
 
   const toggleExpand = (leadId) => {
     setExpandedLeads((prev) => ({ ...prev, [leadId]: !prev[leadId] }));
+  };
+
+  const toggleLeadSelected = (leadId) => {
+    setSelectedLeadIds((prev) => (prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]));
+  };
+
+  const handleAssignToDialer = async () => {
+    if (!dialerTeamMemberId || selectedLeadIds.length === 0) return;
+    setAssigningToDialer(true);
+    try {
+      const result = await assignToDialer(token, { teamMemberId: Number(dialerTeamMemberId), leadIds: selectedLeadIds });
+      alert(`Added ${result.assigned} lead(s) to the dial queue.${result.skipped ? ` ${result.skipped} were already queued for that team member.` : ''}`);
+      setSelectedLeadIds([]);
+      setShowDialerModal(false);
+      setDialerTeamMemberId('');
+    } catch (err) {
+      console.error('Failed to assign to dialer:', err);
+      alert('Failed to assign to dialer. Please try again.');
+    } finally {
+      setAssigningToDialer(false);
+    }
   };
 
   const handleImportClick = () => {
@@ -533,6 +560,11 @@ export default function LeadsList() {
           {canExport && (
             <button className="btn-secondary" onClick={handleExportCSV}>📤 Export</button>
           )}
+          {selectedLeadIds.length > 0 && (
+            <button className="btn-secondary" onClick={() => setShowDialerModal(true)}>
+              🎯 Assign to Dialer ({selectedLeadIds.length})
+            </button>
+          )}
           <button
             className="btn-primary"
             onClick={() => setShowModal(true)}
@@ -541,6 +573,32 @@ export default function LeadsList() {
           </button>
         </div>
       </div>
+
+      {showDialerModal && (
+        <div className="modal-overlay" onClick={() => setShowDialerModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>🎯 Assign {selectedLeadIds.length} Lead{selectedLeadIds.length === 1 ? '' : 's'} to Dialer</h2>
+              <button className="modal-close" onClick={() => setShowDialerModal(false)}>✕</button>
+            </div>
+            <div className="form-group">
+              <label>Team Member</label>
+              <select value={dialerTeamMemberId} onChange={(e) => setDialerTeamMemberId(e.target.value)}>
+                <option value="">-- Select who will dial these --</option>
+                {teamMembers.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-primary" onClick={handleAssignToDialer} disabled={!dialerTeamMemberId || assigningToDialer}>
+                {assigningToDialer ? 'Assigning…' : 'Add to Queue'}
+              </button>
+              <button className="btn-secondary" onClick={() => setShowDialerModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay">
@@ -653,6 +711,13 @@ export default function LeadsList() {
             return (
               <div key={lead.id} className="lead-row">
                 <div className="lead-row-main">
+                  <input
+                    type="checkbox"
+                    className="lead-select-checkbox"
+                    checked={selectedLeadIds.includes(lead.id)}
+                    onChange={() => toggleLeadSelected(lead.id)}
+                    title="Select for bulk actions"
+                  />
                   <button
                     type="button"
                     className="lead-name-toggle"

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 # User Schemas
@@ -512,6 +512,70 @@ class TeamProductivityRow(BaseModel):
     conversion_rate: Optional[float] = None
     tasks_completed: Optional[int] = None
     meetings_conducted: Optional[int] = None
+
+# Call Dialer (Kylas "My Call Dialer" parity) - a work queue: leads/contacts assigned to a
+# team member to dial through in sequence, tracked separately from the calls actually logged.
+class DialerAssignRequest(BaseModel):
+    team_member_id: int
+    lead_ids: Optional[List[int]] = None
+    contact_ids: Optional[List[int]] = None
+
+class DialerQueueItemResponse(BaseModel):
+    id: int
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    name: str
+    phone: Optional[str] = None
+    team_member_id: int
+    team_member_name: Optional[str] = None
+    status: str  # Pending, Called, Skipped
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+class DialerStatusUpdate(BaseModel):
+    status: str  # Called, Skipped
+
+# Unified Activities feed (Kylas "Campaigns > Activities" parity) - merges communication_log
+# (Email/WhatsApp/SMS sends) and calls into one chronological timeline instead of three tabs.
+class ActivityItem(BaseModel):
+    id: str  # prefixed with source table so ids from calls/communication_log never collide
+    channel: str  # Call, Email, WhatsApp, SMS
+    contact: Optional[str] = None
+    detail: Optional[str] = None
+    outcome: Optional[str] = None
+    timestamp: datetime
+
+# Companies (Kylas parity) - a lightweight standalone directory, not yet linked to Contacts;
+# ArthaInvest works mostly with individuals, so this stays optional metadata for now.
+class CompanyCreate(BaseModel):
+    name: str
+    industry: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    notes: Optional[str] = None
+
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    notes: Optional[str] = None
+
+class CompanyResponse(BaseModel):
+    id: int
+    name: str
+    industry: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
 # Token
 class Token(BaseModel):

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getCallsList, createCall, deleteCall, assignCall, getTeam, getCallsByEmployee, getCommunicationLog } from '../services/api';
+import {
+  getCallsList, createCall, deleteCall, assignCall, getTeam, getCallsByEmployee, getCommunicationLog,
+  getActivities, getDialerQueue, updateDialerStatus, deleteDialerItem
+} from '../services/api';
 import '../styles/Calls.css';
 
 const emptyCallForm = { name: '', phone: '', minutes: '', seconds: '', type: 'Outbound', outcome: '', call_date: '', team_member_id: '' };
@@ -10,7 +13,11 @@ const LOG_TABS = [
   { id: 'calls', label: '📞 Calls', title: 'Calls' },
   { id: 'emails', label: '✉️ Emails', title: 'Emails' },
   { id: 'whatsapp', label: '💬 WhatsApp', title: 'WhatsApp' },
+  { id: 'activities', label: '🔔 Activities', title: 'Activities' },
+  { id: 'dialer', label: '🎯 Dialer', title: 'My Call Dialer' },
 ];
+
+const ACTIVITY_CHANNELS = ['All', 'Call', 'Email', 'WhatsApp', 'SMS'];
 
 export default function Calls() {
   const [activeTab, setActiveTab] = useState('calls');
@@ -21,6 +28,11 @@ export default function Calls() {
   const [employeeStats, setEmployeeStats] = useState([]);
   const [emailLog, setEmailLog] = useState([]);
   const [whatsappLog, setWhatsappLog] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [activityChannel, setActivityChannel] = useState('All');
+  const [dialerTeamMemberId, setDialerTeamMemberId] = useState('');
+  const [dialerQueue, setDialerQueue] = useState([]);
+  const [dialerLoading, setDialerLoading] = useState(false);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
@@ -29,7 +41,72 @@ export default function Calls() {
     fetchEmployeeStats();
     fetchEmailLog();
     fetchWhatsappLog();
+    fetchActivities('All');
   }, []);
+
+  // Default the Dialer tab to the first team member once the roster loads
+  useEffect(() => {
+    if (!dialerTeamMemberId && teamMembers.length > 0) {
+      setDialerTeamMemberId(String(teamMembers[0].id));
+    }
+  }, [teamMembers, dialerTeamMemberId]);
+
+  useEffect(() => {
+    if (activeTab === 'dialer' && dialerTeamMemberId) {
+      fetchDialerQueue(dialerTeamMemberId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, dialerTeamMemberId]);
+
+  const fetchActivities = async (channel) => {
+    try {
+      const data = await getActivities(token, channel === 'All' ? null : channel);
+      setActivities(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+    }
+  };
+
+  const handleActivityChannelChange = (channel) => {
+    setActivityChannel(channel);
+    fetchActivities(channel);
+  };
+
+  const fetchDialerQueue = async (teamMemberId) => {
+    setDialerLoading(true);
+    try {
+      const data = await getDialerQueue(token, teamMemberId);
+      setDialerQueue(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching dial queue:', error);
+    } finally {
+      setDialerLoading(false);
+    }
+  };
+
+  const handleDialerCall = (item) => {
+    if (item.phone) window.location.href = `tel:${item.phone}`;
+  };
+
+  const handleDialerMark = async (item, status) => {
+    try {
+      await updateDialerStatus(token, item.id, status);
+      setDialerQueue((prev) => prev.filter((q) => q.id !== item.id));
+    } catch (error) {
+      console.error('Error updating dial queue item:', error);
+      alert('Failed to update. Please try again.');
+    }
+  };
+
+  const handleDialerRemove = async (item) => {
+    try {
+      await deleteDialerItem(token, item.id);
+      setDialerQueue((prev) => prev.filter((q) => q.id !== item.id));
+    } catch (error) {
+      console.error('Error removing dial queue item:', error);
+      alert('Failed to remove. Please try again.');
+    }
+  };
 
   const fetchEmailLog = async () => {
     try {
@@ -224,6 +301,95 @@ export default function Calls() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeTab === 'activities' && (
+        <div className="calls-table">
+          <div className="activity-channel-filter">
+            {ACTIVITY_CHANNELS.map((ch) => (
+              <button
+                key={ch}
+                type="button"
+                className={`log-tab-btn ${activityChannel === ch ? 'active' : ''}`}
+                onClick={() => handleActivityChannelChange(ch)}
+              >
+                {ch}
+              </button>
+            ))}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Channel</th>
+                <th>Contact</th>
+                <th>Detail</th>
+                <th>Outcome</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activities.length === 0 ? (
+                <tr><td colSpan="5" className="no-data">No activity yet across calls, email, WhatsApp or SMS.</td></tr>
+              ) : activities.map((a) => (
+                <tr key={a.id}>
+                  <td><span className={`badge-${a.channel.toLowerCase()}`}>{a.channel}</span></td>
+                  <td>{a.contact || '-'}</td>
+                  <td className="log-message-cell">{a.detail || '-'}</td>
+                  <td>{a.outcome || '-'}</td>
+                  <td>{new Date(a.timestamp).toLocaleString('en-IN')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'dialer' && (
+        <div className="dialer-tab">
+          <div className="form-group dialer-member-select">
+            <label>Dial Queue For</label>
+            <select value={dialerTeamMemberId} onChange={(e) => setDialerTeamMemberId(e.target.value)}>
+              {teamMembers.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            <span className="dialer-remaining">{dialerQueue.length} pending</span>
+          </div>
+
+          {dialerLoading ? (
+            <p className="no-data">Loading queue…</p>
+          ) : dialerQueue.length === 0 ? (
+            <p className="no-data">No leads/contacts queued for this team member. Select leads on the Leads page and use "Assign to Dialer".</p>
+          ) : (
+            <div className="calls-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Source</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dialerQueue.map((item) => (
+                    <tr key={item.id}>
+                      <td><strong>{item.name}</strong></td>
+                      <td>{item.phone || '-'}</td>
+                      <td>{item.lead_id ? 'Lead' : 'Contact'}</td>
+                      <td className="dialer-actions">
+                        <button className="btn-small" onClick={() => handleDialerCall(item)} title="Call">📞 Call</button>
+                        <button className="btn-small" onClick={() => handleDialerMark(item, 'Called')} title="Mark Called">✅ Called</button>
+                        <button className="btn-small" onClick={() => handleDialerMark(item, 'Skipped')} title="Skip">⏭️ Skip</button>
+                        <button className="btn-small delete" onClick={() => handleDialerRemove(item)} title="Remove from queue">🗑️</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

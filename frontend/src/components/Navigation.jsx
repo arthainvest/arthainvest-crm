@@ -31,6 +31,10 @@ export default function Navigation({ onLogout }) {
           <span className="icon">👥</span>
           <span>Contacts</span>
         </Link>
+        <Link to="/companies" className="nav-link">
+          <span className="icon">🏢</span>
+          <span>Companies</span>
+        </Link>
         <Link to="/leads" className="nav-link">
           <span className="icon">📈</span>
           <span>Leads</span>

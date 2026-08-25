@@ -184,6 +184,13 @@
   padding: 10px 14px;
 }
 
+.lead-select-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
 .lead-name-toggle {
   display: flex;
   align-items: center;

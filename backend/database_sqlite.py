@@ -394,6 +394,40 @@ def init_db():
             pass
 
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dial_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id INTEGER,
+                contact_id INTEGER,
+                team_member_id INTEGER NOT NULL,
+                status TEXT DEFAULT 'Pending',
+                assigned_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
+                FOREIGN KEY (lead_id) REFERENCES leads(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (team_member_id) REFERENCES team_members(id),
+                FOREIGN KEY (assigned_by) REFERENCES users(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS companies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                industry TEXT,
+                city TEXT,
+                phone TEXT,
+                email TEXT,
+                website TEXT,
+                notes TEXT,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS team_members (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,

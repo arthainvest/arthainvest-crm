@@ -444,4 +444,59 @@ export const getCallsAnalytics = async (token) => {
   return response.data;
 };
 
+// Call Dialer (Kylas "My Call Dialer" parity) - assign leads/contacts to a team member's
+// dial queue, then work through it from the Calls page's Dialer tab.
+export const assignToDialer = async (token, { teamMemberId, leadIds, contactIds }) => {
+  const response = await api.post(`/api/dialer/assign?token=${token}`, {
+    team_member_id: teamMemberId,
+    lead_ids: leadIds,
+    contact_ids: contactIds,
+  });
+  return response.data;
+};
+
+export const getDialerQueue = async (token, teamMemberId) => {
+  const params = new URLSearchParams({ token });
+  if (teamMemberId) params.append('team_member_id', teamMemberId);
+  const response = await api.get(`/api/dialer/queue?${params.toString()}`);
+  return response.data;
+};
+
+export const updateDialerStatus = async (token, id, status) => {
+  const response = await api.put(`/api/dialer/queue/${id}?token=${token}`, { status });
+  return response.data;
+};
+
+export const deleteDialerItem = async (token, id) => {
+  await api.delete(`/api/dialer/queue/${id}?token=${token}`);
+};
+
+// Unified Activities feed (Kylas "Campaigns > Activities" parity)
+export const getActivities = async (token, channel) => {
+  const params = new URLSearchParams({ token });
+  if (channel) params.append('channel', channel);
+  const response = await api.get(`/api/activities?${params.toString()}`);
+  return response.data;
+};
+
+// Companies (Kylas parity - standalone directory)
+export const getCompanies = async (token) => {
+  const response = await api.get(`/api/companies?token=${token}`);
+  return response.data;
+};
+
+export const createCompany = async (token, companyData) => {
+  const response = await api.post(`/api/companies?token=${token}`, companyData);
+  return response.data;
+};
+
+export const updateCompany = async (token, id, companyData) => {
+  const response = await api.put(`/api/companies/${id}?token=${token}`, companyData);
+  return response.data;
+};
+
+export const deleteCompany = async (token, id) => {
+  await api.delete(`/api/companies/${id}?token=${token}`);
+};
+
 export default api;

@@ -1,0 +1,12 @@
+.companies-container { padding: 20px; }
+.companies-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+
+.companies-table { background: var(--bg-surface); border-radius: 8px; overflow: hidden; }
+.companies-table table { width: 100%; border-collapse: collapse; }
+.companies-table th { background: var(--border-subtle); padding: 15px; text-align: left; font-weight: bold; color: #1976d2; }
+.companies-table td { padding: 15px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); }
+
+.btn-small { padding: 6px 12px; border: 1px solid #90caf9; background: var(--bg-surface); color: #1976d2; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px; }
+.btn-small.delete { color: #a71d2a; border-color: #f1a7a7; }
+
+.no-data { text-align: center; color: var(--text-muted); padding: 40px; font-size: 14px; }

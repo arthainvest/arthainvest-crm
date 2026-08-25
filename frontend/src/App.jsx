@@ -7,6 +7,7 @@ import Contacts from './components/Contacts';
 import LeadsList from './components/LeadsList';
 import Pipeline from './components/Pipeline';
 import Calls from './components/Calls';
+import Companies from './components/Companies';
 import Marketing from './components/Marketing';
 import Team from './components/Team';
 import Reports from './components/Reports';
@@ -65,6 +66,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/today" element={<Today />} />
               <Route path="/contacts" element={<Contacts />} />
+              <Route path="/companies" element={<Companies />} />
               <Route path="/leads" element={<LeadsList />} />
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/calls" element={<Calls />} />

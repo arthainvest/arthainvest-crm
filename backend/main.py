@@ -39,7 +39,9 @@ from schemas import (
     MailchimpSyncResponse,
     LinkedInConnectResponse, LinkedInPostRequest, LinkedInPostResponse,
     TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow,
-    VoiceCallTriggerRequest, VoiceCallTriggerResponse
+    VoiceCallTriggerRequest, VoiceCallTriggerResponse,
+    DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
+    ActivityItem, CompanyCreate, CompanyUpdate, CompanyResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -1973,6 +1975,248 @@ async def get_communication_log(token: str = Query(None), channel: str = Query(N
         rows = [dict(r) for r in cursor.fetchall()]
 
     return rows
+
+def fetch_dialer_item(cursor, queue_id):
+    """Read one dial_queue row back joined against its lead/contact (for name+phone) and
+    team_members (for the assignee's name)."""
+    cursor.execute(
+        """
+        SELECT dial_queue.*,
+               team_members.name as team_member_name,
+               COALESCE(leads.name, contacts.name) as name,
+               COALESCE(leads.phone, contacts.phone) as phone
+        FROM dial_queue
+        LEFT JOIN team_members ON team_members.id = dial_queue.team_member_id
+        LEFT JOIN leads ON leads.id = dial_queue.lead_id
+        LEFT JOIN contacts ON contacts.id = dial_queue.contact_id
+        WHERE dial_queue.id = ?
+        """,
+        (queue_id,)
+    )
+    return dict(cursor.fetchone())
+
+# ============= CALL DIALER (Kylas "My Call Dialer" parity) =============
+
+@app.post("/api/dialer/assign")
+async def assign_to_dialer(payload: DialerAssignRequest, token: str = Query(None)):
+    """Bulk-assign leads/contacts to a team member's dial queue. Skips records already
+    Pending for that same team member, so re-selecting the same leads doesn't create
+    duplicate queue entries."""
+    current_user = get_current_user(token)
+
+    lead_ids = payload.lead_ids or []
+    contact_ids = payload.contact_ids or []
+    if not lead_ids and not contact_ids:
+        raise HTTPException(status_code=400, detail="Select at least one lead or contact to assign")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (payload.team_member_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Team member not found")
+
+        cursor.execute(
+            "SELECT lead_id, contact_id FROM dial_queue WHERE team_member_id = ? AND status = 'Pending'",
+            (payload.team_member_id,)
+        )
+        existing = {(r['lead_id'], r['contact_id']) for r in cursor.fetchall()}
+
+        assigned = 0
+        for lead_id in lead_ids:
+            if (lead_id, None) in existing:
+                continue
+            cursor.execute(
+                "INSERT INTO dial_queue (lead_id, contact_id, team_member_id, assigned_by) VALUES (?, NULL, ?, ?)",
+                (lead_id, payload.team_member_id, current_user['user_id'])
+            )
+            assigned += 1
+        for contact_id in contact_ids:
+            if (None, contact_id) in existing:
+                continue
+            cursor.execute(
+                "INSERT INTO dial_queue (lead_id, contact_id, team_member_id, assigned_by) VALUES (NULL, ?, ?, ?)",
+                (contact_id, payload.team_member_id, current_user['user_id'])
+            )
+            assigned += 1
+        conn.commit()
+
+    return {"assigned": assigned, "skipped": len(lead_ids) + len(contact_ids) - assigned}
+
+@app.get("/api/dialer/queue", response_model=list[DialerQueueItemResponse])
+async def get_dialer_queue(token: str = Query(None), team_member_id: int = Query(None), status: str = Query("Pending")):
+    """A team member's dial queue - defaults to their Pending records, oldest-assigned first
+    (a FIFO queue to work through), matching Kylas's My Call Dialer."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        query = """
+            SELECT dial_queue.*,
+                   team_members.name as team_member_name,
+                   COALESCE(leads.name, contacts.name) as name,
+                   COALESCE(leads.phone, contacts.phone) as phone
+            FROM dial_queue
+            LEFT JOIN team_members ON team_members.id = dial_queue.team_member_id
+            LEFT JOIN leads ON leads.id = dial_queue.lead_id
+            LEFT JOIN contacts ON contacts.id = dial_queue.contact_id
+            WHERE 1=1
+        """
+        params = []
+        if team_member_id is not None:
+            query += " AND dial_queue.team_member_id = ?"
+            params.append(team_member_id)
+        if status:
+            query += " AND dial_queue.status = ?"
+            params.append(status)
+        query += " ORDER BY dial_queue.created_at ASC"
+        cursor.execute(query, params)
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    return rows
+
+@app.put("/api/dialer/queue/{queue_id}", response_model=DialerQueueItemResponse)
+async def update_dialer_status(queue_id: int, payload: DialerStatusUpdate, token: str = Query(None)):
+    """Mark a queued record Called or Skipped, moving it out of the Pending queue."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM dial_queue WHERE id = ?", (queue_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Queue entry not found")
+
+        cursor.execute(
+            "UPDATE dial_queue SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (payload.status, queue_id)
+        )
+        conn.commit()
+
+        return fetch_dialer_item(cursor, queue_id)
+
+@app.delete("/api/dialer/queue/{queue_id}")
+async def delete_dialer_item(queue_id: int, token: str = Query(None)):
+    """Remove a record from the dial queue entirely (not the same as marking it Skipped)."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM dial_queue WHERE id = ?", (queue_id,))
+        conn.commit()
+
+    return {"message": "Removed from dialer queue"}
+
+# ============= UNIFIED ACTIVITIES FEED (Kylas "Campaigns > Activities" parity) =============
+
+@app.get("/api/activities", response_model=list[ActivityItem])
+async def get_activities(token: str = Query(None), channel: str = Query(None), limit: int = Query(100)):
+    """Merges communication_log (Email/WhatsApp/SMS sends) and calls into one chronological
+    timeline, instead of checking three separate tabs - Kylas groups these under
+    Campaigns > Activities."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM communication_log ORDER BY created_at DESC LIMIT ?", (limit,))
+        comm_rows = [dict(r) for r in cursor.fetchall()]
+        cursor.execute("SELECT * FROM calls ORDER BY call_date DESC, created_at DESC LIMIT ?", (limit,))
+        call_rows = [dict(r) for r in cursor.fetchall()]
+
+    items = []
+    for r in comm_rows:
+        items.append({
+            "id": f"comm-{r['id']}",
+            "channel": r['channel'],
+            "contact": r.get('recipient'),
+            "detail": r.get('subject') or (r.get('message') or '')[:80],
+            "outcome": r['status'],
+            "timestamp": r['created_at'],
+        })
+    for r in call_rows:
+        items.append({
+            "id": f"call-{r['id']}",
+            "channel": "Call",
+            "contact": r.get('name'),
+            "detail": f"{r.get('type', 'Outbound')} call - {r.get('duration_seconds') or 0}s",
+            "outcome": r.get('outcome'),
+            "timestamp": r.get('created_at'),
+        })
+
+    if channel and channel != "All":
+        items = [i for i in items if i['channel'].lower() == channel.lower()]
+
+    items.sort(key=lambda i: i['timestamp'], reverse=True)
+    return items[:limit]
+
+# ============= COMPANIES (Kylas parity - standalone directory) =============
+
+@app.get("/api/companies", response_model=list[CompanyResponse])
+async def get_companies(token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM companies ORDER BY name ASC")
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    return rows
+
+@app.post("/api/companies", response_model=CompanyResponse)
+async def create_company(company: CompanyCreate, token: str = Query(None)):
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO companies (name, industry, city, phone, email, website, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (company.name, company.industry, company.city, company.phone, company.email, company.website, company.notes, current_user['user_id'])
+        )
+        conn.commit()
+        company_id = cursor.lastrowid
+        cursor.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
+        new_company = dict(cursor.fetchone())
+
+    return new_company
+
+@app.put("/api/companies/{company_id}", response_model=CompanyResponse)
+async def update_company(company_id: int, company: CompanyUpdate, token: str = Query(None)):
+    get_current_user(token)
+
+    updates = []
+    values = []
+    for field in ['name', 'industry', 'city', 'phone', 'email', 'website', 'notes']:
+        value = getattr(company, field)
+        if value is not None:
+            updates.append(f"{field} = ?")
+            values.append(value)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(company_id)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE companies SET {', '.join(updates)} WHERE id = ?", values)
+        conn.commit()
+
+        cursor.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
+        updated = cursor.fetchone()
+        if not updated:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+    return dict(updated)
+
+@app.delete("/api/companies/{company_id}")
+async def delete_company(company_id: int, token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM companies WHERE id = ?", (company_id,))
+        conn.commit()
+
+    return {"message": "Company deleted"}
 
 @app.post("/api/marketing/mailchimp/sync", response_model=MailchimpSyncResponse)
 async def sync_mailchimp(token: str = Query(None)):
