@@ -130,10 +130,12 @@ def require_admin(token: str = None):
 def fetch_deal_with_member_name(cursor, deal_id):
     """Read one deal back out joined against team_members, so the frontend gets the assigned
     employee's name alongside the raw id - avoids a second round-trip per row on the Pipeline
-    table just to resolve id -> name."""
+    table just to resolve id -> name. Also counts linked Quotations, same subquery pattern as
+    companies.contact_count."""
     cursor.execute(
         """
-        SELECT deals.*, team_members.name as assigned_team_member_name
+        SELECT deals.*, team_members.name as assigned_team_member_name,
+               (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
         FROM deals
         LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
         WHERE deals.id = ?
@@ -477,7 +479,8 @@ async def get_deals(stage: str = Query(None), token: str = Query(None)):
         cursor = conn.cursor()
 
         base_query = """
-            SELECT deals.*, team_members.name as assigned_team_member_name
+            SELECT deals.*, team_members.name as assigned_team_member_name,
+                   (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
             FROM deals
             LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
         """
@@ -567,6 +570,24 @@ async def assign_deal(deal_id: int, assignment: DealAssign, token: str = Query(N
         conn.commit()
 
         return fetch_deal_with_member_name(cursor, deal_id)
+
+@app.get("/api/deals/{deal_id}/quotations", response_model=list[QuotationResponse])
+async def get_deal_quotations(deal_id: int, token: str = Query(None)):
+    """Quotations linked to this deal - the reverse of quotations.deal_id, shown on the
+    Pipeline page so a deal row can expand to show what's been quoted."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        cursor.execute("SELECT id FROM quotations WHERE deal_id = ? ORDER BY created_at DESC", (deal_id,))
+        ids = [r['id'] for r in cursor.fetchall()]
+        quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
+
+    return quotations
 
 @app.put("/api/deals/{deal_id}/process-status", response_model=DealResponse)
 async def update_deal_process_status(deal_id: int, payload: DealProcessStatusUpdate, token: str = Query(None)):
@@ -2288,15 +2309,19 @@ async def delete_company(company_id: int, token: str = Query(None)):
     return {"message": "Company deleted"}
 
 def fetch_quotation_with_details(cursor, quotation_id):
-    """Read one quotation back joined against its linked lead/contact name, with its line
-    items and a computed grand_total - items live in a separate table so a quotation can have
-    any number of them."""
+    """Read one quotation back joined against its linked lead/contact name and (if linked) its
+    Deal - resolved into a human-readable deal_label since a deal has no name of its own, just
+    a lead + loan product + value - plus its line items and a computed grand_total."""
     cursor.execute(
         """
-        SELECT quotations.*, leads.name as lead_name, contacts.name as contact_name
+        SELECT quotations.*, leads.name as lead_name, contacts.name as contact_name,
+               deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+               deal_leads.name as deal_lead_name
         FROM quotations
         LEFT JOIN leads ON leads.id = quotations.lead_id
         LEFT JOIN contacts ON contacts.id = quotations.contact_id
+        LEFT JOIN deals ON deals.id = quotations.deal_id
+        LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
         WHERE quotations.id = ?
         """,
         (quotation_id,)
@@ -2305,6 +2330,13 @@ def fetch_quotation_with_details(cursor, quotation_id):
     if not row:
         return None
     quotation = dict(row)
+    if quotation.get('deal_id'):
+        quotation['deal_label'] = (
+            f"{quotation.get('deal_lead_name') or 'Deal'} - {quotation.get('deal_loan_product') or ''} "
+            f"(Rs {quotation.get('deal_deal_value') or 0:,.0f})"
+        )
+    else:
+        quotation['deal_label'] = None
     cursor.execute("SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY id ASC", (quotation_id,))
     items = [dict(r) for r in cursor.fetchall()]
     quotation['items'] = items
@@ -2344,8 +2376,8 @@ async def create_quotation(quotation: QuotationCreate, token: str = Query(None))
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO quotations (lead_id, contact_id, title, valid_until, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-            (quotation.lead_id, quotation.contact_id, quotation.title, quotation.valid_until, quotation.notes, current_user['user_id'])
+            "INSERT INTO quotations (lead_id, contact_id, deal_id, title, valid_until, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (quotation.lead_id, quotation.contact_id, quotation.deal_id, quotation.title, quotation.valid_until, quotation.notes, current_user['user_id'])
         )
         quotation_id = cursor.lastrowid
 
@@ -2370,7 +2402,7 @@ async def update_quotation(quotation_id: int, quotation: QuotationUpdate, token:
 
     updates = []
     values = []
-    for field in ['lead_id', 'contact_id', 'title', 'valid_until', 'notes', 'status']:
+    for field in ['lead_id', 'contact_id', 'deal_id', 'title', 'valid_until', 'notes', 'status']:
         value = getattr(quotation, field)
         if value is not None:
             updates.append(f"{field} = ?")

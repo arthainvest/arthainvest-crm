@@ -540,4 +540,9 @@ export const sendQuotation = async (token, id) => {
   return response.data;
 };
 
+export const getDealQuotations = async (token, dealId) => {
+  const response = await api.get(`/api/deals/${dealId}/quotations?token=${token}`);
+  return response.data;
+};
+
 export default api;

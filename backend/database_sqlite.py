@@ -434,6 +434,7 @@ def init_db():
                 quotation_number TEXT,
                 lead_id INTEGER,
                 contact_id INTEGER,
+                deal_id INTEGER,
                 title TEXT NOT NULL,
                 status TEXT DEFAULT 'Draft',
                 valid_until DATE,
@@ -443,9 +444,16 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (lead_id) REFERENCES leads(id),
                 FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (deal_id) REFERENCES deals(id),
                 FOREIGN KEY (created_by) REFERENCES users(id)
             )
         """)
+
+        # quotations existed in databases from earlier this session, before deal_id existed.
+        try:
+            cursor.execute("ALTER TABLE quotations ADD COLUMN deal_id INTEGER REFERENCES deals(id)")
+        except sqlite3.OperationalError:
+            pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS quotation_items (

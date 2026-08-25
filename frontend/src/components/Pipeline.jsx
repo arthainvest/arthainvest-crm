@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal, updateDealProcessStatus } from '../services/api';
+import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal, updateDealProcessStatus, getDealQuotations } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Pipeline.css';
 
@@ -71,6 +71,9 @@ export default function Pipeline() {
   const [showDigi, setShowDigi] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [uploadedDocs, setUploadedDocs] = useState({});
+  const [showQuotations, setShowQuotations] = useState(false);
+  const [quotationsForDeal, setQuotationsForDeal] = useState([]);
+  const [loadingDealQuotations, setLoadingDealQuotations] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     company: '',
@@ -113,7 +116,8 @@ export default function Pipeline() {
       probability: d.probability > 1 ? Math.round(d.probability) : Math.round((d.probability ?? 0) * 100),
       processStatus: d.process_status || d.processStatus || 'Login',
       assignedTeamMemberId: d.assigned_team_member_id ?? null,
-      assignedTeamMemberName: d.assigned_team_member_name ?? null
+      assignedTeamMemberName: d.assigned_team_member_name ?? null,
+      quotationCount: d.quotation_count ?? 0
     };
   };
 
@@ -205,6 +209,21 @@ export default function Pipeline() {
     } catch (error) {
       console.error('Error creating deal:', error);
       alert('Failed to create deal. Please try again.');
+    }
+  };
+
+  const handleViewQuotations = async (deal) => {
+    setSelectedDeal(deal);
+    setShowQuotations(true);
+    setLoadingDealQuotations(true);
+    try {
+      const data = await getDealQuotations(token, deal.id);
+      setQuotationsForDeal(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching quotations for deal:', error);
+      setQuotationsForDeal([]);
+    } finally {
+      setLoadingDealQuotations(false);
     }
   };
 
@@ -302,6 +321,7 @@ export default function Pipeline() {
                   <th>Type of Loan</th>
                   <th>Employee</th>
                   <th>Status</th>
+                  <th>Quotations</th>
                 </tr>
               </thead>
               <tbody>
@@ -344,6 +364,16 @@ export default function Pipeline() {
                             <option key={s} value={s}>{s}</option>
                           ))}
                         </select>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="quotations-count-btn"
+                          onClick={() => handleViewQuotations(deal)}
+                          title="View quotations linked to this deal"
+                        >
+                          📋 {deal.quotationCount || 0}
+                        </button>
                       </td>
                     </tr>
                   );
@@ -506,6 +536,38 @@ export default function Pipeline() {
                 <button className="btn-primary">Submit to DigiLocker</button>
                 <button className="btn-secondary">📨 Request Missing Docs</button>
                 <button className="btn-secondary" onClick={() => setShowDigi(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Linked Quotations Modal */}
+      {showQuotations && selectedDeal && (
+        <div className="modal-overlay" onClick={() => setShowQuotations(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>📋 Quotations - {selectedDeal.name}</h2>
+              <button className="btn-close" onClick={() => setShowQuotations(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {loadingDealQuotations ? (
+                <p className="no-data-inline">Loading…</p>
+              ) : quotationsForDeal.length === 0 ? (
+                <p className="no-data-inline">No quotations linked to this deal yet. Create one from the Quotations page and link it here.</p>
+              ) : (
+                <ul className="deal-quotations-list">
+                  {quotationsForDeal.map((q) => (
+                    <li key={q.id}>
+                      <strong>{q.quotation_number}</strong> - {q.title}
+                      <span className={`deal-quotation-status status-${(q.status || '').toLowerCase()}`}>{q.status}</span>
+                      <span className="deal-quotation-total">₹{(q.grand_total || 0).toLocaleString('en-IN')}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="modal-actions">
+                <button className="btn-secondary" onClick={() => setShowQuotations(false)}>Close</button>
               </div>
             </div>
           </div>

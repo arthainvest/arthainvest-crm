@@ -92,6 +92,7 @@ class DealResponse(BaseModel):
     assigned_team_member_id: Optional[int] = None
     assigned_team_member_name: Optional[str] = None
     process_status: str = "Login"
+    quotation_count: int = 0
 
 # Campaign Schemas
 class CampaignCreate(BaseModel):
@@ -599,6 +600,7 @@ class QuotationItemResponse(BaseModel):
 class QuotationCreate(BaseModel):
     lead_id: Optional[int] = None
     contact_id: Optional[int] = None
+    deal_id: Optional[int] = None
     title: str
     valid_until: Optional[str] = None  # ISO "YYYY-MM-DD"
     notes: Optional[str] = None
@@ -607,6 +609,7 @@ class QuotationCreate(BaseModel):
 class QuotationUpdate(BaseModel):
     lead_id: Optional[int] = None
     contact_id: Optional[int] = None
+    deal_id: Optional[int] = None
     title: Optional[str] = None
     valid_until: Optional[str] = None
     notes: Optional[str] = None
@@ -620,6 +623,8 @@ class QuotationResponse(BaseModel):
     lead_name: Optional[str] = None
     contact_id: Optional[int] = None
     contact_name: Optional[str] = None
+    deal_id: Optional[int] = None
+    deal_label: Optional[str] = None
     title: str
     status: str
     valid_until: Optional[str] = None

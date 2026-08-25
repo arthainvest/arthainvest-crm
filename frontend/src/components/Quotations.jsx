@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   getQuotations, createQuotation, updateQuotation, deleteQuotation, sendQuotation,
-  getLeads, getContactsList
+  getLeads, getContactsList, getDeals
 } from '../services/api';
+import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Quotations.css';
 
 const STATUS_OPTIONS = ['Draft', 'Sent', 'Accepted', 'Rejected'];
@@ -11,6 +12,7 @@ const emptyItem = () => ({ description: '', amount: '' });
 const emptyForm = {
   recipientType: 'lead',
   recipientId: '',
+  dealId: '',
   title: '',
   validUntil: '',
   notes: '',
@@ -25,6 +27,7 @@ export default function Quotations() {
   const [quotations, setQuotations] = useState([]);
   const [leads, setLeads] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [deals, setDeals] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -35,6 +38,7 @@ export default function Quotations() {
     fetchQuotations();
     fetchLeads();
     fetchContacts();
+    fetchDeals();
   }, []);
 
   const fetchQuotations = async () => {
@@ -64,6 +68,23 @@ export default function Quotations() {
     }
   };
 
+  const fetchDeals = async () => {
+    try {
+      const data = await getDeals(token);
+      setDeals(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch deals:', err);
+    }
+  };
+
+  // Deals carry no name of their own (just lead_id + loan_product + deal_value) - cross-
+  // reference the matching lead to build a readable label, same approach as Pipeline.jsx.
+  const dealLabel = (deal) => {
+    const lead = leads.find((l) => l.id === deal.lead_id);
+    const productInfo = LOAN_PRODUCTS.find((p) => p.id === deal.loan_product);
+    return `${lead?.name || `Lead #${deal.lead_id}`} - ${productInfo?.name || deal.loan_product} (₹${(deal.deal_value || 0).toLocaleString('en-IN')})`;
+  };
+
   const openAddModal = () => {
     setEditingId(null);
     setForm(emptyForm);
@@ -75,6 +96,7 @@ export default function Quotations() {
     setForm({
       recipientType: q.contact_id ? 'contact' : 'lead',
       recipientId: String(q.contact_id || q.lead_id || ''),
+      dealId: q.deal_id ? String(q.deal_id) : '',
       title: q.title || '',
       validUntil: q.valid_until || '',
       notes: q.notes || '',
@@ -110,6 +132,7 @@ export default function Quotations() {
     const payload = {
       lead_id: form.recipientType === 'lead' ? Number(form.recipientId) : null,
       contact_id: form.recipientType === 'contact' ? Number(form.recipientId) : null,
+      deal_id: form.dealId ? Number(form.dealId) : null,
       title: form.title,
       valid_until: form.validUntil || null,
       notes: form.notes || null,
@@ -188,6 +211,7 @@ export default function Quotations() {
                 <th>Quotation #</th>
                 <th>Title</th>
                 <th>To</th>
+                <th>Deal</th>
                 <th>Grand Total</th>
                 <th>Status</th>
                 <th>Valid Until</th>
@@ -200,6 +224,7 @@ export default function Quotations() {
                   <td><strong>{q.quotation_number}</strong></td>
                   <td>{q.title}</td>
                   <td>{q.contact_name || q.lead_name || '-'}</td>
+                  <td className="quotation-deal-cell">{q.deal_label || '-'}</td>
                   <td>{formatCurrency(q.grand_total)}</td>
                   <td>
                     <select
@@ -259,6 +284,19 @@ export default function Quotations() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label>Link to Deal (optional)</label>
+                <select
+                  value={form.dealId}
+                  onChange={(e) => setForm({ ...form, dealId: e.target.value })}
+                >
+                  <option value="">-- Not linked to a deal --</option>
+                  {deals.map((d) => (
+                    <option key={d.id} value={d.id}>{dealLabel(d)}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group">
