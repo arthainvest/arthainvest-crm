@@ -294,8 +294,8 @@ export const getCommunicationLog = async (token, channel) => {
 };
 
 // Twilio click-to-call
-export const dialCall = async (token, to) => {
-  const response = await api.post(`/api/calls/dial?token=${token}`, { to });
+export const dialCall = async (token, to, { leadId, contactId } = {}) => {
+  const response = await api.post(`/api/calls/dial?token=${token}`, { to, lead_id: leadId, contact_id: contactId });
   return response.data;
 };
 

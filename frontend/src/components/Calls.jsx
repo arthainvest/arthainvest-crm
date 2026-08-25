@@ -476,6 +476,7 @@ export default function Calls() {
             <tr>
               <th>Contact</th>
               <th>Phone</th>
+              <th>Linked To</th>
               <th>Duration</th>
               <th>Type</th>
               <th>Outcome</th>
@@ -486,11 +487,14 @@ export default function Calls() {
           </thead>
           <tbody>
             {calls.length === 0 ? (
-              <tr><td colSpan="8" className="no-data">No calls logged yet.</td></tr>
+              <tr><td colSpan="9" className="no-data">No calls logged yet.</td></tr>
             ) : calls.map(call => (
               <tr key={call.id}>
                 <td><strong>{call.name}</strong></td>
                 <td>{call.phone}</td>
+                <td>
+                  {call.lead_name ? `📈 ${call.lead_name}` : call.contact_name ? `👥 ${call.contact_name}` : '-'}
+                </td>
                 <td>{call.duration}</td>
                 <td><span className={`badge-${(call.type || '').toLowerCase()}`}>{call.type || 'Unknown'}</span></td>
                 <td>{call.outcome || '-'}</td>

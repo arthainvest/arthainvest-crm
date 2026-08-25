@@ -317,7 +317,7 @@ export default function Contacts() {
     // Try a real Twilio click-to-call first (rings the agent, then bridges to the contact);
     // falls back to a plain tel: link when Twilio isn't configured on the server.
     try {
-      const result = await dialCall(token, contact.phone);
+      const result = await dialCall(token, contact.phone, { contactId: contact.id });
       if (result.configured) {
         alert(result.message);
         return;

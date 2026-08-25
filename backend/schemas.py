@@ -400,11 +400,14 @@ class EmployeeCallStats(BaseModel):
 # Twilio click-to-call
 class DialRequest(BaseModel):
     to: str  # customer's phone number to connect the agent to
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
 
 class DialResponse(BaseModel):
     configured: bool
     message: str
     call_sid: Optional[str] = None
+    call_id: Optional[int] = None  # the auto-logged calls.id, if a real call was placed
 
 # Claude AI note assistant
 class AISummaryResponse(BaseModel):

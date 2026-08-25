@@ -292,7 +292,7 @@ export default function LeadsList() {
     // Try a real Twilio click-to-call first (rings the agent, then bridges to the lead);
     // falls back to a plain tel: link when Twilio isn't configured on the server.
     try {
-      const result = await dialCall(token, lead.phone);
+      const result = await dialCall(token, lead.phone, { leadId: lead.id });
       if (result.configured) {
         alert(result.message);
         return;

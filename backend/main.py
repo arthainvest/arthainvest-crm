@@ -1934,11 +1934,47 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
             from_=from_number,
             twiml=f'<Response><Dial callerId="{from_number}">{dial.to}</Dial></Response>'
         )
-        return DialResponse(configured=True, message=f"Calling you at {agent_number} now.", call_sid=call.sid)
+        call_id = _auto_log_dial(dial, current_user['user_id'])
+        return DialResponse(configured=True, message=f"Calling you at {agent_number} now.", call_sid=call.sid, call_id=call_id)
     except TwilioRestException as e:
         return DialResponse(configured=True, message=f"Twilio couldn't place the call: {e.msg}")
     except Exception as e:
         return DialResponse(configured=True, message=f"Call failed: {str(e)}")
+
+def _auto_log_dial(dial, user_id):
+    """A click-to-call that actually rang counts as a real Attempted call even though its
+    outcome/duration aren't known yet (there's no Twilio status webhook wired up to fill
+    those in later) - logging it with outcome=None still lets Calls-by-Employee's Attempted
+    count reflect what actually happened, since Connected only counts calls with a non-empty
+    outcome. Without this, every click-to-call dial would be invisible to that report."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        name = dial.to
+        if dial.lead_id:
+            cursor.execute("SELECT name FROM leads WHERE id = ?", (dial.lead_id,))
+            row = cursor.fetchone()
+            if row:
+                name = row['name']
+        elif dial.contact_id:
+            cursor.execute("SELECT name FROM contacts WHERE id = ?", (dial.contact_id,))
+            row = cursor.fetchone()
+            if row:
+                name = row['name']
+
+        cursor.execute("SELECT id FROM team_members WHERE user_id = ?", (user_id,))
+        member_row = cursor.fetchone()
+        team_member_id = member_row['id'] if member_row else None
+
+        cursor.execute(
+            """
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id)
+            VALUES (?, ?, 0, 'Outbound', NULL, date('now'), ?, ?, ?, ?)
+            """,
+            (name, dial.to, user_id, team_member_id, dial.lead_id, dial.contact_id)
+        )
+        conn.commit()
+        return cursor.lastrowid
 
 def _log_communication(channel, recipient, message, status, subject=None, error_detail=None, user_id=None, lead_id=None, contact_id=None):
     """Record a real send attempt (success or failure) to communication_log - the Calls page's
