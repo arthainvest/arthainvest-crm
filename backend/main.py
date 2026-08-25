@@ -2540,9 +2540,24 @@ async def get_team_analytics(token: str = Query(None)):
             total_leads = cursor.fetchone()['count']
             conversion_rate = round((deals_closed / total_leads * 100), 1) if total_leads > 0 else 0.0
 
+            # tasks/meetings were built with real assignment from day one - no login-linked
+            # predecessor to fall back to, so no OR-guard needed here unlike the four above.
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM tasks WHERE assigned_team_member_id = ? AND completed = 1",
+                (mid,)
+            )
+            tasks_completed = cursor.fetchone()['count']
+
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM meetings WHERE assigned_team_member_id = ? AND status = 'Conducted'",
+                (mid,)
+            )
+            meetings_conducted = cursor.fetchone()['count']
+
             rows.append(TeamProductivityRow(
                 id=mid, name=m['name'], role=m['role'],
-                calls=calls, deals_closed=deals_closed, revenue=revenue, conversion_rate=conversion_rate
+                calls=calls, deals_closed=deals_closed, revenue=revenue, conversion_rate=conversion_rate,
+                tasks_completed=tasks_completed, meetings_conducted=meetings_conducted
             ))
 
     rows.sort(key=lambda r: (TEAM_ROLE_ORDER.get(r.role, 99), r.name))

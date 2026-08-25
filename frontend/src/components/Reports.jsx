@@ -129,11 +129,12 @@ export default function Reports() {
     lines.push('');
 
     lines.push('Team Productivity');
-    lines.push('Team Member,Role,Calls,Deals Closed,Revenue,Conversion Rate');
+    lines.push('Team Member,Role,Calls,Deals Closed,Revenue,Conversion Rate,Tasks Completed,Meetings Conducted');
     teamStats.forEach((m) => lines.push([
       csvEscape(m.name), csvEscape(ROLE_LABELS[m.role] || m.role),
       csvEscape(fmtStat(m.calls)), csvEscape(fmtStat(m.deals_closed)), csvEscape(fmtStat(m.revenue, true)),
-      csvEscape(m.conversion_rate == null ? '—' : `${m.conversion_rate}%`)
+      csvEscape(m.conversion_rate == null ? '—' : `${m.conversion_rate}%`),
+      csvEscape(fmtStat(m.tasks_completed)), csvEscape(fmtStat(m.meetings_conducted))
     ].join(',')));
     lines.push('');
 
@@ -273,6 +274,8 @@ export default function Reports() {
                   <th>Deals Closed</th>
                   <th>Revenue</th>
                   <th>Conversion Rate</th>
+                  <th>Tasks Completed</th>
+                  <th>Meetings Conducted</th>
                 </tr>
               </thead>
               <tbody>
@@ -284,6 +287,8 @@ export default function Reports() {
                     <td>{fmtStat(m.deals_closed)}</td>
                     <td>{fmtStat(m.revenue, true)}</td>
                     <td>{m.conversion_rate === null || m.conversion_rate === undefined ? '—' : `${m.conversion_rate}%`}</td>
+                    <td>{fmtStat(m.tasks_completed)}</td>
+                    <td>{fmtStat(m.meetings_conducted)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -510,6 +510,8 @@ class TeamProductivityRow(BaseModel):
     deals_closed: Optional[int] = None
     revenue: Optional[float] = None
     conversion_rate: Optional[float] = None
+    tasks_completed: Optional[int] = None
+    meetings_conducted: Optional[int] = None
 
 # Token
 class Token(BaseModel):

@@ -78,3 +78,34 @@ def test_team_analytics_counts_assigned_activity_for_every_member(auth_client):
     resp = auth_client.get("/api/analytics/team")
     rajesh_after = next(r for r in resp.json() if r["name"] == "Rajesh Kumar")
     assert rajesh_after["calls"] == 1
+
+
+def test_team_analytics_counts_tasks_completed_and_meetings_conducted(auth_client):
+    from datetime import date
+    today = date.today().isoformat()
+
+    rajesh_id = next(m["id"] for m in auth_client.get("/api/team").json() if m["name"] == "Rajesh Kumar")
+
+    baseline = next(r for r in auth_client.get("/api/analytics/team").json() if r["name"] == "Rajesh Kumar")
+    assert baseline["tasks_completed"] == 0
+    assert baseline["meetings_conducted"] == 0
+
+    # An incomplete task and a still-Scheduled meeting must NOT count yet.
+    task = auth_client.post("/api/tasks", json={
+        "title": "Chase KYC docs", "due_date": today, "assigned_team_member_id": rajesh_id
+    }).json()
+    meeting = auth_client.post("/api/meetings", json={
+        "title": "Policy review", "meeting_date": today, "assigned_team_member_id": rajesh_id
+    }).json()
+
+    mid_resp = next(r for r in auth_client.get("/api/analytics/team").json() if r["name"] == "Rajesh Kumar")
+    assert mid_resp["tasks_completed"] == 0
+    assert mid_resp["meetings_conducted"] == 0
+
+    # Completing the task and marking the meeting Conducted must both show up immediately.
+    auth_client.put(f"/api/tasks/{task['id']}", json={"completed": True})
+    auth_client.put(f"/api/meetings/{meeting['id']}", json={"status": "Conducted"})
+
+    final = next(r for r in auth_client.get("/api/analytics/team").json() if r["name"] == "Rajesh Kumar")
+    assert final["tasks_completed"] == 1
+    assert final["meetings_conducted"] == 1
