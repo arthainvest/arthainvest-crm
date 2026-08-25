@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  getTasks, createTask, updateTask, deleteTask,
+  getTasks, getHighPriorityTasks, createTask, updateTask, deleteTask,
   getMeetings, createMeeting, updateMeeting, deleteMeeting,
   getLeads, getContactsList, getTeam
 } from '../services/api';
@@ -16,12 +16,13 @@ const formatDateISO = (d) => {
   return `${year}-${month}-${day}`;
 };
 
-const emptyTaskForm = { title: '', assigned_team_member_id: '' };
+const emptyTaskForm = { title: '', priority: 'Normal', assigned_team_member_id: '' };
 const emptyMeetingForm = { title: '', meeting_time: '', lead_id: '', contact_id: '', location: '', notes: '', assigned_team_member_id: '' };
 
 export default function Today() {
   const [selectedDate, setSelectedDate] = useState(() => formatDateISO(new Date()));
   const [activeTab, setActiveTab] = useState('tasks');
+  const [highPriorityOnly, setHighPriorityOnly] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [leads, setLeads] = useState([]);
@@ -37,7 +38,7 @@ export default function Today() {
     fetchTasks();
     fetchMeetings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate]);
+  }, [selectedDate, highPriorityOnly]);
 
   useEffect(() => {
     getLeads(token).then((d) => setLeads(Array.isArray(d) ? d : [])).catch((err) => console.error('Error fetching leads:', err));
@@ -48,7 +49,7 @@ export default function Today() {
 
   const fetchTasks = async () => {
     try {
-      const data = await getTasks(token, selectedDate);
+      const data = highPriorityOnly ? await getHighPriorityTasks(token) : await getTasks(token, selectedDate);
       setTasks(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching tasks:', err);
@@ -82,7 +83,11 @@ export default function Today() {
 
   const handleToggleTaskComplete = async (task) => {
     const previous = tasks;
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, completed: !t.completed } : t)));
+    // The High Priority filter only shows open tasks - completing one here should drop it
+    // from view immediately, not just show it struck through like the day view does.
+    setTasks((prev) => (highPriorityOnly && !task.completed
+      ? prev.filter((t) => t.id !== task.id)
+      : prev.map((t) => (t.id === task.id ? { ...t, completed: !t.completed } : t))));
     try {
       await updateTask(token, task.id, { completed: !task.completed });
     } catch (err) {
@@ -110,6 +115,7 @@ export default function Today() {
       await createTask(token, {
         title: taskForm.title,
         due_date: selectedDate,
+        priority: taskForm.priority || 'Normal',
         assigned_team_member_id: taskForm.assigned_team_member_id ? Number(taskForm.assigned_team_member_id) : null
       });
       setShowTaskForm(false);
@@ -170,9 +176,9 @@ export default function Today() {
   return (
     <div className="today-container">
       <div className="today-header">
-        <button className="today-nav-arrow" onClick={() => shiftDate(-1)} title="Previous day">←</button>
-        <h1 className="today-date-label">{dateLabel}</h1>
-        <button className="today-nav-arrow" onClick={() => shiftDate(1)} title="Next day">→</button>
+        <button className="today-nav-arrow" onClick={() => shiftDate(-1)} disabled={highPriorityOnly} title="Previous day">←</button>
+        <h1 className="today-date-label">{highPriorityOnly ? 'All Open High Priority' : dateLabel}</h1>
+        <button className="today-nav-arrow" onClick={() => shiftDate(1)} disabled={highPriorityOnly} title="Next day">→</button>
       </div>
 
       <div className="today-tabs">
@@ -185,26 +191,42 @@ export default function Today() {
       </div>
 
       <div className="today-section-header">
-        <h2>{activeTab === 'tasks' ? 'Tasks' : 'Meetings'}</h2>
-        <button
-          className="today-add-link"
-          onClick={() => (activeTab === 'tasks' ? setShowTaskForm(true) : setShowMeetingForm(true))}
-        >
-          + Add {activeTab === 'tasks' ? 'Task' : 'Meeting'}
-        </button>
+        <h2>{activeTab === 'tasks' ? (highPriorityOnly ? 'High Priority Tasks' : 'Tasks') : 'Meetings'}</h2>
+        {activeTab === 'tasks' && !highPriorityOnly && (
+          <button className="today-add-link" onClick={() => setShowTaskForm(true)}>+ Add Task</button>
+        )}
+        {activeTab === 'meetings' && (
+          <button className="today-add-link" onClick={() => setShowMeetingForm(true)}>+ Add Meeting</button>
+        )}
       </div>
+
+      {activeTab === 'tasks' && (
+        <button
+          type="button"
+          className={`today-priority-filter ${highPriorityOnly ? 'active' : ''}`}
+          onClick={() => setHighPriorityOnly((prev) => !prev)}
+        >
+          ⚡ High Priority{highPriorityOnly ? ' (showing all open, any date)' : ''}
+        </button>
+      )}
 
       <div className="today-list">
         {activeTab === 'tasks' ? (
           tasks.length === 0 ? (
-            <p className="today-empty">No tasks scheduled</p>
+            <p className="today-empty">{highPriorityOnly ? 'No open high-priority tasks' : 'No tasks scheduled'}</p>
           ) : (
             tasks.map((task) => (
               <div key={task.id} className={`today-task-row ${task.completed ? 'completed' : ''}`}>
                 <label className="today-task-checkbox">
                   <input type="checkbox" checked={task.completed} onChange={() => handleToggleTaskComplete(task)} />
+                  {task.priority === 'High' && <span className="today-priority-dot" title="High priority" />}
                   <span>{task.title}</span>
                 </label>
+                {highPriorityOnly && (
+                  <span className="today-assignee-badge" title="Due date">
+                    {new Date(`${task.due_date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </span>
+                )}
                 {task.assigned_team_member_name && (
                   <span className="today-assignee-badge">{task.assigned_team_member_name}</span>
                 )}
@@ -255,6 +277,17 @@ export default function Today() {
                     value={taskForm.title}
                     onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
                   />
+                </div>
+                <div className="form-group">
+                  <label>Priority</label>
+                  <select
+                    value={taskForm.priority}
+                    onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value })}
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Normal">Normal</option>
+                    <option value="High">High</option>
+                  </select>
                 </div>
                 <div className="form-group">
                   <label>Assign To</label>

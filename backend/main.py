@@ -1535,22 +1535,37 @@ async def ai_suggest_lead_followup(lead_id: int, token: str = Query(None)):
 # ============= TASKS & MEETINGS ENDPOINTS (TODAY PAGE) =============
 
 @app.get("/api/tasks", response_model=list[TaskResponse])
-async def get_tasks(token: str = Query(None), date: str = Query(None)):
-    """Tasks due on a given date (defaults to today if not passed) - the Today page's Tasks tab."""
+async def get_tasks(token: str = Query(None), date: str = Query(None), view: str = Query(None)):
+    """Tasks for the Today page's Tasks tab. Two modes: the default "one day" view (tasks due
+    on `date`, or today if omitted - what "Today"/"Tomorrow" already are, just by navigating
+    the day arrows), and view=high_priority, a cross-date smart filter for every open
+    (incomplete) High-priority task regardless of due date - matching Kylas's "My High
+    Priority Tasks" quick filter, which isn't day-scoped."""
     get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT tasks.*, team_members.name as assigned_team_member_name
-            FROM tasks
-            LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
-            WHERE tasks.due_date = COALESCE(?, date('now'))
-            ORDER BY tasks.completed ASC, tasks.created_at ASC
-            """,
-            (date,)
-        )
+        if view == "high_priority":
+            cursor.execute(
+                """
+                SELECT tasks.*, team_members.name as assigned_team_member_name
+                FROM tasks
+                LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+                WHERE tasks.priority = 'High' AND tasks.completed = 0
+                ORDER BY tasks.due_date ASC, tasks.created_at ASC
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT tasks.*, team_members.name as assigned_team_member_name
+                FROM tasks
+                LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+                WHERE tasks.due_date = COALESCE(?, date('now'))
+                ORDER BY tasks.completed ASC, tasks.created_at ASC
+                """,
+                (date,)
+            )
         tasks = [dict(row) for row in cursor.fetchall()]
 
     return tasks
@@ -1563,8 +1578,8 @@ async def create_task(task: TaskCreate, token: str = Query(None)):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO tasks (title, due_date, created_by, assigned_team_member_id) VALUES (?, ?, ?, ?)",
-            (task.title, task.due_date, current_user['user_id'], task.assigned_team_member_id)
+            "INSERT INTO tasks (title, due_date, priority, created_by, assigned_team_member_id) VALUES (?, ?, ?, ?, ?)",
+            (task.title, task.due_date, task.priority or 'Normal', current_user['user_id'], task.assigned_team_member_id)
         )
         conn.commit()
         task_id = cursor.lastrowid
@@ -1579,7 +1594,7 @@ async def update_task(task_id: int, task: TaskUpdate, token: str = Query(None)):
 
     updates = []
     values = []
-    for field in ['title', 'due_date', 'completed', 'assigned_team_member_id']:
+    for field in ['title', 'due_date', 'completed', 'priority', 'assigned_team_member_id']:
         value = getattr(task, field)
         if value is not None:
             updates.append(f"{field} = ?")

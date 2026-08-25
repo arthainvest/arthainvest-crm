@@ -264,12 +264,14 @@ class LeadNoteResponse(BaseModel):
 class TaskCreate(BaseModel):
     title: str
     due_date: str  # ISO "YYYY-MM-DD"
+    priority: Optional[str] = None  # Low, Normal, High
     assigned_team_member_id: Optional[int] = None
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     due_date: Optional[str] = None
     completed: Optional[bool] = None
+    priority: Optional[str] = None
     assigned_team_member_id: Optional[int] = None
 
 class TaskResponse(BaseModel):
@@ -277,6 +279,7 @@ class TaskResponse(BaseModel):
     title: str
     due_date: str
     completed: bool
+    priority: str = "Normal"
     assigned_team_member_id: Optional[int] = None
     assigned_team_member_name: Optional[str] = None
     created_at: datetime

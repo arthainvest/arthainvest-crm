@@ -32,6 +32,41 @@ def test_tasks_crud_and_date_filter(auth_client):
     assert len(resp.json()) == 0
 
 
+def test_task_priority_defaults_and_high_priority_smart_filter(auth_client):
+    today = date.today().isoformat()
+    far_future = (date.today() + timedelta(days=30)).isoformat()
+
+    normal_task = auth_client.post("/api/tasks", json={"title": "Routine follow-up", "due_date": today}).json()
+    assert normal_task["priority"] == "Normal"
+
+    high_today = auth_client.post("/api/tasks", json={
+        "title": "Urgent - call Vikram Reddy", "due_date": today, "priority": "High"
+    }).json()
+    assert high_today["priority"] == "High"
+
+    # A High-priority task due a month out must still show up in the smart filter - it's not
+    # scoped to any particular day, unlike the default date-filtered view.
+    high_future = auth_client.post("/api/tasks", json={
+        "title": "Urgent - renewal chase", "due_date": far_future, "priority": "High"
+    }).json()
+
+    resp = auth_client.get("/api/tasks?view=high_priority")
+    assert resp.status_code == 200
+    titles = {t["title"] for t in resp.json()}
+    assert titles == {"Urgent - call Vikram Reddy", "Urgent - renewal chase"}
+
+    # Completing a High-priority task removes it from the smart filter (it's "open" tasks only).
+    auth_client.put(f"/api/tasks/{high_today['id']}", json={"completed": True})
+    resp = auth_client.get("/api/tasks?view=high_priority")
+    titles = {t["title"] for t in resp.json()}
+    assert titles == {"Urgent - renewal chase"}
+
+    # Changing priority down to Normal also removes it.
+    auth_client.put(f"/api/tasks/{high_future['id']}", json={"priority": "Normal"})
+    resp = auth_client.get("/api/tasks?view=high_priority")
+    assert resp.json() == []
+
+
 def test_tasks_default_to_today_when_no_date_param(auth_client):
     today = date.today().isoformat()
     auth_client.post("/api/tasks", json={"title": "Undated-filter task", "due_date": today})

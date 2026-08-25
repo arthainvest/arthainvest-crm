@@ -25,6 +25,12 @@
   background: var(--bg-subtle-alt);
 }
 
+.today-nav-arrow:disabled {
+  opacity: 0.3;
+  cursor: default;
+  background: none;
+}
+
 .today-date-label {
   margin: 0;
   font-size: 20px;
@@ -138,6 +144,36 @@
   font-size: 12px;
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.today-priority-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d9534f;
+  flex: 0 0 auto;
+}
+
+.today-priority-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 20px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.today-priority-filter.active {
+  background: #fdecea;
+  border-color: #d9534f;
+  color: #a71d2a;
 }
 
 .today-delete-btn {

@@ -375,6 +375,11 @@ export const getTasks = async (token, date) => {
   return response.data;
 };
 
+export const getHighPriorityTasks = async (token) => {
+  const response = await api.get(`/api/tasks?token=${token}&view=high_priority`);
+  return response.data;
+};
+
 export const createTask = async (token, taskData) => {
   const response = await api.post(`/api/tasks?token=${token}`, taskData);
   return response.data;

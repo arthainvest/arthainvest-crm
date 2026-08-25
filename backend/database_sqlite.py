@@ -317,6 +317,7 @@ def init_db():
                 title TEXT NOT NULL,
                 due_date DATE NOT NULL,
                 completed INTEGER DEFAULT 0,
+                priority TEXT DEFAULT 'Normal',
                 created_by INTEGER,
                 assigned_team_member_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -325,6 +326,12 @@ def init_db():
                 FOREIGN KEY (assigned_team_member_id) REFERENCES team_members(id)
             )
         """)
+
+        # tasks already existed in databases from earlier this session, before priority existed.
+        try:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT 'Normal'")
+        except sqlite3.OperationalError:
+            pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS meetings (
