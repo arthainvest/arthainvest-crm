@@ -277,6 +277,7 @@ def init_db():
             "ALTER TABLE contacts ADD COLUMN status TEXT DEFAULT 'Active'",
             "ALTER TABLE contacts ADD COLUMN assigned_team_member_id INTEGER",
             "ALTER TABLE contacts ADD COLUMN renewal_date DATE",
+            "ALTER TABLE contacts ADD COLUMN company_id INTEGER REFERENCES companies(id)",
         ]:
             try:
                 cursor.execute(ddl)

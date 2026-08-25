@@ -499,6 +499,17 @@ export const deleteCompany = async (token, id) => {
   await api.delete(`/api/companies/${id}?token=${token}`);
 };
 
+// Companies <-> Contacts linking
+export const getCompanyContacts = async (token, companyId) => {
+  const response = await api.get(`/api/companies/${companyId}/contacts?token=${token}`);
+  return response.data;
+};
+
+export const linkContactCompany = async (token, contactId, companyId) => {
+  const response = await api.put(`/api/contacts/${contactId}/company?token=${token}`, { company_id: companyId });
+  return response.data;
+};
+
 // Quotations (Kylas parity) - formal price quotes linked to a Lead or Contact
 export const getQuotations = async (token) => {
   const response = await api.get(`/api/quotations?token=${token}`);

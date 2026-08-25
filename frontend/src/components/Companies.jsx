@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { getCompanies, createCompany, updateCompany, deleteCompany } from '../services/api';
+import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyContacts } from '../services/api';
 import '../styles/Companies.css';
 
 const emptyForm = { name: '', industry: '', city: '', phone: '', email: '', website: '', notes: '' };
 
-// Kylas parity - a standalone company/organization directory, separate from Contacts.
-// Not yet linked to individual Contacts; ArthaInvest deals mostly with individual clients,
-// so this stays optional metadata rather than a required relationship for now.
+// Kylas parity - a standalone company/organization directory. Contacts can link to a Company
+// record (contacts.company_id, set from the Contacts page's inline "Linked company" dropdown);
+// each row here expands to show who's linked, and the count updates live as links change.
 export default function Companies() {
   const [companies, setCompanies] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [expandedId, setExpandedId] = useState(null);
+  const [linkedContacts, setLinkedContacts] = useState([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
@@ -24,6 +27,24 @@ export default function Companies() {
       setCompanies(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to fetch companies:', err);
+    }
+  };
+
+  const toggleExpand = async (companyId) => {
+    if (expandedId === companyId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(companyId);
+    setLoadingContacts(true);
+    try {
+      const data = await getCompanyContacts(token, companyId);
+      setLinkedContacts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch linked contacts:', err);
+      setLinkedContacts([]);
+    } finally {
+      setLoadingContacts(false);
     }
   };
 
@@ -65,10 +86,11 @@ export default function Companies() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this company?')) return;
+    if (!window.confirm('Delete this company? Any contacts linked to it will become unlinked.')) return;
     try {
       await deleteCompany(token, id);
       setCompanies((prev) => prev.filter((c) => c.id !== id));
+      if (expandedId === id) setExpandedId(null);
     } catch (err) {
       console.error('Failed to delete company:', err);
       alert('Failed to delete company. Please try again.');
@@ -89,29 +111,69 @@ export default function Companies() {
           <table>
             <thead>
               <tr>
+                <th></th>
                 <th>Name</th>
                 <th>Industry</th>
                 <th>City</th>
                 <th>Phone</th>
                 <th>Email</th>
                 <th>Website</th>
+                <th>Contacts</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {companies.map((c) => (
-                <tr key={c.id}>
-                  <td><strong>{c.name}</strong></td>
-                  <td>{c.industry || '-'}</td>
-                  <td>{c.city || '-'}</td>
-                  <td>{c.phone || '-'}</td>
-                  <td>{c.email || '-'}</td>
-                  <td>{c.website ? <a href={c.website} target="_blank" rel="noopener noreferrer">{c.website}</a> : '-'}</td>
-                  <td>
-                    <button className="btn-small" onClick={() => openEditModal(c)}>Edit</button>
-                    <button className="btn-small delete" onClick={() => handleDelete(c.id)}>Delete</button>
-                  </td>
-                </tr>
+                <React.Fragment key={c.id}>
+                  <tr>
+                    <td>
+                      <button
+                        type="button"
+                        className="company-expand-toggle"
+                        onClick={() => toggleExpand(c.id)}
+                        title={expandedId === c.id ? 'Hide contacts' : 'Show linked contacts'}
+                        disabled={!c.contact_count}
+                      >
+                        <span className={`expand-arrow ${expandedId === c.id ? 'open' : ''}`}>▸</span>
+                      </button>
+                    </td>
+                    <td><strong>{c.name}</strong></td>
+                    <td>{c.industry || '-'}</td>
+                    <td>{c.city || '-'}</td>
+                    <td>{c.phone || '-'}</td>
+                    <td>{c.email || '-'}</td>
+                    <td>{c.website ? <a href={c.website} target="_blank" rel="noopener noreferrer">{c.website}</a> : '-'}</td>
+                    <td>
+                      <span className="company-contact-count">{c.contact_count} contact{c.contact_count === 1 ? '' : 's'}</span>
+                    </td>
+                    <td>
+                      <button className="btn-small" onClick={() => openEditModal(c)}>Edit</button>
+                      <button className="btn-small delete" onClick={() => handleDelete(c.id)}>Delete</button>
+                    </td>
+                  </tr>
+                  {expandedId === c.id && (
+                    <tr className="company-contacts-row">
+                      <td></td>
+                      <td colSpan="8">
+                        {loadingContacts ? (
+                          <span className="no-data-inline">Loading…</span>
+                        ) : linkedContacts.length === 0 ? (
+                          <span className="no-data-inline">No contacts linked to this company.</span>
+                        ) : (
+                          <ul className="company-linked-contacts">
+                            {linkedContacts.map((contact) => (
+                              <li key={contact.id}>
+                                <strong>{contact.name}</strong>
+                                {contact.email && <span> · {contact.email}</span>}
+                                {contact.phone && <span> · {contact.phone}</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

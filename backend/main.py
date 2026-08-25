@@ -22,7 +22,7 @@ from schemas import (
     CampaignCreate, CampaignUpdate, CampaignResponse,
     IntegrationToggle, IntegrationResponse,
     SettingsUpdate, SettingsResponse,
-    ContactCreate, ContactUpdate, ContactAssign, ContactResponse, RenewalContact,
+    ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactResponse, RenewalContact,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskResponse,
@@ -158,12 +158,15 @@ def fetch_lead_with_member_name(cursor, lead_id):
 
 def fetch_contact_with_member_name(cursor, contact_id):
     """Same join-by-id pattern as fetch_deal_with_member_name, for contacts - so admins/team
-    leads can see which employee owns each contact in the client book."""
+    leads can see which employee owns each contact in the client book, and which Companies
+    record (if any) they're linked to."""
     cursor.execute(
         """
-        SELECT contacts.*, team_members.name as assigned_team_member_name
+        SELECT contacts.*, team_members.name as assigned_team_member_name,
+               companies.name as company_name
         FROM contacts
         LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
+        LEFT JOIN companies ON companies.id = contacts.company_id
         WHERE contacts.id = ?
         """,
         (contact_id,)
@@ -955,9 +958,11 @@ async def get_contacts(token: str = Query(None)):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT contacts.*, team_members.name as assigned_team_member_name
+            SELECT contacts.*, team_members.name as assigned_team_member_name,
+                   companies.name as company_name
             FROM contacts
             LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
+            LEFT JOIN companies ON companies.id = contacts.company_id
             ORDER BY contacts.created_at DESC
             """
         )
@@ -1009,10 +1014,10 @@ async def create_contact(contact: ContactCreate, token: str = Query(None)):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO contacts (name, company, email, phone, city, amount, bank, status, renewal_date, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO contacts (name, company, company_id, email, phone, city, amount, bank, status, renewal_date, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (contact.name, contact.company, contact.email, contact.phone, contact.city,
+            (contact.name, contact.company, contact.company_id, contact.email, contact.phone, contact.city,
              contact.amount, contact.bank, contact.status or 'Active', contact.renewal_date, current_user['user_id'])
         )
         conn.commit()
@@ -1030,7 +1035,7 @@ async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Q
     updates = []
     values = []
 
-    for field in ['name', 'company', 'email', 'phone', 'city', 'score', 'amount', 'bank', 'status', 'renewal_date']:
+    for field in ['name', 'company', 'company_id', 'email', 'phone', 'city', 'score', 'amount', 'bank', 'status', 'renewal_date']:
         value = getattr(contact, field)
         if value is not None:
             updates.append(f"{field} = ?")
@@ -1075,6 +1080,32 @@ async def assign_contact(contact_id: int, assignment: ContactAssign, token: str 
         cursor.execute(
             "UPDATE contacts SET assigned_team_member_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (assignment.team_member_id, contact_id)
+        )
+        conn.commit()
+
+        return fetch_contact_with_member_name(cursor, contact_id)
+
+@app.put("/api/contacts/{contact_id}/company", response_model=ContactResponse)
+async def link_contact_company(contact_id: int, link: ContactCompanyAssign, token: str = Query(None)):
+    """Link (or unlink, if company_id is null) a contact to a Companies record - same
+    dedicated-endpoint pattern as assign_contact, needed because a generic PUT can't
+    distinguish 'leave company_id alone' from 'clear it' once both are represented as null."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        if link.company_id is not None:
+            cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "UPDATE contacts SET company_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.company_id, contact_id)
         )
         conn.commit()
 
@@ -2150,13 +2181,47 @@ async def get_activities(token: str = Query(None), channel: str = Query(None), l
 
 # ============= COMPANIES (Kylas parity - standalone directory) =============
 
+_COMPANY_WITH_CONTACT_COUNT_SQL = """
+    SELECT companies.*,
+           (SELECT COUNT(*) FROM contacts WHERE contacts.company_id = companies.id) as contact_count
+    FROM companies
+"""
+
 @app.get("/api/companies", response_model=list[CompanyResponse])
 async def get_companies(token: str = Query(None)):
     get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM companies ORDER BY name ASC")
+        cursor.execute(_COMPANY_WITH_CONTACT_COUNT_SQL + " ORDER BY companies.name ASC")
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    return rows
+
+@app.get("/api/companies/{company_id}/contacts", response_model=list[ContactResponse])
+async def get_company_contacts(company_id: int, token: str = Query(None)):
+    """Contacts linked to this Company record - the reverse of contacts.company_id, shown on
+    the Companies page so a company row can expand to show who works there."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            """
+            SELECT contacts.*, team_members.name as assigned_team_member_name,
+                   companies.name as company_name
+            FROM contacts
+            LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
+            LEFT JOIN companies ON companies.id = contacts.company_id
+            WHERE contacts.company_id = ?
+            ORDER BY contacts.name ASC
+            """,
+            (company_id,)
+        )
         rows = [dict(r) for r in cursor.fetchall()]
 
     return rows
@@ -2173,7 +2238,7 @@ async def create_company(company: CompanyCreate, token: str = Query(None)):
         )
         conn.commit()
         company_id = cursor.lastrowid
-        cursor.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
+        cursor.execute(_COMPANY_WITH_CONTACT_COUNT_SQL + " WHERE companies.id = ?", (company_id,))
         new_company = dict(cursor.fetchone())
 
     return new_company
@@ -2201,7 +2266,7 @@ async def update_company(company_id: int, company: CompanyUpdate, token: str = Q
         cursor.execute(f"UPDATE companies SET {', '.join(updates)} WHERE id = ?", values)
         conn.commit()
 
-        cursor.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
+        cursor.execute(_COMPANY_WITH_CONTACT_COUNT_SQL + " WHERE companies.id = ?", (company_id,))
         updated = cursor.fetchone()
         if not updated:
             raise HTTPException(status_code=404, detail="Company not found")
@@ -2214,6 +2279,9 @@ async def delete_company(company_id: int, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        # Unlink first - otherwise contacts.company_id is left pointing at a row that no
+        # longer exists instead of a clean "not linked" state.
+        cursor.execute("UPDATE contacts SET company_id = NULL WHERE company_id = ?", (company_id,))
         cursor.execute("DELETE FROM companies WHERE id = ?", (company_id,))
         conn.commit()
 

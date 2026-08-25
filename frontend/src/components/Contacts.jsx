@@ -3,7 +3,8 @@ import {
   getContactsList, createContact, updateContact, deleteContact, assignContact, getTeam,
   getContactNotes, createContactNote, updateContactNote, deleteContactNote,
   uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup,
-  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate
+  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate,
+  getCompanies, linkContactCompany
 } from '../services/api';
 import '../styles/Contacts.css';
 
@@ -71,6 +72,7 @@ const parseImportDate = (raw) => {
 export default function Contacts() {
   const [contacts, setContacts] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const token = localStorage.getItem('token');
 
@@ -116,6 +118,7 @@ export default function Contacts() {
   useEffect(() => {
     fetchContacts();
     fetchTeamMembers();
+    fetchCompanies();
   }, []);
 
   const fetchContacts = async () => {
@@ -133,6 +136,32 @@ export default function Contacts() {
       setTeamMembers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching team members:', error);
+    }
+  };
+
+  const fetchCompanies = async () => {
+    try {
+      const data = await getCompanies(token);
+      setCompanies(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+    }
+  };
+
+  const handleCompanyLinkChange = async (contactId, companyIdRaw) => {
+    const companyId = companyIdRaw ? Number(companyIdRaw) : null;
+    const previous = contacts.find((c) => c.id === contactId);
+    setContacts((prev) => prev.map((c) => (c.id === contactId
+      ? { ...c, company_id: companyId, company_name: companies.find((co) => co.id === companyId)?.name || null }
+      : c)));
+    try {
+      await linkContactCompany(token, contactId, companyId);
+    } catch (error) {
+      console.error('Error linking contact to company:', error);
+      if (previous) {
+        setContacts((prev) => prev.map((c) => (c.id === contactId ? previous : c)));
+      }
+      alert('Failed to link company. Please try again.');
     }
   };
 
@@ -708,6 +737,18 @@ export default function Contacts() {
                   ))}
                 </select>
 
+                <select
+                  className="company-link-select"
+                  value={contact.company_id || ''}
+                  onChange={(e) => handleCompanyLinkChange(contact.id, e.target.value)}
+                  title="Linked company"
+                >
+                  <option value="">🏢 No linked company</option>
+                  {companies.map((co) => (
+                    <option key={co.id} value={co.id}>🏢 {co.name}</option>
+                  ))}
+                </select>
+
                 {(contact.amount != null || contact.bank) && (
                   <span className="contact-amount-bank-badge" title="Amount / Bank">
                     {contact.amount != null ? `₹${Number(contact.amount).toLocaleString('en-IN')}` : ''}
@@ -725,7 +766,7 @@ export default function Contacts() {
 
               {isExpanded && (
                 <div className="contact-row-details">
-                  <p><strong>Company:</strong> {contact.company || '-'}</p>
+                  <p><strong>Company:</strong> {contact.company_name || contact.company || '-'}{contact.company_name && contact.company && contact.company !== contact.company_name ? ` (typed: ${contact.company})` : ''}</p>
                   <p><strong>Email:</strong> {contact.email || '-'}</p>
                   <p><strong>Phone:</strong> {contact.phone || '-'}</p>
                   <p><strong>City/Area:</strong> 📍 {contact.city || '-'}</p>

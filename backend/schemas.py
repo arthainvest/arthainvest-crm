@@ -165,6 +165,7 @@ class SettingsResponse(BaseModel):
 class ContactCreate(BaseModel):
     name: str
     company: Optional[str] = None
+    company_id: Optional[int] = None  # linked Companies record, distinct from the free-text `company` field
     email: Optional[str] = None
     phone: Optional[str] = None
     city: Optional[str] = None
@@ -176,6 +177,7 @@ class ContactCreate(BaseModel):
 class ContactUpdate(BaseModel):
     name: Optional[str] = None
     company: Optional[str] = None
+    company_id: Optional[int] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     city: Optional[str] = None
@@ -188,10 +190,15 @@ class ContactUpdate(BaseModel):
 class ContactAssign(BaseModel):
     team_member_id: Optional[int] = None  # None unassigns the contact
 
+class ContactCompanyAssign(BaseModel):
+    company_id: Optional[int] = None  # None unlinks the contact from any Company record
+
 class ContactResponse(BaseModel):
     id: int
     name: str
     company: Optional[str]
+    company_id: Optional[int] = None
+    company_name: Optional[str] = None
     email: Optional[str]
     phone: Optional[str]
     city: Optional[str]
@@ -574,6 +581,7 @@ class CompanyResponse(BaseModel):
     email: Optional[str] = None
     website: Optional[str] = None
     notes: Optional[str] = None
+    contact_count: int = 0
     created_at: datetime
     updated_at: datetime
 

@@ -10,3 +10,39 @@
 .btn-small.delete { color: #a71d2a; border-color: #f1a7a7; }
 
 .no-data { text-align: center; color: var(--text-muted); padding: 40px; font-size: 14px; }
+
+.companies-table th:first-child,
+.companies-table td:first-child { width: 24px; padding-left: 14px; padding-right: 0; }
+
+.company-expand-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+.company-expand-toggle:disabled { cursor: default; opacity: 0.3; }
+
+.expand-arrow {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+.expand-arrow.open { transform: rotate(90deg); }
+
+.company-contact-count {
+  background: var(--bg-subtle-alt, var(--border-subtle));
+  color: var(--text-secondary, var(--text-primary));
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.company-contacts-row td { padding: 10px 15px 16px 44px; border-bottom: 1px solid var(--border-subtle); }
+
+.no-data-inline { color: var(--text-muted); font-size: 13px; }
+
+.company-linked-contacts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.company-linked-contacts li { font-size: 13px; color: var(--text-primary); }
+.company-linked-contacts li span { color: var(--text-muted); }
