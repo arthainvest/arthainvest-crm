@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
   getCallsList, createCall, deleteCall, assignCall, getTeam, getCallsByEmployee, getCommunicationLog,
-  getActivities, getDialerQueue, updateDialerStatus, deleteDialerItem
+  getActivities, getDialerQueue, updateDialerStatus, deleteDialerItem, getLeads, getContactsList
 } from '../services/api';
 import '../styles/Calls.css';
 
-const emptyCallForm = { name: '', phone: '', minutes: '', seconds: '', type: 'Outbound', outcome: '', call_date: '', team_member_id: '' };
+const emptyCallForm = { name: '', phone: '', minutes: '', seconds: '', type: 'Outbound', outcome: '', call_date: '', team_member_id: '', linkTo: '' };
 
 // Grouped together like Kylas groups Call Logs/Emails/WhatsApp under one nav item - Calls
 // stays the real, feature-rich page; Emails/WhatsApp are read-only send-history log views.
@@ -33,6 +33,8 @@ export default function Calls() {
   const [dialerTeamMemberId, setDialerTeamMemberId] = useState('');
   const [dialerQueue, setDialerQueue] = useState([]);
   const [dialerLoading, setDialerLoading] = useState(false);
+  const [leads, setLeads] = useState([]);
+  const [contacts, setContacts] = useState([]);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
@@ -42,7 +44,18 @@ export default function Calls() {
     fetchEmailLog();
     fetchWhatsappLog();
     fetchActivities('All');
+    fetchLeadsAndContacts();
   }, []);
+
+  const fetchLeadsAndContacts = async () => {
+    try {
+      const [leadsData, contactsData] = await Promise.all([getLeads(token), getContactsList(token)]);
+      setLeads(Array.isArray(leadsData) ? leadsData : []);
+      setContacts(Array.isArray(contactsData) ? contactsData : []);
+    } catch (error) {
+      console.error('Error fetching leads/contacts for call linking:', error);
+    }
+  };
 
   // Default the Dialer tab to the first team member once the roster loads
   useEffect(() => {
@@ -196,6 +209,7 @@ export default function Calls() {
     if (!callForm.name.trim()) return;
 
     const duration_seconds = (Number(callForm.minutes) || 0) * 60 + (Number(callForm.seconds) || 0);
+    const [linkType, linkId] = callForm.linkTo ? callForm.linkTo.split('-') : [null, null];
 
     try {
       await createCall(token, {
@@ -205,7 +219,9 @@ export default function Calls() {
         type: callForm.type,
         outcome: callForm.outcome,
         call_date: callForm.call_date,
-        team_member_id: callForm.team_member_id ? Number(callForm.team_member_id) : null
+        team_member_id: callForm.team_member_id ? Number(callForm.team_member_id) : null,
+        lead_id: linkType === 'lead' ? Number(linkId) : null,
+        contact_id: linkType === 'contact' ? Number(linkId) : null
       });
       setShowForm(false);
       setCallForm(emptyCallForm);
@@ -323,6 +339,7 @@ export default function Calls() {
               <tr>
                 <th>Channel</th>
                 <th>Contact</th>
+                <th>Linked To</th>
                 <th>Detail</th>
                 <th>Outcome</th>
                 <th>When</th>
@@ -330,11 +347,14 @@ export default function Calls() {
             </thead>
             <tbody>
               {activities.length === 0 ? (
-                <tr><td colSpan="5" className="no-data">No activity yet across calls, email, WhatsApp or SMS.</td></tr>
+                <tr><td colSpan="6" className="no-data">No activity yet across calls, email, WhatsApp or SMS.</td></tr>
               ) : activities.map((a) => (
                 <tr key={a.id}>
                   <td><span className={`badge-${a.channel.toLowerCase()}`}>{a.channel}</span></td>
                   <td>{a.contact || '-'}</td>
+                  <td>
+                    {a.lead_name ? `📈 ${a.lead_name}` : a.contact_name ? `👥 ${a.contact_name}` : '-'}
+                  </td>
                   <td className="log-message-cell">{a.detail || '-'}</td>
                   <td>{a.outcome || '-'}</td>
                   <td>{new Date(a.timestamp).toLocaleString('en-IN')}</td>
@@ -592,6 +612,29 @@ export default function Calls() {
                     {teamMembers.map((m) => (
                       <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Link to Lead/Contact (optional)</label>
+                  <select
+                    value={callForm.linkTo}
+                    onChange={(e) => setCallForm({ ...callForm, linkTo: e.target.value })}
+                  >
+                    <option value="">-- Not linked --</option>
+                    {leads.length > 0 && (
+                      <optgroup label="Leads">
+                        {leads.map((l) => (
+                          <option key={`lead-${l.id}`} value={`lead-${l.id}`}>{l.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {contacts.length > 0 && (
+                      <optgroup label="Contacts">
+                        {contacts.map((c) => (
+                          <option key={`contact-${c.id}`} value={`contact-${c.id}`}>{c.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
               </div>

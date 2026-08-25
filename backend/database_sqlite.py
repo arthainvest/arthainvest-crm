@@ -370,10 +370,26 @@ def init_db():
                 status TEXT NOT NULL,
                 error_detail TEXT,
                 created_by INTEGER,
+                lead_id INTEGER,
+                contact_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (created_by) REFERENCES users(id)
+                FOREIGN KEY (created_by) REFERENCES users(id),
+                FOREIGN KEY (lead_id) REFERENCES leads(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id)
             )
         """)
+
+        # communication_log existed in databases from earlier this session, before lead_id/
+        # contact_id existed - older logged sends stay unlinked (real "not linked" rather than
+        # a guessed match), new ones get linked at send time from the Lead/Contact action buttons.
+        for ddl in [
+            "ALTER TABLE communication_log ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+            "ALTER TABLE communication_log ADD COLUMN contact_id INTEGER REFERENCES contacts(id)",
+        ]:
+            try:
+                cursor.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS calls (
@@ -386,11 +402,24 @@ def init_db():
                 call_date DATE,
                 created_by INTEGER,
                 team_member_id INTEGER,
+                lead_id INTEGER,
+                contact_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (created_by) REFERENCES users(id),
-                FOREIGN KEY (team_member_id) REFERENCES team_members(id)
+                FOREIGN KEY (team_member_id) REFERENCES team_members(id),
+                FOREIGN KEY (lead_id) REFERENCES leads(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id)
             )
         """)
+
+        for ddl in [
+            "ALTER TABLE calls ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+            "ALTER TABLE calls ADD COLUMN contact_id INTEGER REFERENCES contacts(id)",
+        ]:
+            try:
+                cursor.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
 
         # Same "ALTER TABLE for pre-existing databases" situation as deals.assigned_team_member_id.
         try:

@@ -3,12 +3,14 @@ import {
   getLeads, createLead, updateLead, assignLead, getTeam,
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
   uploadLeadNoteAudio, API_URL, dialCall, aiSuggestLeadFollowup,
-  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate, assignToDialer
+  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate, assignToDialer, getActivities
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/LeadsList.css';
 
 const STATUS_OPTIONS = ['New', 'Contacted', 'Interested', 'Document Pending', 'In Process', 'Qualified', 'Not Interested', 'CIBIL Issue', 'Lost to Competition'];
+
+const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱' };
 
 const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
 
@@ -83,6 +85,8 @@ export default function LeadsList() {
   // Notes & voice-note state
   const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [dateDetectMessage, setDateDetectMessage] = useState(null);
@@ -307,7 +311,7 @@ export default function LeadsList() {
     // Try a real WhatsApp Business API send first; falls back to opening a wa.me link
     // when it isn't configured on the server.
     try {
-      const result = await sendWhatsApp(token, lead.phone, `Hi ${lead.name}, this is ArthaInvest reaching out.`);
+      const result = await sendWhatsApp(token, lead.phone, `Hi ${lead.name}, this is ArthaInvest reaching out.`, { leadId: lead.id });
       if (result.configured) {
         alert(result.message);
         return;
@@ -327,7 +331,7 @@ export default function LeadsList() {
     const message = window.prompt(`SMS to ${lead.name}:`, `Hi ${lead.name}, this is ArthaInvest.`);
     if (!message) return;
     try {
-      const result = await sendSms(token, lead.phone, message);
+      const result = await sendSms(token, lead.phone, message, { leadId: lead.id });
       if (result.configured) {
         alert(result.message);
         return;
@@ -348,7 +352,7 @@ export default function LeadsList() {
     // Try a real SMTP send first; falls back to opening a mailto: link when SMTP isn't
     // configured on the server.
     try {
-      const result = await sendEmailReal(token, selectedLead.email, emailSubject, emailBody);
+      const result = await sendEmailReal(token, selectedLead.email, emailSubject, emailBody, { leadId: selectedLead.id });
       if (result.configured) {
         alert(result.message);
         setEmailSubject('');
@@ -396,6 +400,16 @@ export default function LeadsList() {
     } catch (error) {
       console.error('Error fetching notes:', error);
       setNotes([]);
+    }
+    setLoadingActivities(true);
+    try {
+      const activityData = await getActivities(token, null, { leadId: lead.id });
+      setActivities(Array.isArray(activityData) ? activityData : []);
+    } catch (error) {
+      console.error('Error fetching activity timeline:', error);
+      setActivities([]);
+    } finally {
+      setLoadingActivities(false);
     }
   };
 
@@ -925,6 +939,27 @@ export default function LeadsList() {
                     {note.updated_at && note.updated_at !== note.created_at && (
                       <div className="note-updated">Edited {new Date(note.updated_at).toLocaleString()}</div>
                     )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="notes-history activity-timeline">
+              <div className="notes-history-header">
+                <h4>Activity Timeline ({activities.length})</h4>
+              </div>
+              {loadingActivities ? (
+                <p className="no-notes">Loading…</p>
+              ) : activities.length === 0 ? (
+                <p className="no-notes">No calls, emails, WhatsApp or SMS logged for this lead yet.</p>
+              ) : (
+                activities.map((a) => (
+                  <div key={a.id} className="note-entry activity-entry">
+                    <div className="note-entry-header">
+                      <span>{ACTIVITY_ICONS[a.channel] || '•'} {a.channel} - {new Date(a.timestamp).toLocaleString()}</span>
+                      {a.outcome && <span className="activity-outcome">{a.outcome}</span>}
+                    </div>
+                    {a.detail && <p className="note-transcript">{a.detail}</p>}
                   </div>
                 ))
               )}

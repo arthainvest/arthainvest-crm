@@ -317,20 +317,20 @@ export const detectFollowupDate = async (token, text) => {
 };
 
 // SMS via Twilio
-export const sendSms = async (token, to, message) => {
-  const response = await api.post(`/api/sms/send?token=${token}`, { to, message });
+export const sendSms = async (token, to, message, { leadId, contactId } = {}) => {
+  const response = await api.post(`/api/sms/send?token=${token}`, { to, message, lead_id: leadId, contact_id: contactId });
   return response.data;
 };
 
 // WhatsApp Business API
-export const sendWhatsApp = async (token, to, message) => {
-  const response = await api.post(`/api/whatsapp/send?token=${token}`, { to, message });
+export const sendWhatsApp = async (token, to, message, { leadId, contactId } = {}) => {
+  const response = await api.post(`/api/whatsapp/send?token=${token}`, { to, message, lead_id: leadId, contact_id: contactId });
   return response.data;
 };
 
 // Email service (SMTP)
-export const sendEmailReal = async (token, to, subject, body) => {
-  const response = await api.post(`/api/email/send?token=${token}`, { to, subject, body });
+export const sendEmailReal = async (token, to, subject, body, { leadId, contactId } = {}) => {
+  const response = await api.post(`/api/email/send?token=${token}`, { to, subject, body, lead_id: leadId, contact_id: contactId });
   return response.data;
 };
 
@@ -472,9 +472,11 @@ export const deleteDialerItem = async (token, id) => {
 };
 
 // Unified Activities feed (Kylas "Campaigns > Activities" parity)
-export const getActivities = async (token, channel) => {
+export const getActivities = async (token, channel, { leadId, contactId } = {}) => {
   const params = new URLSearchParams({ token });
   if (channel) params.append('channel', channel);
+  if (leadId) params.append('lead_id', leadId);
+  if (contactId) params.append('contact_id', contactId);
   const response = await api.get(`/api/activities?${params.toString()}`);
   return response.data;
 };

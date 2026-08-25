@@ -4,11 +4,12 @@ import {
   getContactNotes, createContactNote, updateContactNote, deleteContactNote,
   uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup,
   sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate,
-  getCompanies, linkContactCompany
+  getCompanies, linkContactCompany, getActivities
 } from '../services/api';
 import '../styles/Contacts.css';
 
 const STATUS_OPTIONS = ['Active', 'Renewal Due', 'Lapsed', 'Inactive'];
+const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱' };
 const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
 
 const WhatsAppIcon = () => (
@@ -96,6 +97,8 @@ export default function Contacts() {
   // Notes & voice-note state
   const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [dateDetectMessage, setDateDetectMessage] = useState(null);
@@ -333,7 +336,7 @@ export default function Contacts() {
     // Try a real WhatsApp Business API send first; falls back to opening a wa.me link
     // when it isn't configured on the server.
     try {
-      const result = await sendWhatsApp(token, contact.phone, `Hi ${contact.name}, this is ArthaInvest reaching out.`);
+      const result = await sendWhatsApp(token, contact.phone, `Hi ${contact.name}, this is ArthaInvest reaching out.`, { contactId: contact.id });
       if (result.configured) {
         alert(result.message);
         return;
@@ -353,7 +356,7 @@ export default function Contacts() {
     const message = window.prompt(`SMS to ${contact.name}:`, `Hi ${contact.name}, this is ArthaInvest.`);
     if (!message) return;
     try {
-      const result = await sendSms(token, contact.phone, message);
+      const result = await sendSms(token, contact.phone, message, { contactId: contact.id });
       if (result.configured) {
         alert(result.message);
         return;
@@ -374,7 +377,7 @@ export default function Contacts() {
     // Try a real SMTP send first; falls back to opening a mailto: link when SMTP isn't
     // configured on the server.
     try {
-      const result = await sendEmailReal(token, selectedContact.email, emailSubject, emailBody);
+      const result = await sendEmailReal(token, selectedContact.email, emailSubject, emailBody, { contactId: selectedContact.id });
       if (result.configured) {
         alert(result.message);
         setEmailSubject('');
@@ -468,6 +471,16 @@ export default function Contacts() {
     } catch (error) {
       console.error('Error fetching notes:', error);
       setNotes([]);
+    }
+    setLoadingActivities(true);
+    try {
+      const activityData = await getActivities(token, null, { contactId: contact.id });
+      setActivities(Array.isArray(activityData) ? activityData : []);
+    } catch (error) {
+      console.error('Error fetching activity timeline:', error);
+      setActivities([]);
+    } finally {
+      setLoadingActivities(false);
     }
   };
 
@@ -1082,6 +1095,27 @@ export default function Contacts() {
                       {note.updated_at && note.updated_at !== note.created_at && (
                         <div className="note-updated">Edited {new Date(note.updated_at).toLocaleString()}</div>
                       )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="notes-history activity-timeline">
+                <div className="notes-history-header">
+                  <h4>Activity Timeline ({activities.length})</h4>
+                </div>
+                {loadingActivities ? (
+                  <p className="no-notes">Loading…</p>
+                ) : activities.length === 0 ? (
+                  <p className="no-notes">No calls, emails, WhatsApp or SMS logged for this contact yet.</p>
+                ) : (
+                  activities.map((a) => (
+                    <div key={a.id} className="note-entry activity-entry">
+                      <div className="note-entry-header">
+                        <span>{ACTIVITY_ICONS[a.channel] || '•'} {a.channel} - {new Date(a.timestamp).toLocaleString()}</span>
+                        {a.outcome && <span className="activity-outcome">{a.outcome}</span>}
+                      </div>
+                      {a.detail && <p className="note-transcript">{a.detail}</p>}
                     </div>
                   ))
                 )}

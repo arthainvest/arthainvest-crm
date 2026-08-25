@@ -179,12 +179,16 @@ def fetch_contact_with_member_name(cursor, contact_id):
 
 def fetch_call_with_member_name(cursor, call_id):
     """Same join-by-id pattern as fetch_deal_with_member_name, for calls - so admins/team
-    leads can see who made or handled each logged call."""
+    leads can see who made or handled each logged call, and which Lead/Contact record (if
+    any) it was about."""
     cursor.execute(
         """
-        SELECT calls.*, team_members.name as team_member_name
+        SELECT calls.*, team_members.name as team_member_name,
+               leads.name as lead_name, contacts.name as contact_name
         FROM calls
         LEFT JOIN team_members ON team_members.id = calls.team_member_id
+        LEFT JOIN leads ON leads.id = calls.lead_id
+        LEFT JOIN contacts ON contacts.id = calls.contact_id
         WHERE calls.id = ?
         """,
         (call_id,)
@@ -1820,9 +1824,12 @@ async def get_calls(token: str = Query(None)):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT calls.*, team_members.name as team_member_name
+            SELECT calls.*, team_members.name as team_member_name,
+                   leads.name as lead_name, contacts.name as contact_name
             FROM calls
             LEFT JOIN team_members ON team_members.id = calls.team_member_id
+            LEFT JOIN leads ON leads.id = calls.lead_id
+            LEFT JOIN contacts ON contacts.id = calls.contact_id
             ORDER BY calls.call_date DESC, calls.created_at DESC
             """
         )
@@ -1839,11 +1846,11 @@ async def create_call(call: CallCreate, token: str = Query(None)):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (call.name, call.phone, call.duration_seconds, call.type, call.outcome, call.call_date,
-             current_user['user_id'], call.team_member_id)
+             current_user['user_id'], call.team_member_id, call.lead_id, call.contact_id)
         )
         conn.commit()
         call_id = cursor.lastrowid
@@ -1933,15 +1940,17 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
     except Exception as e:
         return DialResponse(configured=True, message=f"Call failed: {str(e)}")
 
-def _log_communication(channel, recipient, message, status, subject=None, error_detail=None, user_id=None):
+def _log_communication(channel, recipient, message, status, subject=None, error_detail=None, user_id=None, lead_id=None, contact_id=None):
     """Record a real send attempt (success or failure) to communication_log - the Calls page's
-    Emails/WhatsApp tabs read from this. Deliberately NOT called for the configured=False path
-    (nothing was actually attempted then, just an unconfigured-integration response)."""
+    Emails/WhatsApp tabs (and the unified Activities feed) read from this. Deliberately NOT
+    called for the configured=False path (nothing was actually attempted then, just an
+    unconfigured-integration response). lead_id/contact_id come from whichever Lead/Contact
+    row the send was triggered from, letting that record's own activity timeline find it."""
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO communication_log (channel, recipient, subject, message, status, error_detail, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (channel, recipient, subject, message, status, error_detail, user_id)
+            "INSERT INTO communication_log (channel, recipient, subject, message, status, error_detail, created_by, lead_id, contact_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (channel, recipient, subject, message, status, error_detail, user_id, lead_id, contact_id)
         )
         conn.commit()
 
@@ -1964,13 +1973,13 @@ async def send_sms(sms: SmsSendRequest, token: str = Query(None)):
 
         client = Client(account_sid, auth_token)
         client.messages.create(to=sms.to, from_=from_number, body=sms.message)
-        _log_communication("SMS", sms.to, sms.message, "Sent", user_id=current_user['user_id'])
+        _log_communication("SMS", sms.to, sms.message, "Sent", user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
         return SmsSendResponse(configured=True, message=f"SMS sent to {sms.to}.")
     except TwilioRestException as e:
-        _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=e.msg, user_id=current_user['user_id'])
+        _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=e.msg, user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
         return SmsSendResponse(configured=True, message=f"SMS failed: {e.msg}")
     except Exception as e:
-        _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=str(e), user_id=current_user['user_id'])
+        _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=str(e), user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
         return SmsSendResponse(configured=True, message=f"SMS failed: {str(e)}")
 
 @app.post("/api/whatsapp/send", response_model=WhatsAppSendResponse)
@@ -2000,12 +2009,12 @@ async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
             timeout=10
         )
         if resp.status_code >= 400:
-            _log_communication("WhatsApp", payload.to, payload.message, "Failed", error_detail=resp.text[:200], user_id=current_user['user_id'])
+            _log_communication("WhatsApp", payload.to, payload.message, "Failed", error_detail=resp.text[:200], user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
             return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {resp.text[:200]}")
-        _log_communication("WhatsApp", payload.to, payload.message, "Sent", user_id=current_user['user_id'])
+        _log_communication("WhatsApp", payload.to, payload.message, "Sent", user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
         return WhatsAppSendResponse(configured=True, message=f"WhatsApp message sent to {payload.to}.")
     except Exception as e:
-        _log_communication("WhatsApp", payload.to, payload.message, "Failed", error_detail=str(e), user_id=current_user['user_id'])
+        _log_communication("WhatsApp", payload.to, payload.message, "Failed", error_detail=str(e), user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
         return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {str(e)}")
 
 @app.post("/api/email/send", response_model=EmailSendResponse)
@@ -2034,10 +2043,10 @@ async def send_email_real(payload: EmailSendRequest, token: str = Query(None)):
             server.login(smtp_user, smtp_password)
             server.sendmail(smtp_from, [payload.to], msg.as_string())
 
-        _log_communication("Email", payload.to, payload.body, "Sent", subject=payload.subject, user_id=current_user['user_id'])
+        _log_communication("Email", payload.to, payload.body, "Sent", subject=payload.subject, user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
         return EmailSendResponse(configured=True, message=f"Email sent to {payload.to}.")
     except Exception as e:
-        _log_communication("Email", payload.to, payload.body, "Failed", subject=payload.subject, error_detail=str(e), user_id=current_user['user_id'])
+        _log_communication("Email", payload.to, payload.body, "Failed", subject=payload.subject, error_detail=str(e), user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
         return EmailSendResponse(configured=True, message=f"Email failed: {str(e)}")
 
 @app.get("/api/communication-log", response_model=list[CommunicationLogResponse])
@@ -2048,13 +2057,16 @@ async def get_communication_log(token: str = Query(None), channel: str = Query(N
 
     with get_db() as conn:
         cursor = conn.cursor()
+        base_query = """
+            SELECT communication_log.*, leads.name as lead_name, contacts.name as contact_name
+            FROM communication_log
+            LEFT JOIN leads ON leads.id = communication_log.lead_id
+            LEFT JOIN contacts ON contacts.id = communication_log.contact_id
+        """
         if channel:
-            cursor.execute(
-                "SELECT * FROM communication_log WHERE channel = ? ORDER BY created_at DESC LIMIT ?",
-                (channel, limit)
-            )
+            cursor.execute(base_query + " WHERE communication_log.channel = ? ORDER BY communication_log.created_at DESC LIMIT ?", (channel, limit))
         else:
-            cursor.execute("SELECT * FROM communication_log ORDER BY created_at DESC LIMIT ?", (limit,))
+            cursor.execute(base_query + " ORDER BY communication_log.created_at DESC LIMIT ?", (limit,))
         rows = [dict(r) for r in cursor.fetchall()]
 
     return rows
@@ -2191,17 +2203,54 @@ async def delete_dialer_item(queue_id: int, token: str = Query(None)):
 # ============= UNIFIED ACTIVITIES FEED (Kylas "Campaigns > Activities" parity) =============
 
 @app.get("/api/activities", response_model=list[ActivityItem])
-async def get_activities(token: str = Query(None), channel: str = Query(None), limit: int = Query(100)):
+async def get_activities(
+    token: str = Query(None), channel: str = Query(None), limit: int = Query(100),
+    lead_id: int = Query(None), contact_id: int = Query(None)
+):
     """Merges communication_log (Email/WhatsApp/SMS sends) and calls into one chronological
     timeline, instead of checking three separate tabs - Kylas groups these under
-    Campaigns > Activities."""
+    Campaigns > Activities. lead_id/contact_id scope the feed to a single Lead/Contact's own
+    timeline - what the Notes & Follow-up modal's Activity tab shows on Leads/Contacts."""
     get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM communication_log ORDER BY created_at DESC LIMIT ?", (limit,))
+        comm_query = """
+            SELECT communication_log.*, leads.name as lead_name, contacts.name as contact_name
+            FROM communication_log
+            LEFT JOIN leads ON leads.id = communication_log.lead_id
+            LEFT JOIN contacts ON contacts.id = communication_log.contact_id
+            WHERE 1=1
+        """
+        comm_params = []
+        if lead_id is not None:
+            comm_query += " AND communication_log.lead_id = ?"
+            comm_params.append(lead_id)
+        if contact_id is not None:
+            comm_query += " AND communication_log.contact_id = ?"
+            comm_params.append(contact_id)
+        comm_query += " ORDER BY communication_log.created_at DESC LIMIT ?"
+        comm_params.append(limit)
+        cursor.execute(comm_query, comm_params)
         comm_rows = [dict(r) for r in cursor.fetchall()]
-        cursor.execute("SELECT * FROM calls ORDER BY call_date DESC, created_at DESC LIMIT ?", (limit,))
+
+        call_query = """
+            SELECT calls.*, leads.name as lead_name, contacts.name as contact_name
+            FROM calls
+            LEFT JOIN leads ON leads.id = calls.lead_id
+            LEFT JOIN contacts ON contacts.id = calls.contact_id
+            WHERE 1=1
+        """
+        call_params = []
+        if lead_id is not None:
+            call_query += " AND calls.lead_id = ?"
+            call_params.append(lead_id)
+        if contact_id is not None:
+            call_query += " AND calls.contact_id = ?"
+            call_params.append(contact_id)
+        call_query += " ORDER BY calls.call_date DESC, calls.created_at DESC LIMIT ?"
+        call_params.append(limit)
+        cursor.execute(call_query, call_params)
         call_rows = [dict(r) for r in cursor.fetchall()]
 
     items = []
@@ -2213,6 +2262,10 @@ async def get_activities(token: str = Query(None), channel: str = Query(None), l
             "detail": r.get('subject') or (r.get('message') or '')[:80],
             "outcome": r['status'],
             "timestamp": r['created_at'],
+            "lead_id": r.get('lead_id'),
+            "lead_name": r.get('lead_name'),
+            "contact_id": r.get('contact_id'),
+            "contact_name": r.get('contact_name'),
         })
     for r in call_rows:
         items.append({
@@ -2222,6 +2275,10 @@ async def get_activities(token: str = Query(None), channel: str = Query(None), l
             "detail": f"{r.get('type', 'Outbound')} call - {r.get('duration_seconds') or 0}s",
             "outcome": r.get('outcome'),
             "timestamp": r.get('created_at'),
+            "lead_id": r.get('lead_id'),
+            "lead_name": r.get('lead_name'),
+            "contact_id": r.get('contact_id'),
+            "contact_name": r.get('contact_name'),
         })
 
     if channel and channel != "All":
@@ -2549,7 +2606,10 @@ async def send_quotation(quotation_id: int, token: str = Query(None)):
     body = "\n".join(lines)
 
     result = await send_email_real(
-        EmailSendRequest(to=recipient_email, subject=f"Quotation {quotation['quotation_number']} - {quotation['title']}", body=body),
+        EmailSendRequest(
+            to=recipient_email, subject=f"Quotation {quotation['quotation_number']} - {quotation['title']}", body=body,
+            lead_id=quotation['lead_id'], contact_id=quotation['contact_id']
+        ),
         token
     )
 

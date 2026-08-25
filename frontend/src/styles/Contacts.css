@@ -669,6 +669,22 @@
   gap: 8px;
 }
 
+.activity-outcome {
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-subtle-alt, var(--border-neutral));
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.activity-timeline {
+  border-top: 1px solid var(--border-neutral-alt, var(--border-neutral));
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
 .btn-edit-note,
 .btn-delete-note {
   background: none;

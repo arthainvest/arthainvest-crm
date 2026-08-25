@@ -347,6 +347,8 @@ class CallCreate(BaseModel):
     outcome: Optional[str] = None
     call_date: Optional[str] = None
     team_member_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
 
 class CallAssign(BaseModel):
     team_member_id: Optional[int] = None  # None unassigns the call
@@ -363,6 +365,10 @@ class CallResponse(BaseModel):
     created_at: datetime
     team_member_id: Optional[int] = None
     team_member_name: Optional[str] = None
+    lead_id: Optional[int] = None
+    lead_name: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
 
 # Communication Log (Emails/WhatsApp/SMS actually sent - "Emails"/"WhatsApp" tabs alongside
 # Calls, matching how Kylas groups Call Logs/Emails/WhatsApp under one nav item)
@@ -375,6 +381,10 @@ class CommunicationLogResponse(BaseModel):
     status: str  # Sent, Failed
     error_detail: Optional[str] = None
     created_at: datetime
+    lead_id: Optional[int] = None
+    lead_name: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
 
 # Per-employee call attempt/connect counts, for admins and team leads
 class EmployeeCallStats(BaseModel):
@@ -440,6 +450,8 @@ class GenerateContentResponse(BaseModel):
 class WhatsAppSendRequest(BaseModel):
     to: str
     message: str
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
 
 class WhatsAppSendResponse(BaseModel):
     configured: bool
@@ -450,6 +462,8 @@ class EmailSendRequest(BaseModel):
     to: str
     subject: str
     body: str
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
 
 class EmailSendResponse(BaseModel):
     configured: bool
@@ -459,6 +473,8 @@ class EmailSendResponse(BaseModel):
 class SmsSendRequest(BaseModel):
     to: str
     message: str
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
 
 class SmsSendResponse(BaseModel):
     configured: bool
@@ -558,6 +574,10 @@ class ActivityItem(BaseModel):
     detail: Optional[str] = None
     outcome: Optional[str] = None
     timestamp: datetime
+    lead_id: Optional[int] = None
+    lead_name: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
 
 # Companies (Kylas parity) - a lightweight standalone directory, not yet linked to Contacts;
 # ArthaInvest works mostly with individuals, so this stays optional metadata for now.

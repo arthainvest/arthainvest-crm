@@ -67,8 +67,8 @@ export default function Dashboard() {
     try {
       const message = renewalMessage(renewal);
       const result = channel === 'whatsapp'
-        ? await sendWhatsApp(token, renewal.phone, message)
-        : await sendEmailReal(token, renewal.email, 'Your renewal is coming up', message);
+        ? await sendWhatsApp(token, renewal.phone, message, { contactId: renewal.id })
+        : await sendEmailReal(token, renewal.email, 'Your renewal is coming up', message, { contactId: renewal.id });
 
       if (result.configured) {
         alert(result.message);
