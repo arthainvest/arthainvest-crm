@@ -8,6 +8,7 @@ import LeadsList from './components/LeadsList';
 import Pipeline from './components/Pipeline';
 import Calls from './components/Calls';
 import Companies from './components/Companies';
+import Quotations from './components/Quotations';
 import Marketing from './components/Marketing';
 import Team from './components/Team';
 import Reports from './components/Reports';
@@ -69,6 +70,7 @@ function App() {
               <Route path="/companies" element={<Companies />} />
               <Route path="/leads" element={<LeadsList />} />
               <Route path="/pipeline" element={<Pipeline />} />
+              <Route path="/quotations" element={<Quotations />} />
               <Route path="/calls" element={<Calls />} />
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/team" element={<Team />} />

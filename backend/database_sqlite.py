@@ -428,6 +428,35 @@ def init_db():
         """)
 
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quotations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quotation_number TEXT,
+                lead_id INTEGER,
+                contact_id INTEGER,
+                title TEXT NOT NULL,
+                status TEXT DEFAULT 'Draft',
+                valid_until DATE,
+                notes TEXT,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (lead_id) REFERENCES leads(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quotation_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quotation_id INTEGER NOT NULL,
+                description TEXT NOT NULL,
+                amount REAL DEFAULT 0,
+                FOREIGN KEY (quotation_id) REFERENCES quotations(id)
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS team_members (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,

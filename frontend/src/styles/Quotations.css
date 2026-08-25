@@ -1,0 +1,41 @@
+.quotations-container { padding: 20px; }
+.quotations-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+
+.quotations-table { background: var(--bg-surface); border-radius: 8px; overflow: hidden; }
+.quotations-table table { width: 100%; border-collapse: collapse; }
+.quotations-table th { background: var(--border-subtle); padding: 15px; text-align: left; font-weight: bold; color: #1976d2; }
+.quotations-table td { padding: 15px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); }
+
+.quotation-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.btn-small { padding: 6px 12px; border: 1px solid #90caf9; background: var(--bg-surface); color: #1976d2; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.btn-small.delete { color: #a71d2a; border-color: #f1a7a7; }
+.btn-small:disabled { opacity: 0.6; cursor: default; }
+
+.no-data { text-align: center; color: var(--text-muted); padding: 40px; font-size: 14px; }
+
+.quotation-status-select {
+  padding: 5px 22px 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.quotation-status-select.status-draft { border-color: #90a4ae; color: #546e7a; }
+.quotation-status-select.status-sent { border-color: #1976d2; color: #1976d2; }
+.quotation-status-select.status-accepted { border-color: #1e7e34; color: #1e7e34; }
+.quotation-status-select.status-rejected { border-color: #a71d2a; color: #a71d2a; }
+
+.quotation-modal { max-width: 560px; }
+
+.quotation-items-editor { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.quotation-item-row { display: grid; grid-template-columns: 1fr 140px auto; gap: 8px; align-items: center; }
+.quotation-item-row input { width: 100%; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--bg-surface); color: var(--text-primary); font-size: 14px; }
+.quotation-item-remove { background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px; }
+.quotation-item-remove:disabled { opacity: 0.4; cursor: default; }
+
+.quotation-add-item { padding: 6px 14px; font-size: 13px; margin-bottom: 10px; }
+
+.quotation-grand-total { text-align: right; font-size: 15px; color: var(--text-heading); padding-top: 6px; border-top: 1px dashed var(--border-subtle); }

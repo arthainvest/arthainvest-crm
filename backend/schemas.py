@@ -577,6 +577,50 @@ class CompanyResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+# Quotations (Kylas parity) - a formal price quote linked to a Lead or Contact, with line
+# items and a status lifecycle (Draft -> Sent -> Accepted/Rejected).
+class QuotationItemInput(BaseModel):
+    description: str
+    amount: float
+
+class QuotationItemResponse(BaseModel):
+    id: int
+    description: str
+    amount: float
+
+class QuotationCreate(BaseModel):
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    title: str
+    valid_until: Optional[str] = None  # ISO "YYYY-MM-DD"
+    notes: Optional[str] = None
+    items: List[QuotationItemInput] = []
+
+class QuotationUpdate(BaseModel):
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    title: Optional[str] = None
+    valid_until: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None  # Draft, Sent, Accepted, Rejected
+    items: Optional[List[QuotationItemInput]] = None  # when present, fully replaces existing items
+
+class QuotationResponse(BaseModel):
+    id: int
+    quotation_number: str
+    lead_id: Optional[int] = None
+    lead_name: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
+    title: str
+    status: str
+    valid_until: Optional[str] = None
+    notes: Optional[str] = None
+    grand_total: float
+    items: List[QuotationItemResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
 # Token
 class Token(BaseModel):
     access_token: str

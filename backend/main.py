@@ -41,7 +41,8 @@ from schemas import (
     TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow,
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
     DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
-    ActivityItem, CompanyCreate, CompanyUpdate, CompanyResponse
+    ActivityItem, CompanyCreate, CompanyUpdate, CompanyResponse,
+    QuotationCreate, QuotationUpdate, QuotationResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -2217,6 +2218,190 @@ async def delete_company(company_id: int, token: str = Query(None)):
         conn.commit()
 
     return {"message": "Company deleted"}
+
+def fetch_quotation_with_details(cursor, quotation_id):
+    """Read one quotation back joined against its linked lead/contact name, with its line
+    items and a computed grand_total - items live in a separate table so a quotation can have
+    any number of them."""
+    cursor.execute(
+        """
+        SELECT quotations.*, leads.name as lead_name, contacts.name as contact_name
+        FROM quotations
+        LEFT JOIN leads ON leads.id = quotations.lead_id
+        LEFT JOIN contacts ON contacts.id = quotations.contact_id
+        WHERE quotations.id = ?
+        """,
+        (quotation_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    quotation = dict(row)
+    cursor.execute("SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY id ASC", (quotation_id,))
+    items = [dict(r) for r in cursor.fetchall()]
+    quotation['items'] = items
+    quotation['grand_total'] = sum(i['amount'] for i in items)
+    return quotation
+
+# ============= QUOTATIONS (Kylas parity) =============
+
+@app.get("/api/quotations", response_model=list[QuotationResponse])
+async def get_quotations(token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM quotations ORDER BY created_at DESC")
+        ids = [r['id'] for r in cursor.fetchall()]
+        quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
+
+    return quotations
+
+@app.get("/api/quotations/{quotation_id}", response_model=QuotationResponse)
+async def get_quotation(quotation_id: int, token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        quotation = fetch_quotation_with_details(cursor, quotation_id)
+        if not quotation:
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+    return quotation
+
+@app.post("/api/quotations", response_model=QuotationResponse)
+async def create_quotation(quotation: QuotationCreate, token: str = Query(None)):
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO quotations (lead_id, contact_id, title, valid_until, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+            (quotation.lead_id, quotation.contact_id, quotation.title, quotation.valid_until, quotation.notes, current_user['user_id'])
+        )
+        quotation_id = cursor.lastrowid
+
+        # Number depends on the row's own id, so it's set in a second update right after insert.
+        quotation_number = f"QT-{quotation_id:04d}"
+        cursor.execute("UPDATE quotations SET quotation_number = ? WHERE id = ?", (quotation_number, quotation_id))
+
+        for item in quotation.items:
+            cursor.execute(
+                "INSERT INTO quotation_items (quotation_id, description, amount) VALUES (?, ?, ?)",
+                (quotation_id, item.description, item.amount)
+            )
+        conn.commit()
+
+        new_quotation = fetch_quotation_with_details(cursor, quotation_id)
+
+    return new_quotation
+
+@app.put("/api/quotations/{quotation_id}", response_model=QuotationResponse)
+async def update_quotation(quotation_id: int, quotation: QuotationUpdate, token: str = Query(None)):
+    get_current_user(token)
+
+    updates = []
+    values = []
+    for field in ['lead_id', 'contact_id', 'title', 'valid_until', 'notes', 'status']:
+        value = getattr(quotation, field)
+        if value is not None:
+            updates.append(f"{field} = ?")
+            values.append(value)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        if updates:
+            updates.append("updated_at = CURRENT_TIMESTAMP")
+            values.append(quotation_id)
+            cursor.execute(f"UPDATE quotations SET {', '.join(updates)} WHERE id = ?", values)
+
+        if quotation.items is not None:
+            cursor.execute("DELETE FROM quotation_items WHERE quotation_id = ?", (quotation_id,))
+            for item in quotation.items:
+                cursor.execute(
+                    "INSERT INTO quotation_items (quotation_id, description, amount) VALUES (?, ?, ?)",
+                    (quotation_id, item.description, item.amount)
+                )
+
+        conn.commit()
+        updated = fetch_quotation_with_details(cursor, quotation_id)
+
+    return updated
+
+@app.delete("/api/quotations/{quotation_id}")
+async def delete_quotation(quotation_id: int, token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM quotation_items WHERE quotation_id = ?", (quotation_id,))
+        cursor.execute("DELETE FROM quotations WHERE id = ?", (quotation_id,))
+        conn.commit()
+
+    return {"message": "Quotation deleted"}
+
+@app.post("/api/quotations/{quotation_id}/send", response_model=EmailSendResponse)
+async def send_quotation(quotation_id: int, token: str = Query(None)):
+    """Emails a formatted summary of the quotation to the linked lead/contact's address,
+    reusing the same SMTP send (and communication_log/Activities feed) path as any other
+    email. Moves a Draft quotation to Sent on a successful attempt."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        quotation = fetch_quotation_with_details(cursor, quotation_id)
+        if not quotation:
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        recipient_email = None
+        recipient_name = None
+        if quotation['contact_id']:
+            cursor.execute("SELECT name, email FROM contacts WHERE id = ?", (quotation['contact_id'],))
+            row = cursor.fetchone()
+        elif quotation['lead_id']:
+            cursor.execute("SELECT name, email FROM leads WHERE id = ?", (quotation['lead_id'],))
+            row = cursor.fetchone()
+        else:
+            row = None
+        if row:
+            recipient_name, recipient_email = row['name'], row['email']
+
+    if not recipient_email:
+        return EmailSendResponse(configured=True, message="No email address on file for the linked lead/contact.")
+
+    lines = [f"Dear {recipient_name or 'Customer'},", "", f"Please find your quotation {quotation['quotation_number']} below:", ""]
+    for item in quotation['items']:
+        lines.append(f"- {item['description']}: Rs {item['amount']:,.2f}")
+    lines.append("")
+    lines.append(f"Grand Total: Rs {quotation['grand_total']:,.2f}")
+    if quotation['valid_until']:
+        lines.append(f"Valid until: {quotation['valid_until']}")
+    if quotation['notes']:
+        lines.append("")
+        lines.append(quotation['notes'])
+    lines.append("")
+    lines.append("Regards,\nArthaInvest")
+    body = "\n".join(lines)
+
+    result = await send_email_real(
+        EmailSendRequest(to=recipient_email, subject=f"Quotation {quotation['quotation_number']} - {quotation['title']}", body=body),
+        token
+    )
+
+    if result.configured and result.message.startswith("Email sent"):
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE quotations SET status = 'Sent', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'Draft'",
+                (quotation_id,)
+            )
+            conn.commit()
+
+    return result
 
 @app.post("/api/marketing/mailchimp/sync", response_model=MailchimpSyncResponse)
 async def sync_mailchimp(token: str = Query(None)):
