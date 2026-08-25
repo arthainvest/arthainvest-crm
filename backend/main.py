@@ -28,6 +28,7 @@ from schemas import (
     TaskCreate, TaskUpdate, TaskResponse,
     MeetingCreate, MeetingUpdate, MeetingResponse,
     CallCreate, CallAssign, CallResponse, EmployeeCallStats,
+    CommunicationLogResponse,
     DialRequest, DialResponse, AISummaryResponse,
     DetectDateRequest, DetectDateResponse,
     GenerateContentRequest, GenerateContentResponse,
@@ -1832,11 +1833,23 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
     except Exception as e:
         return DialResponse(configured=True, message=f"Call failed: {str(e)}")
 
+def _log_communication(channel, recipient, message, status, subject=None, error_detail=None, user_id=None):
+    """Record a real send attempt (success or failure) to communication_log - the Calls page's
+    Emails/WhatsApp tabs read from this. Deliberately NOT called for the configured=False path
+    (nothing was actually attempted then, just an unconfigured-integration response)."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO communication_log (channel, recipient, subject, message, status, error_detail, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (channel, recipient, subject, message, status, error_detail, user_id)
+        )
+        conn.commit()
+
 @app.post("/api/sms/send", response_model=SmsSendResponse)
 async def send_sms(sms: SmsSendRequest, token: str = Query(None)):
     """Send a real SMS via Twilio, reusing the same credentials as click-to-call. Returns
     configured=False when TWILIO_* isn't set, so the frontend can fall back to an sms: link."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
@@ -1851,17 +1864,20 @@ async def send_sms(sms: SmsSendRequest, token: str = Query(None)):
 
         client = Client(account_sid, auth_token)
         client.messages.create(to=sms.to, from_=from_number, body=sms.message)
+        _log_communication("SMS", sms.to, sms.message, "Sent", user_id=current_user['user_id'])
         return SmsSendResponse(configured=True, message=f"SMS sent to {sms.to}.")
     except TwilioRestException as e:
+        _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=e.msg, user_id=current_user['user_id'])
         return SmsSendResponse(configured=True, message=f"SMS failed: {e.msg}")
     except Exception as e:
+        _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=str(e), user_id=current_user['user_id'])
         return SmsSendResponse(configured=True, message=f"SMS failed: {str(e)}")
 
 @app.post("/api/whatsapp/send", response_model=WhatsAppSendResponse)
 async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
     """Send a real WhatsApp message via the Meta Cloud API. Returns configured=False when
     WHATSAPP_TOKEN/WHATSAPP_PHONE_ID aren't set, so the frontend can fall back to a wa.me link."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     wa_token = os.getenv("WHATSAPP_TOKEN")
     phone_id = os.getenv("WHATSAPP_PHONE_ID")
@@ -1884,16 +1900,19 @@ async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
             timeout=10
         )
         if resp.status_code >= 400:
+            _log_communication("WhatsApp", payload.to, payload.message, "Failed", error_detail=resp.text[:200], user_id=current_user['user_id'])
             return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {resp.text[:200]}")
+        _log_communication("WhatsApp", payload.to, payload.message, "Sent", user_id=current_user['user_id'])
         return WhatsAppSendResponse(configured=True, message=f"WhatsApp message sent to {payload.to}.")
     except Exception as e:
+        _log_communication("WhatsApp", payload.to, payload.message, "Failed", error_detail=str(e), user_id=current_user['user_id'])
         return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {str(e)}")
 
 @app.post("/api/email/send", response_model=EmailSendResponse)
 async def send_email_real(payload: EmailSendRequest, token: str = Query(None)):
     """Send a real email via SMTP. Returns configured=False when SMTP_* isn't set, so the
     frontend can fall back to a mailto: link."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = os.getenv("SMTP_PORT")
@@ -1915,9 +1934,30 @@ async def send_email_real(payload: EmailSendRequest, token: str = Query(None)):
             server.login(smtp_user, smtp_password)
             server.sendmail(smtp_from, [payload.to], msg.as_string())
 
+        _log_communication("Email", payload.to, payload.body, "Sent", subject=payload.subject, user_id=current_user['user_id'])
         return EmailSendResponse(configured=True, message=f"Email sent to {payload.to}.")
     except Exception as e:
+        _log_communication("Email", payload.to, payload.body, "Failed", subject=payload.subject, error_detail=str(e), user_id=current_user['user_id'])
         return EmailSendResponse(configured=True, message=f"Email failed: {str(e)}")
+
+@app.get("/api/communication-log", response_model=list[CommunicationLogResponse])
+async def get_communication_log(token: str = Query(None), channel: str = Query(None), limit: int = Query(100)):
+    """Real send history for Email/WhatsApp/SMS, most recent first - the Calls page's Emails
+    and WhatsApp tabs (mirrors how Kylas groups Call Logs/Emails/WhatsApp together)."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if channel:
+            cursor.execute(
+                "SELECT * FROM communication_log WHERE channel = ? ORDER BY created_at DESC LIMIT ?",
+                (channel, limit)
+            )
+        else:
+            cursor.execute("SELECT * FROM communication_log ORDER BY created_at DESC LIMIT ?", (limit,))
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    return rows
 
 @app.post("/api/marketing/mailchimp/sync", response_model=MailchimpSyncResponse)
 async def sync_mailchimp(token: str = Query(None)):

@@ -285,6 +285,14 @@ export const getCallsByEmployee = async (token) => {
   return response.data;
 };
 
+// Real send history for Email/WhatsApp/SMS (Calls page - Emails/WhatsApp tabs)
+export const getCommunicationLog = async (token, channel) => {
+  const params = new URLSearchParams({ token });
+  if (channel) params.append('channel', channel);
+  const response = await api.get(`/api/communication-log?${params.toString()}`);
+  return response.data;
+};
+
 // Twilio click-to-call
 export const dialCall = async (token, to) => {
   const response = await api.post(`/api/calls/dial?token=${token}`, { to });

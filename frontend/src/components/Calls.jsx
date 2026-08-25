@@ -1,22 +1,53 @@
 import React, { useState, useEffect } from 'react';
-import { getCallsList, createCall, deleteCall, assignCall, getTeam, getCallsByEmployee } from '../services/api';
+import { getCallsList, createCall, deleteCall, assignCall, getTeam, getCallsByEmployee, getCommunicationLog } from '../services/api';
 import '../styles/Calls.css';
 
 const emptyCallForm = { name: '', phone: '', minutes: '', seconds: '', type: 'Outbound', outcome: '', call_date: '', team_member_id: '' };
 
+// Grouped together like Kylas groups Call Logs/Emails/WhatsApp under one nav item - Calls
+// stays the real, feature-rich page; Emails/WhatsApp are read-only send-history log views.
+const LOG_TABS = [
+  { id: 'calls', label: '📞 Calls', title: 'Calls' },
+  { id: 'emails', label: '✉️ Emails', title: 'Emails' },
+  { id: 'whatsapp', label: '💬 WhatsApp', title: 'WhatsApp' },
+];
+
 export default function Calls() {
+  const [activeTab, setActiveTab] = useState('calls');
   const [calls, setCalls] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [callForm, setCallForm] = useState(emptyCallForm);
   const [teamMembers, setTeamMembers] = useState([]);
   const [employeeStats, setEmployeeStats] = useState([]);
+  const [emailLog, setEmailLog] = useState([]);
+  const [whatsappLog, setWhatsappLog] = useState([]);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
     fetchCalls();
     fetchTeamMembers();
     fetchEmployeeStats();
+    fetchEmailLog();
+    fetchWhatsappLog();
   }, []);
+
+  const fetchEmailLog = async () => {
+    try {
+      const data = await getCommunicationLog(token, 'Email');
+      setEmailLog(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching email log:', error);
+    }
+  };
+
+  const fetchWhatsappLog = async () => {
+    try {
+      const data = await getCommunicationLog(token, 'WhatsApp');
+      setWhatsappLog(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching WhatsApp log:', error);
+    }
+  };
 
   const fetchCalls = async () => {
     try {
@@ -124,10 +155,80 @@ export default function Calls() {
   return (
     <div className="calls-container">
       <div className="calls-header">
-        <h1>Calls</h1>
-        <button className="btn-primary" onClick={handleLogCallClick}>+ Log Call</button>
+        <h1>{LOG_TABS.find((t) => t.id === activeTab)?.title || 'Calls'}</h1>
+        {activeTab === 'calls' && (
+          <button className="btn-primary" onClick={handleLogCallClick}>+ Log Call</button>
+        )}
       </div>
 
+      <div className="log-tab-navigation">
+        {LOG_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            className={`log-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'emails' && (
+        <div className="calls-table">
+          <table>
+            <thead>
+              <tr>
+                <th>To</th>
+                <th>Subject</th>
+                <th>Status</th>
+                <th>Sent</th>
+              </tr>
+            </thead>
+            <tbody>
+              {emailLog.length === 0 ? (
+                <tr><td colSpan="4" className="no-data">No emails sent yet - use the Email button on Contacts/Leads, or a Renewal Reminder.</td></tr>
+              ) : emailLog.map((entry) => (
+                <tr key={entry.id}>
+                  <td>{entry.recipient}</td>
+                  <td>{entry.subject || '-'}</td>
+                  <td><span className={`badge-${entry.status.toLowerCase()}`}>{entry.status}</span></td>
+                  <td>{new Date(entry.created_at).toLocaleString('en-IN')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'whatsapp' && (
+        <div className="calls-table">
+          <table>
+            <thead>
+              <tr>
+                <th>To</th>
+                <th>Message</th>
+                <th>Status</th>
+                <th>Sent</th>
+              </tr>
+            </thead>
+            <tbody>
+              {whatsappLog.length === 0 ? (
+                <tr><td colSpan="4" className="no-data">No WhatsApp messages sent yet via the WhatsApp Business API - only real API sends are logged here, not wa.me link fallbacks (the browser handles those, so this server never sees them).</td></tr>
+              ) : whatsappLog.map((entry) => (
+                <tr key={entry.id}>
+                  <td>{entry.recipient}</td>
+                  <td className="log-message-cell">{entry.message}</td>
+                  <td><span className={`badge-${entry.status.toLowerCase()}`}>{entry.status}</span></td>
+                  <td>{new Date(entry.created_at).toLocaleString('en-IN')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'calls' && (
+      <>
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-value">{stats.totalCalls}</div>
@@ -335,6 +436,8 @@ export default function Calls() {
             </form>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

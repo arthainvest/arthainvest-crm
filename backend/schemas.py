@@ -347,6 +347,18 @@ class CallResponse(BaseModel):
     team_member_id: Optional[int] = None
     team_member_name: Optional[str] = None
 
+# Communication Log (Emails/WhatsApp/SMS actually sent - "Emails"/"WhatsApp" tabs alongside
+# Calls, matching how Kylas groups Call Logs/Emails/WhatsApp under one nav item)
+class CommunicationLogResponse(BaseModel):
+    id: int
+    channel: str  # Email, WhatsApp, SMS
+    recipient: Optional[str] = None
+    subject: Optional[str] = None
+    message: Optional[str] = None
+    status: str  # Sent, Failed
+    error_detail: Optional[str] = None
+    created_at: datetime
+
 # Per-employee call attempt/connect counts, for admins and team leads
 class EmployeeCallStats(BaseModel):
     team_member_id: int
