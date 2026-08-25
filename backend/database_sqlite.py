@@ -217,10 +217,32 @@ def init_db():
                 recipients INTEGER DEFAULT 0,
                 opens INTEGER DEFAULT 0,
                 clicks INTEGER DEFAULT 0,
+                message TEXT,
                 created_by INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        # campaigns existed in databases from earlier this session, before message existed.
+        try:
+            cursor.execute("ALTER TABLE campaigns ADD COLUMN message TEXT")
+        except sqlite3.OperationalError:
+            pass
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS campaign_recipients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER NOT NULL,
+                lead_id INTEGER,
+                contact_id INTEGER,
+                status TEXT DEFAULT 'Pending',
+                sent_at TIMESTAMP,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY (lead_id) REFERENCES leads(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id)
             )
         """)
 

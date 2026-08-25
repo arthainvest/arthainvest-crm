@@ -106,6 +106,7 @@ class CampaignCreate(BaseModel):
     type: str = "Email"
     status: str = "Active"
     recipients: int = 0
+    message: Optional[str] = None  # actual content sent to linked recipients
 
 class CampaignUpdate(BaseModel):
     name: Optional[str] = None
@@ -114,6 +115,7 @@ class CampaignUpdate(BaseModel):
     recipients: Optional[int] = None
     opens: Optional[int] = None
     clicks: Optional[int] = None
+    message: Optional[str] = None
 
 class CampaignResponse(BaseModel):
     id: int
@@ -123,10 +125,39 @@ class CampaignResponse(BaseModel):
     recipients: int
     opens: int
     clicks: int
+    message: Optional[str] = None
     engagement: int
     progress: int
+    linked_recipient_count: int = 0  # real Leads/Contacts added via campaign_recipients
+    sent_count: int = 0
     created_at: datetime
     updated_at: datetime
+
+# Campaign Recipients (Marketing <-> Leads/Contacts linking) - real people a campaign is
+# actually aimed at, replacing the plain `recipients` number with real records.
+class CampaignRecipientAdd(BaseModel):
+    lead_ids: Optional[List[int]] = None
+    contact_ids: Optional[List[int]] = None
+
+class CampaignRecipientResponse(BaseModel):
+    id: int
+    campaign_id: int
+    lead_id: Optional[int] = None
+    lead_name: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    status: str  # Pending, Sent, Failed
+    sent_at: Optional[datetime] = None
+    added_at: datetime
+
+class CampaignSendResult(BaseModel):
+    sent: int
+    failed: int
+    skipped: int
+    message: str
 
 # Integration Schemas
 class IntegrationToggle(BaseModel):

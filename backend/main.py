@@ -20,6 +20,7 @@ from schemas import (
     LeadCreate, LeadUpdate, LeadAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
+    CampaignRecipientAdd, CampaignRecipientResponse, CampaignSendResult,
     IntegrationToggle, IntegrationResponse,
     SettingsUpdate, SettingsResponse,
     ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactResponse, RenewalContact,
@@ -805,6 +806,13 @@ async def get_sales_analytics(token: str = Query(None)):
 
 # ============= CAMPAIGNS ENDPOINTS =============
 
+_CAMPAIGN_SELECT_SQL = """
+    SELECT campaigns.*,
+           (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_recipients.campaign_id = campaigns.id) as linked_recipient_count,
+           (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_recipients.campaign_id = campaigns.id AND campaign_recipients.status = 'Sent') as sent_count
+    FROM campaigns
+"""
+
 @app.get("/api/campaigns", response_model=list[CampaignResponse])
 async def get_campaigns(token: str = Query(None)):
     """Get all marketing campaigns"""
@@ -812,7 +820,7 @@ async def get_campaigns(token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM campaigns ORDER BY created_at DESC")
+        cursor.execute(_CAMPAIGN_SELECT_SQL + " ORDER BY campaigns.created_at DESC")
         campaigns = [campaign_row_to_dict(row) for row in cursor.fetchall()]
 
     return campaigns
@@ -826,15 +834,15 @@ async def create_campaign(campaign: CampaignCreate, token: str = Query(None)):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO campaigns (name, type, status, recipients, opens, clicks, created_by)
-            VALUES (?, ?, ?, ?, 0, 0, ?)
+            INSERT INTO campaigns (name, type, status, recipients, opens, clicks, message, created_by)
+            VALUES (?, ?, ?, ?, 0, 0, ?, ?)
             """,
-            (campaign.name, campaign.type, campaign.status, campaign.recipients, current_user['user_id'])
+            (campaign.name, campaign.type, campaign.status, campaign.recipients, campaign.message, current_user['user_id'])
         )
         conn.commit()
         campaign_id = cursor.lastrowid
 
-        cursor.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,))
+        cursor.execute(_CAMPAIGN_SELECT_SQL + " WHERE campaigns.id = ?", (campaign_id,))
         new_campaign = cursor.fetchone()
 
     return campaign_row_to_dict(new_campaign)
@@ -847,7 +855,7 @@ async def update_campaign(campaign_id: int, campaign: CampaignUpdate, token: str
     updates = []
     values = []
 
-    for field in ['name', 'type', 'status', 'recipients', 'opens', 'clicks']:
+    for field in ['name', 'type', 'status', 'recipients', 'opens', 'clicks', 'message']:
         value = getattr(campaign, field)
         if value is not None:
             updates.append(f"{field} = ?")
@@ -864,7 +872,7 @@ async def update_campaign(campaign_id: int, campaign: CampaignUpdate, token: str
         cursor.execute(f"UPDATE campaigns SET {', '.join(updates)} WHERE id = ?", values)
         conn.commit()
 
-        cursor.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,))
+        cursor.execute(_CAMPAIGN_SELECT_SQL + " WHERE campaigns.id = ?", (campaign_id,))
         updated_campaign = cursor.fetchone()
 
     if not updated_campaign:
@@ -879,10 +887,195 @@ async def delete_campaign(campaign_id: int, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM campaign_recipients WHERE campaign_id = ?", (campaign_id,))
         cursor.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
         conn.commit()
 
     return {"message": "Campaign deleted"}
+
+def _campaign_recipient_row_to_dict(r):
+    d = dict(r)
+    d['name'] = d.get('lead_name') or d.get('contact_name')
+    d['phone'] = d.get('lead_phone') or d.get('contact_phone')
+    d['email'] = d.get('lead_email') or d.get('contact_email')
+    return d
+
+_CAMPAIGN_RECIPIENT_SELECT_SQL = """
+    SELECT campaign_recipients.*,
+           leads.name as lead_name, leads.phone as lead_phone, leads.email as lead_email,
+           contacts.name as contact_name, contacts.phone as contact_phone, contacts.email as contact_email
+    FROM campaign_recipients
+    LEFT JOIN leads ON leads.id = campaign_recipients.lead_id
+    LEFT JOIN contacts ON contacts.id = campaign_recipients.contact_id
+"""
+
+@app.post("/api/campaigns/{campaign_id}/recipients")
+async def add_campaign_recipients(campaign_id: int, payload: CampaignRecipientAdd, token: str = Query(None)):
+    """Add real Leads/Contacts to a campaign, replacing the old plain `recipients` count with
+    actual people. Skips anyone already added to this campaign, so re-selecting the same
+    leads doesn't create duplicates."""
+    get_current_user(token)
+
+    lead_ids = payload.lead_ids or []
+    contact_ids = payload.contact_ids or []
+    if not lead_ids and not contact_ids:
+        raise HTTPException(status_code=400, detail="Select at least one lead or contact to add")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM campaigns WHERE id = ?", (campaign_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+        cursor.execute(
+            "SELECT lead_id, contact_id FROM campaign_recipients WHERE campaign_id = ?",
+            (campaign_id,)
+        )
+        existing = {(r['lead_id'], r['contact_id']) for r in cursor.fetchall()}
+
+        added = 0
+        for lead_id in lead_ids:
+            if (lead_id, None) in existing:
+                continue
+            cursor.execute(
+                "INSERT INTO campaign_recipients (campaign_id, lead_id, contact_id) VALUES (?, ?, NULL)",
+                (campaign_id, lead_id)
+            )
+            added += 1
+        for contact_id in contact_ids:
+            if (None, contact_id) in existing:
+                continue
+            cursor.execute(
+                "INSERT INTO campaign_recipients (campaign_id, lead_id, contact_id) VALUES (?, NULL, ?)",
+                (campaign_id, contact_id)
+            )
+            added += 1
+        conn.commit()
+
+    return {"added": added, "skipped": len(lead_ids) + len(contact_ids) - added}
+
+@app.get("/api/campaigns/{campaign_id}/recipients", response_model=list[CampaignRecipientResponse])
+async def get_campaign_recipients(campaign_id: int, token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM campaigns WHERE id = ?", (campaign_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+        cursor.execute(
+            _CAMPAIGN_RECIPIENT_SELECT_SQL + " WHERE campaign_recipients.campaign_id = ? ORDER BY campaign_recipients.added_at DESC",
+            (campaign_id,)
+        )
+        rows = [_campaign_recipient_row_to_dict(r) for r in cursor.fetchall()]
+
+    return rows
+
+@app.delete("/api/campaigns/{campaign_id}/recipients/{recipient_id}")
+async def remove_campaign_recipient(campaign_id: int, recipient_id: int, token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM campaign_recipients WHERE id = ? AND campaign_id = ?",
+            (recipient_id, campaign_id)
+        )
+        conn.commit()
+
+    return {"message": "Recipient removed"}
+
+@app.post("/api/campaigns/{campaign_id}/send", response_model=CampaignSendResult)
+async def send_campaign(campaign_id: int, token: str = Query(None)):
+    """Sends the campaign's message to every Pending recipient over its channel (Email/
+    WhatsApp/SMS), reusing the same send endpoints (and communication_log/Activities feed)
+    as any other send - so a campaign send shows up in each recipient's own Activity Timeline
+    too. Stops attempting further recipients the moment the channel turns out to be
+    unconfigured (nothing was actually attempted for those), matching the same
+    graceful-degradation contract as every other send path."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,))
+        campaign_row = cursor.fetchone()
+        if not campaign_row:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        campaign = dict(campaign_row)
+
+        if not (campaign.get('message') or '').strip():
+            raise HTTPException(status_code=400, detail="Add message content to this campaign before sending.")
+
+        cursor.execute(
+            _CAMPAIGN_RECIPIENT_SELECT_SQL + " WHERE campaign_recipients.campaign_id = ? AND campaign_recipients.status = 'Pending'",
+            (campaign_id,)
+        )
+        recipients = [_campaign_recipient_row_to_dict(r) for r in cursor.fetchall()]
+
+    if not recipients:
+        return CampaignSendResult(sent=0, failed=0, skipped=0, message="No pending recipients to send to.")
+
+    channel = campaign['type']
+    sent = failed = skipped = 0
+    not_configured_message = None
+
+    for r in recipients:
+        lead_id = r['lead_id']
+        contact_id = r['contact_id']
+
+        if channel == 'Email':
+            if not r['email']:
+                skipped += 1
+                continue
+            result = await send_email_real(
+                EmailSendRequest(to=r['email'], subject=campaign['name'], body=campaign['message'], lead_id=lead_id, contact_id=contact_id),
+                token
+            )
+        elif channel == 'WhatsApp':
+            if not r['phone']:
+                skipped += 1
+                continue
+            result = await send_whatsapp(
+                WhatsAppSendRequest(to=r['phone'], message=campaign['message'], lead_id=lead_id, contact_id=contact_id),
+                token
+            )
+        else:  # SMS
+            if not r['phone']:
+                skipped += 1
+                continue
+            result = await send_sms(
+                SmsSendRequest(to=r['phone'], message=campaign['message'], lead_id=lead_id, contact_id=contact_id),
+                token
+            )
+
+        if not result.configured:
+            not_configured_message = result.message
+            break
+
+        new_status = 'Sent' if 'sent' in (result.message or '').lower() else 'Failed'
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE campaign_recipients SET status = ?, sent_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (new_status, r['id'])
+            )
+            conn.commit()
+
+        if new_status == 'Sent':
+            sent += 1
+        else:
+            failed += 1
+
+    if not_configured_message:
+        return CampaignSendResult(sent=sent, failed=failed, skipped=skipped, message=not_configured_message)
+
+    summary = f"Sent to {sent} recipient(s)."
+    if failed:
+        summary += f" {failed} failed."
+    if skipped:
+        summary += f" {skipped} skipped (no {'email' if channel == 'Email' else 'phone'} on file)."
+    return CampaignSendResult(sent=sent, failed=failed, skipped=skipped, message=summary)
 
 # ============= INTEGRATIONS ENDPOINTS =============
 

@@ -176,6 +176,28 @@ export const deleteCampaign = async (token, id) => {
   await api.delete(`/api/campaigns/${id}?token=${token}`);
 };
 
+// Campaign recipients (Marketing <-> Leads/Contacts linking)
+export const getCampaignRecipients = async (token, campaignId) => {
+  const response = await api.get(`/api/campaigns/${campaignId}/recipients?token=${token}`);
+  return response.data;
+};
+
+export const addCampaignRecipients = async (token, campaignId, { leadIds, contactIds }) => {
+  const response = await api.post(`/api/campaigns/${campaignId}/recipients?token=${token}`, {
+    lead_ids: leadIds, contact_ids: contactIds,
+  });
+  return response.data;
+};
+
+export const removeCampaignRecipient = async (token, campaignId, recipientId) => {
+  await api.delete(`/api/campaigns/${campaignId}/recipients/${recipientId}?token=${token}`);
+};
+
+export const sendCampaign = async (token, campaignId) => {
+  const response = await api.post(`/api/campaigns/${campaignId}/send?token=${token}`);
+  return response.data;
+};
+
 // Integrations
 export const getIntegrations = async (token) => {
   const response = await api.get(`/api/integrations?token=${token}`);

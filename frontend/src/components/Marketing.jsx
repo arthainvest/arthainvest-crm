@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   getCampaigns, createCampaign, updateCampaign, deleteCampaign, syncMailchimp,
-  getSettings, getLinkedInConnectUrl, postToLinkedIn, generateMarketingContent
+  getSettings, getLinkedInConnectUrl, postToLinkedIn, generateMarketingContent,
+  getLeads, getContactsList, getCampaignRecipients, addCampaignRecipients,
+  removeCampaignRecipient, sendCampaign
 } from '../services/api';
 import '../styles/Marketing.css';
 
@@ -86,7 +88,8 @@ const drawCreative = (canvas, { occasion, content, companyName, logoImg }) => {
   ctx.fillText('Your Trusted Insurance & Loan Partner', size / 2, size - 70);
 };
 
-const emptyCampaignForm = { name: '', type: 'Email', status: 'Active', recipients: '' };
+const emptyCampaignForm = { name: '', type: 'Email', status: 'Active', recipients: '', message: '' };
+const RECIPIENT_STATUS_CLASS = { Pending: 'status-pending', Sent: 'status-sent', Failed: 'status-failed' };
 
 // Ready-to-send captions for the occasions that matter most to an Indian insurance/loan
 // distributor's clients - work instantly with no AI/billing required. "Generate with AI"
@@ -116,6 +119,16 @@ export default function Marketing() {
   const [editingId, setEditingId] = useState(null);
   const [campaignForm, setCampaignForm] = useState(emptyCampaignForm);
   const [mailchimpSyncing, setMailchimpSyncing] = useState(false);
+
+  // Real recipients (Leads/Contacts linked to a campaign)
+  const [leads, setLeads] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [showRecipients, setShowRecipients] = useState(false);
+  const [recipientsCampaign, setRecipientsCampaign] = useState(null);
+  const [recipients, setRecipients] = useState([]);
+  const [loadingRecipients, setLoadingRecipients] = useState(false);
+  const [selectedToAdd, setSelectedToAdd] = useState([]);
+  const [sending, setSending] = useState(false);
 
   const [linkedInConnected, setLinkedInConnected] = useState(false);
   const [linkedInConnecting, setLinkedInConnecting] = useState(false);
@@ -272,6 +285,7 @@ export default function Marketing() {
   useEffect(() => {
     fetchCampaigns();
     fetchLinkedInStatus();
+    fetchLeadsAndContacts();
 
     // LinkedIn's OAuth redirect lands back here with ?linkedin=connected|error - surface it
     // once, then clean the URL so a refresh doesn't re-show the same message.
@@ -295,6 +309,78 @@ export default function Marketing() {
     }
   };
 
+  const fetchLeadsAndContacts = async () => {
+    try {
+      const [leadsData, contactsData] = await Promise.all([getLeads(token), getContactsList(token)]);
+      setLeads(Array.isArray(leadsData) ? leadsData : []);
+      setContacts(Array.isArray(contactsData) ? contactsData : []);
+    } catch (error) {
+      console.error('Error fetching leads/contacts for campaign recipients:', error);
+    }
+  };
+
+  const openRecipients = async (campaign) => {
+    setRecipientsCampaign(campaign);
+    setSelectedToAdd([]);
+    setShowRecipients(true);
+    setLoadingRecipients(true);
+    try {
+      const data = await getCampaignRecipients(token, campaign.id);
+      setRecipients(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching campaign recipients:', error);
+      setRecipients([]);
+    } finally {
+      setLoadingRecipients(false);
+    }
+  };
+
+  const handleAddRecipients = async () => {
+    if (!recipientsCampaign || selectedToAdd.length === 0) return;
+    const leadIds = selectedToAdd.filter((v) => v.startsWith('lead-')).map((v) => Number(v.split('-')[1]));
+    const contactIds = selectedToAdd.filter((v) => v.startsWith('contact-')).map((v) => Number(v.split('-')[1]));
+    try {
+      await addCampaignRecipients(token, recipientsCampaign.id, { leadIds, contactIds });
+      const data = await getCampaignRecipients(token, recipientsCampaign.id);
+      setRecipients(Array.isArray(data) ? data : []);
+      setSelectedToAdd([]);
+      fetchCampaigns();
+    } catch (error) {
+      console.error('Error adding campaign recipients:', error);
+      alert('Failed to add recipients. Please try again.');
+    }
+  };
+
+  const handleRemoveRecipient = async (recipientId) => {
+    if (!recipientsCampaign) return;
+    try {
+      await removeCampaignRecipient(token, recipientsCampaign.id, recipientId);
+      setRecipients((prev) => prev.filter((r) => r.id !== recipientId));
+      fetchCampaigns();
+    } catch (error) {
+      console.error('Error removing campaign recipient:', error);
+      alert('Failed to remove recipient. Please try again.');
+    }
+  };
+
+  const handleSendCampaign = async () => {
+    if (!recipientsCampaign) return;
+    if (!window.confirm(`Send this campaign's message to every pending recipient now? This sends real ${recipientsCampaign.type} messages.`)) return;
+    setSending(true);
+    try {
+      const result = await sendCampaign(token, recipientsCampaign.id);
+      alert(result.message);
+      const data = await getCampaignRecipients(token, recipientsCampaign.id);
+      setRecipients(Array.isArray(data) ? data : []);
+      fetchCampaigns();
+    } catch (error) {
+      console.error('Error sending campaign:', error);
+      alert(error.response?.data?.detail || 'Failed to send campaign. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
   const handleNewCampaignClick = () => {
     setEditingId(null);
     setCampaignForm(emptyCampaignForm);
@@ -307,7 +393,8 @@ export default function Marketing() {
       name: campaign.name,
       type: campaign.type,
       status: campaign.status,
-      recipients: campaign.recipients
+      recipients: campaign.recipients,
+      message: campaign.message || ''
     });
     setShowForm(true);
   };
@@ -322,14 +409,16 @@ export default function Marketing() {
           name: campaignForm.name,
           type: campaignForm.type,
           status: campaignForm.status,
-          recipients: Number(campaignForm.recipients) || 0
+          recipients: Number(campaignForm.recipients) || 0,
+          message: campaignForm.message
         });
       } else {
         await createCampaign(token, {
           name: campaignForm.name,
           type: campaignForm.type,
           status: campaignForm.status,
-          recipients: Number(campaignForm.recipients) || 0
+          recipients: Number(campaignForm.recipients) || 0,
+          message: campaignForm.message
         });
       }
       setShowForm(false);
@@ -560,6 +649,10 @@ export default function Marketing() {
                 <p><strong>Type:</strong> {campaign.type}</p>
                 <p><strong>Recipients:</strong> {campaign.recipients}</p>
                 <p><strong>Engagement:</strong> {campaign.engagement}%</p>
+                <p>
+                  <strong>Linked:</strong> {campaign.linked_recipient_count || 0} real recipient{campaign.linked_recipient_count === 1 ? '' : 's'}
+                  {campaign.sent_count > 0 ? ` (${campaign.sent_count} sent)` : ''}
+                </p>
               </div>
 
               <div className="campaign-progress">
@@ -570,6 +663,7 @@ export default function Marketing() {
               </div>
 
               <div className="campaign-actions">
+                <button className="btn-small" onClick={() => openRecipients(campaign)}>👥 Recipients</button>
                 <button className="btn-small" onClick={() => handleEditClick(campaign)}>Edit</button>
                 <button className="btn-small delete" onClick={() => handleDeleteCampaign(campaign.id)}>Delete</button>
               </div>
@@ -627,6 +721,15 @@ export default function Marketing() {
                     onChange={(e) => setCampaignForm({ ...campaignForm, recipients: e.target.value })}
                   />
                 </div>
+                <div className="form-group">
+                  <label>Message (sent to linked Leads/Contacts)</label>
+                  <textarea
+                    rows={4}
+                    placeholder="Write the actual content to send - or paste something from the AI Content Studio below."
+                    value={campaignForm.message}
+                    onChange={(e) => setCampaignForm({ ...campaignForm, message: e.target.value })}
+                  />
+                </div>
               </div>
               <div className="modal-actions">
                 <button type="submit" className="btn-primary">
@@ -635,6 +738,79 @@ export default function Marketing() {
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showRecipients && recipientsCampaign && (
+        <div className="modal-overlay" onClick={() => setShowRecipients(false)}>
+          <div className="modal-content recipients-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>👥 Recipients - {recipientsCampaign.name}</h2>
+              <button className="btn-close" onClick={() => setShowRecipients(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="recipients-add-row">
+                <select
+                  multiple
+                  className="recipients-add-select"
+                  value={selectedToAdd}
+                  onChange={(e) => setSelectedToAdd(Array.from(e.target.selectedOptions).map((o) => o.value))}
+                >
+                  <optgroup label="Leads">
+                    {leads.map((l) => (
+                      <option key={`lead-${l.id}`} value={`lead-${l.id}`}>{l.name}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Contacts">
+                    {contacts.map((c) => (
+                      <option key={`contact-${c.id}`} value={`contact-${c.id}`}>{c.name}</option>
+                    ))}
+                  </optgroup>
+                </select>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleAddRecipients}
+                  disabled={selectedToAdd.length === 0}
+                >
+                  + Add {selectedToAdd.length > 0 ? `(${selectedToAdd.length})` : ''}
+                </button>
+              </div>
+
+              {loadingRecipients ? (
+                <p className="no-data-inline">Loading…</p>
+              ) : recipients.length === 0 ? (
+                <p className="no-data-inline">No recipients added yet. Select Leads/Contacts above and click Add.</p>
+              ) : (
+                <ul className="recipients-list">
+                  {recipients.map((r) => (
+                    <li key={r.id}>
+                      <span className="recipient-source">{r.lead_id ? '📈' : '👥'}</span>
+                      <span className="recipient-name">{r.name}</span>
+                      <span className={`recipient-status ${RECIPIENT_STATUS_CLASS[r.status] || ''}`}>{r.status}</span>
+                      <button type="button" className="recipient-remove" onClick={() => handleRemoveRecipient(r.id)} title="Remove">🗑️</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="modal-actions">
+                <button
+                  className="btn-primary"
+                  onClick={handleSendCampaign}
+                  disabled={sending || !recipientsCampaign.message || recipients.every((r) => r.status !== 'Pending')}
+                  title={!recipientsCampaign.message ? 'Add message content to this campaign first (Edit)' : undefined}
+                >
+                  {sending ? 'Sending…' : `✉️ Send to Pending`}
+                </button>
+                <button className="btn-secondary" onClick={() => setShowRecipients(false)}>Close</button>
+              </div>
+              {!recipientsCampaign.message && (
+                <p className="no-data-inline">This campaign has no message content yet - click Edit to add some before sending.</p>
+              )}
+            </div>
           </div>
         </div>
       )}
