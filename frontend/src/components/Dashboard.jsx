@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { getDashboardAnalytics, getLeads, getUpcomingRenewals, sendWhatsApp, sendEmailReal } from '../services/api';
+import { getDashboardAnalytics, getLeads, getUpcomingRenewals, sendWhatsApp, sendEmailReal, getLoanStageDeals } from '../services/api';
+import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Dashboard.css';
+
+// Maps a Pipeline Status card's display label back to the real leads.status value GET
+// /api/leads?status= expects - "New Leads" is a friendlier label than the raw "New".
+const PIPELINE_STATUS_TO_LEAD_STATUS = {
+  'New Leads': 'New', 'Contacted': 'Contacted', 'Interested': 'Interested', 'Qualified': 'Qualified'
+};
+
+const dealLabel = (deal) => {
+  const productInfo = LOAN_PRODUCTS.find((p) => p.id === deal.loan_product);
+  return `${productInfo?.name || deal.loan_product} · ₹${(deal.deal_value || 0).toLocaleString('en-IN')}`;
+};
 
 const URGENCY_LABELS = {
   overdue: 'Overdue',
@@ -33,7 +45,49 @@ export default function Dashboard() {
   const [renewals, setRenewals] = useState([]);
   const [sendingReminder, setSendingReminder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [expandedStage, setExpandedStage] = useState(null);
+  const [stageDeals, setStageDeals] = useState([]);
+  const [loadingStageDeals, setLoadingStageDeals] = useState(false);
+  const [expandedStatus, setExpandedStatus] = useState(null);
+  const [statusLeads, setStatusLeads] = useState([]);
+  const [loadingStatusLeads, setLoadingStatusLeads] = useState(false);
   const token = localStorage.getItem('token');
+
+  const toggleStage = async (label) => {
+    if (expandedStage === label) {
+      setExpandedStage(null);
+      return;
+    }
+    setExpandedStage(label);
+    setLoadingStageDeals(true);
+    try {
+      const data = await getLoanStageDeals(token, label);
+      setStageDeals(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error fetching loan stage deals:', err);
+      setStageDeals([]);
+    } finally {
+      setLoadingStageDeals(false);
+    }
+  };
+
+  const toggleStatus = async (label) => {
+    if (expandedStatus === label) {
+      setExpandedStatus(null);
+      return;
+    }
+    setExpandedStatus(label);
+    setLoadingStatusLeads(true);
+    try {
+      const data = await getLeads(token, PIPELINE_STATUS_TO_LEAD_STATUS[label] || label);
+      setStatusLeads(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error fetching leads for pipeline status:', err);
+      setStatusLeads([]);
+    } finally {
+      setLoadingStatusLeads(false);
+    }
+  };
 
   const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
@@ -165,10 +219,27 @@ export default function Dashboard() {
         ) : (
           <div className="stage-grid">
             {analytics.loan_stages.map((stage) => (
-              <div key={stage.label} className="stage-card">
-                <div className="stage-label">{stage.label.toUpperCase()}</div>
-                <div className="stage-count">{stage.count}</div>
-                <div className="stage-value">{formatINR(stage.value)}</div>
+              <div key={stage.label} className="stage-card-wrapper">
+                <button type="button" className="stage-card" onClick={() => toggleStage(stage.label)}>
+                  <div className="stage-label">{stage.label.toUpperCase()}</div>
+                  <div className="stage-count">{stage.count}</div>
+                  <div className="stage-value">{formatINR(stage.value)}</div>
+                </button>
+                {expandedStage === stage.label && (
+                  <div className="stage-drilldown">
+                    {loadingStageDeals ? (
+                      <p className="no-data-inline">Loading…</p>
+                    ) : stageDeals.length === 0 ? (
+                      <p className="no-data-inline">No deals in this bucket.</p>
+                    ) : (
+                      <ul className="drilldown-list">
+                        {stageDeals.map((d) => (
+                          <li key={d.id}>{dealLabel(d)} <span className="drilldown-status">{d.assigned_team_member_name || 'Unassigned'}</span></li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -182,12 +253,29 @@ export default function Dashboard() {
         ) : (
           <div className="pipeline-status-grid">
             {analytics.pipeline_status.map((s) => (
-              <div key={s.label} className="pipeline-status-card">
-                <h3>{s.label}</h3>
-                <div className="pipeline-status-row">
-                  <span>Count</span>
-                  <strong>{s.count}</strong>
-                </div>
+              <div key={s.label} className="pipeline-status-card-wrapper">
+                <button type="button" className="pipeline-status-card" onClick={() => toggleStatus(s.label)}>
+                  <h3>{s.label}</h3>
+                  <div className="pipeline-status-row">
+                    <span>Count</span>
+                    <strong>{s.count}</strong>
+                  </div>
+                </button>
+                {expandedStatus === s.label && (
+                  <div className="stage-drilldown">
+                    {loadingStatusLeads ? (
+                      <p className="no-data-inline">Loading…</p>
+                    ) : statusLeads.length === 0 ? (
+                      <p className="no-data-inline">No leads in this status.</p>
+                    ) : (
+                      <ul className="drilldown-list">
+                        {statusLeads.map((l) => (
+                          <li key={l.id}>{l.name} <span className="drilldown-status">{l.phone || '-'}</span></li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

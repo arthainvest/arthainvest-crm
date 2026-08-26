@@ -702,6 +702,30 @@ async def delete_deal(deal_id: int, token: str = Query(None)):
 
 # ============= ANALYTICS ENDPOINTS =============
 
+# Single source of truth for each Loan Pipeline bucket's WHERE clause, shared between the
+# dashboard aggregate (counts/values) and GET /api/analytics/dashboard/loan-stage-deals (the
+# drill-down list) - both were previously computed by the same duplicated logic in two places,
+# risking exactly the kind of aggregate/drilldown mismatch caught earlier with Calls.
+def _loan_stage_where(label):
+    if label == "Deals Closed (This Month)":
+        return "deals.stage = 'closed' AND strftime('%Y-%m', deals.updated_at) = strftime('%Y-%m', 'now')", []
+    if label == "In Progress":
+        return "deals.stage != 'closed'", []
+    if label == "Rejected":
+        return "deals.process_status IN (?, ?)", ['Rejected', 'Closed - Lost']
+    if label == "On Hold":
+        return "deals.process_status = ?", ['Hold']
+    if label == "Login/Sanction":
+        # Every pre-disbursement status folds in here - Document Collection through
+        # Disbursement Pending are all "still being processed," which is what this
+        # dashboard-level bucket is meant to summarize; the full breakdown is on Pipeline.
+        return "deals.process_status IN (?, ?, ?, ?, ?, ?)", [
+            'Document Collection', 'Login', 'Under Verification', 'Approved', 'Sanction', 'Disbursement Pending'
+        ]
+    if label == "Disbursed":
+        return "deals.process_status = ?", ['Disbursed']
+    return None, None
+
 @app.get("/api/analytics/dashboard")
 async def get_dashboard_analytics(token: str = Query(None)):
     """Get dashboard KPI data - every field here is computed live from real leads/deals/
@@ -738,39 +762,14 @@ async def get_dashboard_analytics(token: str = Query(None)):
 
         conversion_rate_pct = round((closed_deals / total_leads * 100), 1) if total_leads > 0 else 0
 
-        cursor.execute(
-            """
-            SELECT COUNT(*) as count, COALESCE(SUM(deal_value), 0) as value FROM deals
-            WHERE stage = 'closed' AND strftime('%Y-%m', updated_at) = strftime('%Y-%m', 'now')
-            """
-        )
-        closed_this_month = dict(cursor.fetchone())
-
-        cursor.execute("SELECT COUNT(*) as count, COALESCE(SUM(deal_value), 0) as value FROM deals WHERE stage != 'closed'")
-        in_progress = dict(cursor.fetchone())
-
-        def process_status_bucket(*statuses):
-            placeholders = ",".join("?" for _ in statuses)
+        loan_stages = []
+        for label in ["Deals Closed (This Month)", "In Progress", "Rejected", "On Hold", "Login/Sanction", "Disbursed"]:
+            where_clause, params = _loan_stage_where(label)
             cursor.execute(
-                f"SELECT COUNT(*) as count, COALESCE(SUM(deal_value), 0) as value FROM deals WHERE process_status IN ({placeholders})",
-                statuses
+                f"SELECT COUNT(*) as count, COALESCE(SUM(deal_value), 0) as value FROM deals WHERE {where_clause}",
+                params
             )
-            return dict(cursor.fetchone())
-
-        loan_stages = [
-            {"label": "Deals Closed (This Month)", **closed_this_month},
-            {"label": "In Progress", **in_progress},
-            {"label": "Rejected", **process_status_bucket('Rejected', 'Closed - Lost')},
-            {"label": "On Hold", **process_status_bucket('Hold')},
-            # Every pre-disbursement status folds in here - Document Collection through
-            # Disbursement Pending are all "still being processed," which is what this
-            # dashboard-level bucket is meant to summarize; the full breakdown is on the
-            # Pipeline page itself.
-            {"label": "Login/Sanction", **process_status_bucket(
-                'Document Collection', 'Login', 'Under Verification', 'Approved', 'Sanction', 'Disbursement Pending'
-            )},
-            {"label": "Disbursed", **process_status_bucket('Disbursed')},
-        ]
+            loan_stages.append({"label": label, **dict(cursor.fetchone())})
 
         def lead_status_count(status):
             cursor.execute("SELECT COUNT(*) as count FROM leads WHERE LOWER(status) = LOWER(?)", (status,))
@@ -795,6 +794,36 @@ async def get_dashboard_analytics(token: str = Query(None)):
         "loan_stages": loan_stages,
         "pipeline_status": pipeline_status
     }
+
+@app.get("/api/analytics/dashboard/loan-stage-deals", response_model=list[DealResponse])
+async def get_loan_stage_deals(label: str = Query(...), token: str = Query(None)):
+    """The actual deals behind one Dashboard Loan Pipeline bucket - reuses the exact same
+    WHERE clause the aggregate count/value above is computed from (_loan_stage_where), so the
+    drill-down can never disagree with the number already shown on the card."""
+    get_current_user(token)
+
+    where_clause, params = _loan_stage_where(label)
+    if where_clause is None:
+        raise HTTPException(status_code=404, detail=f"Unknown loan stage bucket: {label}")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT deals.*, team_members.name as assigned_team_member_name,
+                   companies.name as company_name,
+                   (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
+            FROM deals
+            LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
+            LEFT JOIN companies ON companies.id = deals.company_id
+            WHERE {where_clause}
+            ORDER BY deals.created_at DESC
+            """,
+            params
+        )
+        deals = [dict(row) for row in cursor.fetchall()]
+
+    return deals
 
 @app.get("/api/analytics/conversion-rate")
 async def get_conversion_rate(token: str = Query(None)):

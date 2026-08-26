@@ -145,6 +145,11 @@ export const getDashboardAnalytics = async (token) => {
   return response.data;
 };
 
+export const getLoanStageDeals = async (token, label) => {
+  const response = await api.get(`/api/analytics/dashboard/loan-stage-deals?token=${token}&label=${encodeURIComponent(label)}`);
+  return response.data;
+};
+
 export const getConversionRate = async (token) => {
   const response = await api.get(`/api/analytics/conversion-rate?token=${token}`);
   return response.data;

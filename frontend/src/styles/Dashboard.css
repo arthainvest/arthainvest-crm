@@ -200,7 +200,13 @@
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 20px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  display: block;
 }
+.stage-card:hover { border-color: #1976d2; }
 
 .stage-label {
   font-size: 12px;
@@ -234,7 +240,27 @@
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 20px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  display: block;
 }
+.pipeline-status-card:hover { border-color: #1976d2; }
+
+.stage-drilldown {
+  margin-top: 8px;
+  padding: 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.no-data-inline { color: var(--text-muted, var(--text-secondary)); font-size: 13px; margin: 0; }
+
+.drilldown-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+.drilldown-list li { font-size: 13px; color: var(--text-primary); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.drilldown-status { color: var(--text-secondary); font-size: 12px; flex: none; }
 
 .pipeline-status-card h3 {
   margin: 0 0 12px 0;
