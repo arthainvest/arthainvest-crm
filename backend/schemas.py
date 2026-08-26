@@ -611,7 +611,7 @@ class DialerStatusUpdate(BaseModel):
 # (Email/WhatsApp/SMS sends) and calls into one chronological timeline instead of three tabs.
 class ActivityItem(BaseModel):
     id: str  # prefixed with source table so ids from calls/communication_log never collide
-    channel: str  # Call, Email, WhatsApp, SMS
+    channel: str  # Call, Email, WhatsApp, SMS, Task, Meeting
     contact: Optional[str] = None
     detail: Optional[str] = None
     outcome: Optional[str] = None

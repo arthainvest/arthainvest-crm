@@ -81,6 +81,8 @@
 .badge-email { background: #fde8d8; color: #b25c1c; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
 .badge-whatsapp { background: #d9f2e3; color: #1e7e34; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
 .badge-sms { background: #ece5fb; color: #5a2ea6; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+.badge-task { background: #fef3d0; color: #916c00; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+.badge-meeting { background: #d8f0f5; color: #0c6e80; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
 
 /* My Call Dialer */
 .dialer-member-select { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }

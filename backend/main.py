@@ -2490,10 +2490,13 @@ async def get_activities(
     token: str = Query(None), channel: str = Query(None), limit: int = Query(100),
     lead_id: int = Query(None), contact_id: int = Query(None)
 ):
-    """Merges communication_log (Email/WhatsApp/SMS sends) and calls into one chronological
-    timeline, instead of checking three separate tabs - Kylas groups these under
+    """Merges communication_log (Email/WhatsApp/SMS sends), calls, tasks and meetings into one
+    chronological timeline, instead of checking four separate tabs - Kylas groups these under
     Campaigns > Activities. lead_id/contact_id scope the feed to a single Lead/Contact's own
-    timeline - what the Notes & Follow-up modal's Activity tab shows on Leads/Contacts."""
+    timeline - what the Notes & Follow-up modal's Activity tab shows on Leads/Contacts. Tasks
+    and meetings already carry lead_id/contact_id (editable from the Today page) but were
+    missing here, so linking one to a lead silently never showed up on that lead's own
+    timeline - this closes that gap."""
     get_current_user(token)
 
     with get_db() as conn:
@@ -2536,6 +2539,44 @@ async def get_activities(
         cursor.execute(call_query, call_params)
         call_rows = [dict(r) for r in cursor.fetchall()]
 
+        task_query = """
+            SELECT tasks.*, leads.name as lead_name, contacts.name as contact_name
+            FROM tasks
+            LEFT JOIN leads ON leads.id = tasks.lead_id
+            LEFT JOIN contacts ON contacts.id = tasks.contact_id
+            WHERE 1=1
+        """
+        task_params = []
+        if lead_id is not None:
+            task_query += " AND tasks.lead_id = ?"
+            task_params.append(lead_id)
+        if contact_id is not None:
+            task_query += " AND tasks.contact_id = ?"
+            task_params.append(contact_id)
+        task_query += " ORDER BY tasks.created_at DESC LIMIT ?"
+        task_params.append(limit)
+        cursor.execute(task_query, task_params)
+        task_rows = [dict(r) for r in cursor.fetchall()]
+
+        meeting_query = """
+            SELECT meetings.*, leads.name as lead_name, contacts.name as contact_name
+            FROM meetings
+            LEFT JOIN leads ON leads.id = meetings.lead_id
+            LEFT JOIN contacts ON contacts.id = meetings.contact_id
+            WHERE 1=1
+        """
+        meeting_params = []
+        if lead_id is not None:
+            meeting_query += " AND meetings.lead_id = ?"
+            meeting_params.append(lead_id)
+        if contact_id is not None:
+            meeting_query += " AND meetings.contact_id = ?"
+            meeting_params.append(contact_id)
+        meeting_query += " ORDER BY meetings.created_at DESC LIMIT ?"
+        meeting_params.append(limit)
+        cursor.execute(meeting_query, meeting_params)
+        meeting_rows = [dict(r) for r in cursor.fetchall()]
+
     items = []
     for r in comm_rows:
         items.append({
@@ -2557,6 +2598,32 @@ async def get_activities(
             "contact": r.get('name'),
             "detail": f"{r.get('type', 'Outbound')} call - {r.get('duration_seconds') or 0}s",
             "outcome": r.get('outcome'),
+            "timestamp": r.get('created_at'),
+            "lead_id": r.get('lead_id'),
+            "lead_name": r.get('lead_name'),
+            "contact_id": r.get('contact_id'),
+            "contact_name": r.get('contact_name'),
+        })
+    for r in task_rows:
+        items.append({
+            "id": f"task-{r['id']}",
+            "channel": "Task",
+            "contact": r.get('lead_name') or r.get('contact_name'),
+            "detail": f"{r['title']} - due {r['due_date']}",
+            "outcome": "Completed" if r.get('completed') else "Pending",
+            "timestamp": r.get('created_at'),
+            "lead_id": r.get('lead_id'),
+            "lead_name": r.get('lead_name'),
+            "contact_id": r.get('contact_id'),
+            "contact_name": r.get('contact_name'),
+        })
+    for r in meeting_rows:
+        items.append({
+            "id": f"meeting-{r['id']}",
+            "channel": "Meeting",
+            "contact": r.get('lead_name') or r.get('contact_name'),
+            "detail": f"{r['title']} - {r['meeting_date']}" + (f" {r['meeting_time']}" if r.get('meeting_time') else ""),
+            "outcome": r.get('status'),
             "timestamp": r.get('created_at'),
             "lead_id": r.get('lead_id'),
             "lead_name": r.get('lead_name'),

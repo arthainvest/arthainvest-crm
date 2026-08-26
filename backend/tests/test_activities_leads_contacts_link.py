@@ -115,6 +115,60 @@ def test_activities_feed_filters_by_contact_id_includes_calls(auth_client):
     assert items[0]["contact_name"] == contact["name"]
 
 
+def test_activities_feed_includes_linked_task(auth_client):
+    """Tasks already carry lead_id/contact_id (editable from the Today page), but were missing
+    from the merged activities feed - a task linked to a lead never showed up on that lead's
+    own Activity Timeline until now."""
+    lead = _first_lead(auth_client)
+    task = auth_client.post("/api/tasks", json={
+        "title": "Send KYC checklist", "due_date": "2026-09-01", "lead_id": lead["id"]
+    }).json()
+
+    resp = auth_client.get(f"/api/activities?lead_id={lead['id']}")
+    assert resp.status_code == 200
+    items = resp.json()
+    task_item = next(i for i in items if i["id"] == f"task-{task['id']}")
+    assert task_item["channel"] == "Task"
+    assert task_item["lead_id"] == lead["id"]
+    assert task_item["lead_name"] == lead["name"]
+    assert task_item["outcome"] == "Pending"
+
+    auth_client.put(f"/api/tasks/{task['id']}", json={"completed": True})
+    completed_item = next(i for i in auth_client.get(f"/api/activities?lead_id={lead['id']}").json()
+                           if i["id"] == f"task-{task['id']}")
+    assert completed_item["outcome"] == "Completed"
+
+
+def test_activities_feed_includes_linked_meeting(auth_client):
+    contact = _first_contact(auth_client)
+    meeting = auth_client.post("/api/meetings", json={
+        "title": "Policy review", "meeting_date": "2026-09-02", "contact_id": contact["id"]
+    }).json()
+
+    resp = auth_client.get(f"/api/activities?contact_id={contact['id']}")
+    assert resp.status_code == 200
+    items = resp.json()
+    meeting_item = next(i for i in items if i["id"] == f"meeting-{meeting['id']}")
+    assert meeting_item["channel"] == "Meeting"
+    assert meeting_item["contact_id"] == contact["id"]
+    assert meeting_item["contact_name"] == contact["name"]
+    assert meeting_item["outcome"] == "Scheduled"
+
+
+def test_activities_feed_channel_filter_accepts_task_and_meeting(auth_client):
+    lead = _first_lead(auth_client)
+    auth_client.post("/api/tasks", json={"title": "Follow up", "due_date": "2026-09-01", "lead_id": lead["id"]})
+    auth_client.post("/api/meetings", json={"title": "Intro call", "meeting_date": "2026-09-02", "lead_id": lead["id"]})
+
+    task_only = auth_client.get("/api/activities?channel=Task").json()
+    assert len(task_only) == 1
+    assert task_only[0]["channel"] == "Task"
+
+    meeting_only = auth_client.get("/api/activities?channel=Meeting").json()
+    assert len(meeting_only) == 1
+    assert meeting_only[0]["channel"] == "Meeting"
+
+
 def test_activities_feed_unlinked_items_have_null_lead_and_contact(auth_client):
     auth_client.post("/api/calls", json={"name": "Cold Call Prospect"})
     items = auth_client.get("/api/activities").json()

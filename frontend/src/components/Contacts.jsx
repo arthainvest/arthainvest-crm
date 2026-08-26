@@ -9,7 +9,7 @@ import {
 import '../styles/Contacts.css';
 
 const STATUS_OPTIONS = ['Active', 'Renewal Due', 'Lapsed', 'Inactive'];
-const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱' };
+const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱', Task: '✅', Meeting: '📅' };
 const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
 
 const WhatsAppIcon = () => (

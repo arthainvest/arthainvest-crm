@@ -17,7 +17,7 @@ const LOG_TABS = [
   { id: 'dialer', label: '🎯 Dialer', title: 'My Call Dialer' },
 ];
 
-const ACTIVITY_CHANNELS = ['All', 'Call', 'Email', 'WhatsApp', 'SMS'];
+const ACTIVITY_CHANNELS = ['All', 'Call', 'Email', 'WhatsApp', 'SMS', 'Task', 'Meeting'];
 
 export default function Calls() {
   const [activeTab, setActiveTab] = useState('calls');
