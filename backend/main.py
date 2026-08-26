@@ -26,7 +26,7 @@ from schemas import (
     ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactResponse, RenewalContact,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
-    TaskCreate, TaskUpdate, TaskResponse,
+    TaskCreate, TaskUpdate, TaskContactAssign, TaskResponse,
     MeetingCreate, MeetingUpdate, MeetingResponse,
     CallCreate, CallAssign, CallContactAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
@@ -2111,6 +2111,54 @@ async def delete_task(task_id: int, token: str = Query(None)):
             raise HTTPException(status_code=404, detail="Task not found")
 
     return {"message": "Task deleted"}
+
+@app.put("/api/tasks/{task_id}/contact", response_model=TaskResponse)
+async def link_task_contact(task_id: int, link: TaskContactAssign, token: str = Query(None)):
+    """Link (or unlink, if contact_id is null) a task to a Contact."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        if link.contact_id is not None:
+            cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Contact not found")
+
+        cursor.execute(
+            "UPDATE tasks SET contact_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.contact_id, task_id)
+        )
+        conn.commit()
+
+        return fetch_task_with_member_name(cursor, task_id)
+
+@app.get("/api/contacts/{contact_id}/tasks", response_model=list[TaskResponse])
+async def get_contact_tasks(contact_id: int, token: str = Query(None)):
+    """Tasks directly linked to this Contact."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        cursor.execute(
+            "SELECT id FROM tasks WHERE contact_id = ? ORDER BY due_date ASC, created_at DESC",
+            (contact_id,)
+        )
+        rows = cursor.fetchall()
+        tasks = []
+        for row in rows:
+            task = fetch_task_with_member_name(cursor, row['id'])
+            if task:
+                tasks.append(task)
+
+    return tasks
 
 @app.get("/api/meetings", response_model=list[MeetingResponse])
 async def get_meetings(token: str = Query(None), date: str = Query(None), assigned_team_member_id: int = Query(None)):
