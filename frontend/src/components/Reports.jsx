@@ -2,12 +2,17 @@ import React, { useState, useEffect } from 'react';
 import {
   getSalesAnalytics, getContactsAnalytics, getCallsAnalytics,
   getCampaigns, getTeamAnalytics, getSettings, updateSettings, getLeadSourceROI,
-  getLeads, getContactsList, getCallsList, getTasksByTeamMember, getMeetingsByTeamMember
+  getLeads, getContactsList, getCallsList, getTasksByTeamMember, getMeetingsByTeamMember, getDeals
 } from '../services/api';
+import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Reports.css';
 
 const REPORT_PERIODS = ['This Month', 'Last Month', 'Last Quarter', 'This Year'];
 const ROLE_LABELS = { admin: 'Admin', team_lead: 'Team Leader', location_head: 'Location Head', business_manager: 'Business Manager', employee: 'Employee' };
+const dealLabel = (deal) => {
+  const productInfo = LOAN_PRODUCTS.find((p) => p.id === deal.loan_product);
+  return `${productInfo?.name || deal.loan_product} · ₹${(deal.deal_value || 0).toLocaleString('en-IN')}`;
+};
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('sales');
@@ -34,6 +39,7 @@ export default function Reports() {
   const [memberCalls, setMemberCalls] = useState([]);
   const [memberTasks, setMemberTasks] = useState([]);
   const [memberMeetings, setMemberMeetings] = useState([]);
+  const [memberDeals, setMemberDeals] = useState([]);
   const [loadingMemberDrilldown, setLoadingMemberDrilldown] = useState(false);
 
   useEffect(() => {
@@ -99,18 +105,20 @@ export default function Reports() {
     setExpandedMemberId(member.id);
     setLoadingMemberDrilldown(true);
     try {
-      const [leadsData, contactsData, callsData, tasksData, meetingsData] = await Promise.all([
+      const [leadsData, contactsData, callsData, tasksData, meetingsData, dealsData] = await Promise.all([
         getLeads(token, null, { assignedTeamMemberId: member.id }),
         getContactsList(token, { assignedTeamMemberId: member.id }),
         getCallsList(token, { teamMemberId: member.id }),
         getTasksByTeamMember(token, member.id),
         getMeetingsByTeamMember(token, member.id),
+        getDeals(token, 'closed', { assignedTeamMemberId: member.id }),
       ]);
       setMemberLeads(Array.isArray(leadsData) ? leadsData : []);
       setMemberContacts(Array.isArray(contactsData) ? contactsData : []);
       setMemberCalls(Array.isArray(callsData) ? callsData : []);
       setMemberTasks(Array.isArray(tasksData) ? tasksData : []);
       setMemberMeetings(Array.isArray(meetingsData) ? meetingsData : []);
+      setMemberDeals(Array.isArray(dealsData) ? dealsData : []);
     } catch (error) {
       console.error('Error fetching drill-down data for team member:', error);
       setMemberLeads([]);
@@ -118,6 +126,7 @@ export default function Reports() {
       setMemberCalls([]);
       setMemberTasks([]);
       setMemberMeetings([]);
+      setMemberDeals([]);
     } finally {
       setLoadingMemberDrilldown(false);
     }
@@ -466,6 +475,21 @@ export default function Reports() {
                                       <li key={meeting.id}>
                                         <strong>{meeting.title}</strong>
                                         <span> · {meeting.meeting_date}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                              <div className="drilldown-group">
+                                <h4>Deals Closed ({memberDeals.length})</h4>
+                                {memberDeals.length === 0 ? (
+                                  <span className="no-data-inline">No closed deals for {m.name}.</span>
+                                ) : (
+                                  <ul className="drilldown-list">
+                                    {memberDeals.map((deal) => (
+                                      <li key={deal.id}>
+                                        <strong>{dealLabel(deal)}</strong>
+                                        {deal.company_name && <span> · {deal.company_name}</span>}
                                       </li>
                                     ))}
                                   </ul>

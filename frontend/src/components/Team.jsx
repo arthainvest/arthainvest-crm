@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { getTeam, createTeamMember, updateTeamMember, deleteTeamMember, getTeamAnalytics, getLeads, getContactsList, getCallsList, getTasksByTeamMember, getMeetingsByTeamMember } from '../services/api';
+import { getTeam, createTeamMember, updateTeamMember, deleteTeamMember, getTeamAnalytics, getLeads, getContactsList, getCallsList, getTasksByTeamMember, getMeetingsByTeamMember, getDeals } from '../services/api';
+import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Team.css';
+
+const dealLabel = (deal) => {
+  const productInfo = LOAN_PRODUCTS.find((p) => p.id === deal.loan_product);
+  return `${productInfo?.name || deal.loan_product} · ₹${(deal.deal_value || 0).toLocaleString('en-IN')}`;
+};
 
 const ROLE_LABELS = {
   admin: 'Admin',
@@ -21,7 +27,7 @@ export default function Team() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [expandedId, setExpandedId] = useState(null);
-  const [drilldown, setDrilldown] = useState({ leads: [], contacts: [], calls: [], tasks: [], meetings: [] });
+  const [drilldown, setDrilldown] = useState({ leads: [], contacts: [], calls: [], tasks: [], meetings: [], deals: [] });
   const [loadingDrilldown, setLoadingDrilldown] = useState(false);
 
   const token = localStorage.getItem('token');
@@ -96,23 +102,25 @@ export default function Team() {
     setExpandedId(member.id);
     setLoadingDrilldown(true);
     try {
-      const [leadsData, contactsData, callsData, tasksData, meetingsData] = await Promise.all([
+      const [leadsData, contactsData, callsData, tasksData, meetingsData, dealsData] = await Promise.all([
         getLeads(token, null, { assignedTeamMemberId: member.id }),
         getContactsList(token, { assignedTeamMemberId: member.id }),
         getCallsList(token, { teamMemberId: member.id }),
         getTasksByTeamMember(token, member.id),
-        getMeetingsByTeamMember(token, member.id)
+        getMeetingsByTeamMember(token, member.id),
+        getDeals(token, 'closed', { assignedTeamMemberId: member.id })
       ]);
       setDrilldown({
         leads: Array.isArray(leadsData) ? leadsData : [],
         contacts: Array.isArray(contactsData) ? contactsData : [],
         calls: Array.isArray(callsData) ? callsData : [],
         tasks: Array.isArray(tasksData) ? tasksData : [],
-        meetings: Array.isArray(meetingsData) ? meetingsData : []
+        meetings: Array.isArray(meetingsData) ? meetingsData : [],
+        deals: Array.isArray(dealsData) ? dealsData : []
       });
     } catch (error) {
       console.error('Error fetching team member drilldown:', error);
-      setDrilldown({ leads: [], contacts: [], calls: [], tasks: [], meetings: [] });
+      setDrilldown({ leads: [], contacts: [], calls: [], tasks: [], meetings: [], deals: [] });
     } finally {
       setLoadingDrilldown(false);
     }
@@ -245,6 +253,18 @@ export default function Team() {
                                 <ul className="drilldown-list">
                                   {drilldown.meetings.map((m) => (
                                     <li key={m.id}>{m.title} <span className="drilldown-status">{m.status}</span></li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="team-drilldown-group">
+                              <h4>Deals Closed ({drilldown.deals.length})</h4>
+                              {drilldown.deals.length === 0 ? (
+                                <p className="no-data-inline">No closed deals.</p>
+                              ) : (
+                                <ul className="drilldown-list">
+                                  {drilldown.deals.map((d) => (
+                                    <li key={d.id}>{dealLabel(d)} {d.company_name && <span className="drilldown-status">{d.company_name}</span>}</li>
                                   ))}
                                 </ul>
                               )}

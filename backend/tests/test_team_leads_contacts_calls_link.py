@@ -27,6 +27,38 @@ def test_get_calls_team_member_filter_includes_login_linked_legacy_calls(auth_cl
     assert len(resp.json()) == productivity["calls"]
 
 
+def test_get_deals_filters_by_assigned_team_member_and_stage(auth_client):
+    """Team/Reports pages' per-member drill-down uses stage=closed + assigned_team_member_id to
+    explain the "Closed"/"Revenue" figures shown on the same card - the count and value-sum
+    must match /api/analytics/team exactly (same OR-fallback: explicit assignment, or
+    login-linked owner_id for legacy unassigned deals)."""
+    rajesh = next(m for m in auth_client.get("/api/team").json() if m["name"] == "Rajesh Kumar")
+    deal = auth_client.get("/api/deals").json()[0]
+    auth_client.put(f"/api/deals/{deal['id']}/assign", json={"team_member_id": rajesh["id"]})
+    auth_client.put(f"/api/deals/{deal['id']}/move", json={"stage": "closed"})
+
+    resp = auth_client.get(f"/api/deals?stage=closed&assigned_team_member_id={rajesh['id']}")
+    assert resp.status_code == 200
+    ids = {d["id"] for d in resp.json()}
+    assert deal["id"] in ids
+    assert all(d["stage"] == "closed" for d in resp.json())
+
+    productivity = next(r for r in auth_client.get("/api/analytics/team").json() if r["name"] == "Rajesh Kumar")
+    drilldown = auth_client.get(f"/api/deals?stage=closed&assigned_team_member_id={rajesh['id']}").json()
+    assert len(drilldown) == productivity["deals_closed"]
+    assert sum(d["deal_value"] for d in drilldown) == productivity["revenue"]
+
+
+def test_get_deals_team_member_filter_includes_login_linked_legacy_deals(auth_client):
+    artha = next(m for m in auth_client.get("/api/team").json() if m["name"] == "Artha")
+    deal = auth_client.get("/api/deals").json()[1]
+    auth_client.put(f"/api/deals/{deal['id']}/move", json={"stage": "closed"})
+
+    productivity = next(r for r in auth_client.get("/api/analytics/team").json() if r["name"] == "Artha")
+    drilldown = auth_client.get(f"/api/deals?stage=closed&assigned_team_member_id={artha['id']}").json()
+    assert len(drilldown) == productivity["deals_closed"]
+
+
 def test_get_calls_without_filter_returns_all(auth_client):
     unfiltered = auth_client.get("/api/calls").json()
     all_again = auth_client.get("/api/calls").json()

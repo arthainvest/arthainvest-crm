@@ -501,10 +501,15 @@ async def delete_lead(lead_id: int, token: str = Query(None)):
 # ============= DEALS/PIPELINE ENDPOINTS =============
 
 @app.get("/api/deals", response_model=list[DealResponse])
-async def get_deals(stage: str = Query(None), lead_id: int = Query(None), token: str = Query(None)):
-    """Get all deals, optionally filtered by stage and/or the originating lead - the latter
-    lets the Leads page show whether a lead has already been converted into a real deal,
-    the reverse of deals.lead_id, instead of that link only being visible from Pipeline."""
+async def get_deals(stage: str = Query(None), lead_id: int = Query(None), assigned_team_member_id: int = Query(None), token: str = Query(None)):
+    """Get all deals, optionally filtered by stage, the originating lead (the reverse of
+    deals.lead_id, so the Leads page can show whether a lead has already been converted into a
+    real deal instead of that link only being visible from Pipeline), and/or assigned team
+    member - the latter, combined with stage=closed, is what the Team/Reports pages' per-member
+    drill-down uses so their "Closed"/"Revenue" figures have a real list of deals behind them.
+    Matches get_team_analytics' exact OR-fallback (explicit assigned_team_member_id, or
+    login-linked owner_id for legacy unassigned deals) so the drill-down's count and total
+    never contradict those already-displayed figures."""
     get_current_user(token)
 
     with get_db() as conn:
@@ -526,6 +531,12 @@ async def get_deals(stage: str = Query(None), lead_id: int = Query(None), token:
         if lead_id is not None:
             conditions.append("deals.lead_id = ?")
             params.append(lead_id)
+        if assigned_team_member_id is not None:
+            cursor.execute("SELECT user_id FROM team_members WHERE id = ?", (assigned_team_member_id,))
+            row = cursor.fetchone()
+            uid_param = row['user_id'] if row and row['user_id'] is not None else -1
+            conditions.append("(deals.assigned_team_member_id = ? OR (deals.owner_id = ? AND deals.assigned_team_member_id IS NULL))")
+            params.extend([assigned_team_member_id, uid_param])
 
         query = base_query + (" WHERE " + " AND ".join(conditions) if conditions else "") + " ORDER BY deals.created_at DESC"
         cursor.execute(query, params)
