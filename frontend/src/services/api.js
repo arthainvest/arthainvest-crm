@@ -76,6 +76,11 @@ export const assignLead = async (token, leadId, teamMemberId) => {
   return response.data;
 };
 
+export const convertLeadToContact = async (token, leadId) => {
+  const response = await api.post(`/api/leads/${leadId}/convert?token=${token}`);
+  return response.data;
+};
+
 // Lead notes
 export const getLeadNotes = async (token, leadId) => {
   const response = await api.get(`/api/leads/${leadId}/notes?token=${token}`);

@@ -149,12 +149,15 @@ def fetch_deal_with_member_name(cursor, deal_id):
 
 def fetch_lead_with_member_name(cursor, lead_id):
     """Same join-by-id pattern as fetch_deal_with_member_name, for leads - so admins/team
-    leads can see which employee a lead is assigned to without a second round-trip."""
+    leads can see which employee a lead is assigned to without a second round-trip. Also
+    resolves converted_contact_id's name, if this lead has been converted to a Contact."""
     cursor.execute(
         """
-        SELECT leads.*, team_members.name as assigned_team_member_name
+        SELECT leads.*, team_members.name as assigned_team_member_name,
+               converted_contact.name as converted_contact_name
         FROM leads
         LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
+        LEFT JOIN contacts AS converted_contact ON converted_contact.id = leads.converted_contact_id
         WHERE leads.id = ?
         """,
         (lead_id,)
@@ -164,14 +167,17 @@ def fetch_lead_with_member_name(cursor, lead_id):
 def fetch_contact_with_member_name(cursor, contact_id):
     """Same join-by-id pattern as fetch_deal_with_member_name, for contacts - so admins/team
     leads can see which employee owns each contact in the client book, and which Companies
-    record (if any) they're linked to."""
+    record (if any) they're linked to. Also resolves converted_from_lead_id's name, the
+    reverse of leads.converted_contact_id, if this contact originated from a converted lead."""
     cursor.execute(
         """
         SELECT contacts.*, team_members.name as assigned_team_member_name,
-               companies.name as company_name
+               companies.name as company_name,
+               converted_from_lead.name as converted_from_lead_name
         FROM contacts
         LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
         LEFT JOIN companies ON companies.id = contacts.company_id
+        LEFT JOIN leads AS converted_from_lead ON converted_from_lead.id = contacts.converted_from_lead_id
         WHERE contacts.id = ?
         """,
         (contact_id,)
@@ -337,9 +343,11 @@ async def get_leads(
     get_current_user(token)
 
     base_query = """
-        SELECT leads.*, team_members.name as assigned_team_member_name
+        SELECT leads.*, team_members.name as assigned_team_member_name,
+               converted_contact.name as converted_contact_name
         FROM leads
         LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
+        LEFT JOIN contacts AS converted_contact ON converted_contact.id = leads.converted_contact_id
         WHERE 1=1
     """
     conditions = []
@@ -428,6 +436,58 @@ async def assign_lead(lead_id: int, assignment: LeadAssign, token: str = Query(N
         conn.commit()
 
         return fetch_lead_with_member_name(cursor, lead_id)
+
+@app.post("/api/leads/{lead_id}/convert", response_model=ContactResponse)
+async def convert_lead_to_contact(lead_id: int, token: str = Query(None)):
+    """Turns a Lead into a real Contact once they've become an actual client - Leads and
+    Contacts are otherwise two permanently separate universes with no path between them, so a
+    won prospect's history had nowhere to go. Creates a new Contact carrying over
+    name/company/email/phone/assigned_team_member_id, backfills contact_id onto every
+    task/meeting/call/communication_log/campaign_recipients row already linked to this lead
+    (so the new Contact's Activity Timeline shows the full prior history instead of starting
+    blank - lead_id is left untouched, so the original lead's own timeline still shows the
+    same rows too), and marks the lead as converted rather than deleting it - nothing is ever
+    destroyed. Deliberately scoped to the Activity Timeline tables only: lead_notes (call
+    transcripts) stay with the original lead rather than being copied into contact_notes,
+    since that's a heavier duplication decision than backfilling a nullable FK."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM leads WHERE id = ?", (lead_id,))
+        lead = cursor.fetchone()
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        lead = dict(lead)
+
+        if lead.get('converted_contact_id'):
+            raise HTTPException(status_code=400, detail="This lead has already been converted to a contact")
+
+        cursor.execute(
+            """
+            INSERT INTO contacts (name, company, email, phone, status, created_by, assigned_team_member_id, converted_from_lead_id)
+            VALUES (?, ?, ?, ?, 'Active', ?, ?, ?)
+            """,
+            (lead['name'], lead.get('company'), lead.get('email'), lead.get('phone'),
+             current_user['user_id'], lead.get('assigned_team_member_id'), lead_id)
+        )
+        contact_id = cursor.lastrowid
+
+        for table in ['tasks', 'meetings', 'calls', 'communication_log', 'campaign_recipients']:
+            cursor.execute(
+                f"UPDATE {table} SET contact_id = ? WHERE lead_id = ? AND contact_id IS NULL",
+                (contact_id, lead_id)
+            )
+
+        cursor.execute(
+            "UPDATE leads SET converted_contact_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (contact_id, lead_id)
+        )
+        conn.commit()
+
+        new_contact = fetch_contact_with_member_name(cursor, contact_id)
+
+    return new_contact
 
 @app.put("/api/leads/{lead_id}", response_model=LeadResponse)
 async def update_lead(lead_id: int, lead: LeadUpdate, token: str = Query(None)):
@@ -1288,10 +1348,12 @@ async def get_contacts(token: str = Query(None), assigned_team_member_id: int = 
 
     base_query = """
         SELECT contacts.*, team_members.name as assigned_team_member_name,
-               companies.name as company_name
+               companies.name as company_name,
+               converted_from_lead.name as converted_from_lead_name
         FROM contacts
         LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
         LEFT JOIN companies ON companies.id = contacts.company_id
+        LEFT JOIN leads AS converted_from_lead ON converted_from_lead.id = contacts.converted_from_lead_id
     """
 
     with get_db() as conn:

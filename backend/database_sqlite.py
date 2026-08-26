@@ -149,6 +149,14 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # Set by POST /api/leads/{id}/convert once this lead has been turned into a real
+        # Contact - marks it as historical rather than an active prospect still being worked,
+        # without ever deleting the lead or its notes/activity history.
+        try:
+            cursor.execute("ALTER TABLE leads ADD COLUMN converted_contact_id INTEGER REFERENCES contacts(id)")
+        except sqlite3.OperationalError:
+            pass
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS deals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -304,6 +312,9 @@ def init_db():
             "ALTER TABLE contacts ADD COLUMN assigned_team_member_id INTEGER",
             "ALTER TABLE contacts ADD COLUMN renewal_date DATE",
             "ALTER TABLE contacts ADD COLUMN company_id INTEGER REFERENCES companies(id)",
+            # Set when this contact was created via "Convert to Contact" on a lead - lets the
+            # Contact page show where they came from, the reverse of leads.converted_contact_id.
+            "ALTER TABLE contacts ADD COLUMN converted_from_lead_id INTEGER REFERENCES leads(id)",
         ]:
             try:
                 cursor.execute(ddl)

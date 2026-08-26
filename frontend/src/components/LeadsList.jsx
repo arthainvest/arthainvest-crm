@@ -3,7 +3,7 @@ import {
   getLeads, createLead, updateLead, assignLead, getTeam,
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
   uploadLeadNoteAudio, API_URL, dialCall, aiSuggestLeadFollowup,
-  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate, assignToDialer, getActivities, getDeals
+  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate, assignToDialer, getActivities, getDeals, convertLeadToContact
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/LeadsList.css';
@@ -155,6 +155,19 @@ export default function LeadsList() {
         setLeads((prev) => prev.map((l) => (l.id === leadId ? previous : l)));
       }
       alert('Failed to assign lead. Please try again.');
+    }
+  };
+
+  const handleConvertToContact = async (lead) => {
+    if (!window.confirm(`Convert ${lead.name} to a Contact? Their calls, emails, tasks, meetings and campaign history will carry over to the new Contact record.`)) return;
+    try {
+      const newContact = await convertLeadToContact(token, lead.id);
+      setLeads((prev) => prev.map((l) => (l.id === lead.id
+        ? { ...l, converted_contact_id: newContact.id, converted_contact_name: newContact.name }
+        : l)));
+    } catch (err) {
+      console.error('Failed to convert lead to contact:', err);
+      alert(err.response?.data?.detail || 'Failed to convert lead to contact. Please try again.');
     }
   };
 
@@ -795,6 +808,11 @@ export default function LeadsList() {
                     </button>
                     <button className="btn-action email" onClick={() => handleEmail(lead)} title="Send Email">📧</button>
                     <button className="btn-action notes" onClick={() => handleNotes(lead)} title="Notes & Follow-up">📝</button>
+                    {lead.converted_contact_id ? (
+                      <span className="lead-converted-badge" title={`Converted to Contact: ${lead.converted_contact_name || ''}`}>✅ Converted</span>
+                    ) : (
+                      <button className="btn-action convert" onClick={() => handleConvertToContact(lead)} title="Convert to Contact">🔄</button>
+                    )}
                   </div>
                 </div>
 
@@ -806,6 +824,9 @@ export default function LeadsList() {
                     <p><strong>Product:</strong> {lead.product ? productLabel(lead.product) : '-'}</p>
                     <p><strong>Source:</strong> {lead.source || '-'}</p>
                     <p><strong>Score:</strong> {lead.ai_score != null ? lead.ai_score : '-'}%</p>
+                    {lead.converted_contact_id && (
+                      <p><strong>Converted to Contact:</strong> {lead.converted_contact_name || `#${lead.converted_contact_id}`}</p>
+                    )}
                   </div>
                 )}
               </div>

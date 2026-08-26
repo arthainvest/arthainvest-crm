@@ -814,6 +814,9 @@ export default function Contacts() {
                   <p><strong>Status:</strong> {contact.status || '-'}</p>
                   <p><strong>Renewal Date:</strong> {contact.renewal_date ? new Date(contact.renewal_date).toLocaleDateString('en-IN') : '-'}</p>
                   <p><strong>Assigned To:</strong> {contact.assigned_team_member_name || 'Unassigned'}</p>
+                  {contact.converted_from_lead_id && (
+                    <p><strong>Converted from Lead:</strong> {contact.converted_from_lead_name || `#${contact.converted_from_lead_id}`}</p>
+                  )}
                 </div>
               )}
             </div>

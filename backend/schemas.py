@@ -62,6 +62,8 @@ class LeadResponse(BaseModel):
     updated_at: datetime
     assigned_team_member_id: Optional[int] = None
     assigned_team_member_name: Optional[str] = None
+    converted_contact_id: Optional[int] = None
+    converted_contact_name: Optional[str] = None
 
 # Deal Schemas
 class DealCreate(BaseModel):
@@ -249,6 +251,8 @@ class ContactResponse(BaseModel):
     updated_at: datetime
     assigned_team_member_id: Optional[int] = None
     assigned_team_member_name: Optional[str] = None
+    converted_from_lead_id: Optional[int] = None
+    converted_from_lead_name: Optional[str] = None
 
 # Renewal Reminders (Dashboard "Upcoming Renewals" widget)
 class RenewalContact(BaseModel):
