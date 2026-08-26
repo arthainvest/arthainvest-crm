@@ -43,7 +43,7 @@ from schemas import (
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
     DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
     ActivityItem, CompanyCreate, CompanyUpdate, CompanyResponse,
-    QuotationCreate, QuotationUpdate, QuotationResponse
+    QuotationCreate, QuotationUpdate, QuotationContactAssign, QuotationResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -3278,6 +3278,50 @@ async def send_quotation(quotation_id: int, token: str = Query(None)):
             conn.commit()
 
     return result
+
+@app.put("/api/quotations/{quotation_id}/contact", response_model=QuotationResponse)
+async def link_quotation_contact(quotation_id: int, link: QuotationContactAssign, token: str = Query(None)):
+    """Link (or unlink, if contact_id is null) a quotation to a Contact."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        if link.contact_id is not None:
+            cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Contact not found")
+
+        cursor.execute(
+            "UPDATE quotations SET contact_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.contact_id, quotation_id)
+        )
+        conn.commit()
+
+        return fetch_quotation_with_details(cursor, quotation_id)
+
+@app.get("/api/contacts/{contact_id}/quotations", response_model=list[QuotationResponse])
+async def get_contact_quotations(contact_id: int, token: str = Query(None)):
+    """Quotations directly linked to this Contact."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        cursor.execute(
+            "SELECT id FROM quotations WHERE contact_id = ? ORDER BY created_at DESC",
+            (contact_id,)
+        )
+        ids = [r['id'] for r in cursor.fetchall()]
+        quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
+
+    return quotations
 
 @app.post("/api/marketing/mailchimp/sync", response_model=MailchimpSyncResponse)
 async def sync_mailchimp(token: str = Query(None)):
