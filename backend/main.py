@@ -43,7 +43,7 @@ from schemas import (
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
     DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
     ActivityItem, CompanyCreate, CompanyUpdate, CompanyResponse,
-    QuotationCreate, QuotationUpdate, QuotationContactAssign, QuotationResponse
+    QuotationCreate, QuotationUpdate, QuotationContactAssign, QuotationCompanyAssign, QuotationResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -3085,7 +3085,8 @@ def fetch_quotation_with_details(cursor, quotation_id):
         SELECT quotations.*, leads.name as lead_name, contacts.name as contact_name,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
                deal_leads.name as deal_lead_name,
-               deals.company_id as company_id, companies.name as company_name,
+               COALESCE(quotations.company_id, deals.company_id) as company_id,
+               COALESCE(direct_companies.name, deals_companies.name) as company_name,
                deals.assigned_team_member_id as assigned_team_member_id,
                team_members.name as assigned_team_member_name
         FROM quotations
@@ -3093,7 +3094,8 @@ def fetch_quotation_with_details(cursor, quotation_id):
         LEFT JOIN contacts ON contacts.id = quotations.contact_id
         LEFT JOIN deals ON deals.id = quotations.deal_id
         LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
-        LEFT JOIN companies ON companies.id = deals.company_id
+        LEFT JOIN companies AS direct_companies ON direct_companies.id = quotations.company_id
+        LEFT JOIN companies AS deals_companies ON deals_companies.id = deals.company_id
         LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
         WHERE quotations.id = ?
         """,
@@ -3320,6 +3322,54 @@ async def get_contact_quotations(contact_id: int, token: str = Query(None)):
         )
         ids = [r['id'] for r in cursor.fetchall()]
         quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
+
+    return quotations
+
+@app.put("/api/quotations/{quotation_id}/company", response_model=QuotationResponse)
+async def link_quotation_company(quotation_id: int, link: QuotationCompanyAssign, token: str = Query(None)):
+    """Link (or unlink, if company_id is null) a quotation to a Company."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        if link.company_id is not None:
+            cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "UPDATE quotations SET company_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.company_id, quotation_id)
+        )
+        conn.commit()
+
+        return fetch_quotation_with_details(cursor, quotation_id)
+
+@app.get("/api/companies/{company_id}/quotations", response_model=list[QuotationResponse])
+async def get_company_quotations(company_id: int, token: str = Query(None)):
+    """Quotations directly linked to this Company."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "SELECT id FROM quotations WHERE company_id = ? ORDER BY created_at DESC",
+            (company_id,)
+        )
+        rows = cursor.fetchall()
+        quotations = []
+        for row in rows:
+            quotation = fetch_quotation_with_details(cursor, row['id'])
+            if quotation:
+                quotations.append(quotation)
 
     return quotations
 

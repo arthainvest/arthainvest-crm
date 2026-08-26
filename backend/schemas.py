@@ -89,6 +89,9 @@ class DealContactAssign(BaseModel):
 class QuotationContactAssign(BaseModel):
     contact_id: Optional[int] = None  # None unlinks the quotation from any Contact
 
+class QuotationCompanyAssign(BaseModel):
+    company_id: Optional[int] = None  # None unlinks the quotation from any Company
+
 class DealProcessStatusUpdate(BaseModel):
     process_status: str  # Login, Sanction, Hold, Disbursed
 
