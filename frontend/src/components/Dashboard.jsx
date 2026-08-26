@@ -234,7 +234,10 @@ export default function Dashboard() {
                     ) : (
                       <ul className="drilldown-list">
                         {stageDeals.map((d) => (
-                          <li key={d.id}>{dealLabel(d)} <span className="drilldown-status">{d.assigned_team_member_name || 'Unassigned'}</span></li>
+                          <li key={d.id}>
+                            {dealLabel(d)}{d.company_name && ` · 🏢 ${d.company_name}`}
+                            {' '}<span className="drilldown-status">{d.assigned_team_member_name || 'Unassigned'}</span>
+                          </li>
                         ))}
                       </ul>
                     )}

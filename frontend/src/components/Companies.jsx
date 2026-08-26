@@ -210,6 +210,7 @@ export default function Companies() {
                                     <li key={deal.id}>
                                       <strong>Deal #{deal.id}</strong>
                                       <span> · {dealLabel(deal)}</span>
+                                      {deal.assigned_team_member_name && <span> · 🧑‍🤝‍🧑 {deal.assigned_team_member_name}</span>}
                                     </li>
                                   ))}
                                 </ul>
@@ -225,6 +226,7 @@ export default function Companies() {
                                     <li key={q.id}>
                                       <strong>{q.quotation_number}</strong>
                                       <span> · {q.title} · ₹{q.grand_total.toLocaleString('en-IN')} · {q.status}</span>
+                                      {q.assigned_team_member_name && <span> · 🧑‍🤝‍🧑 {q.assigned_team_member_name}</span>}
                                     </li>
                                   ))}
                                 </ul>
