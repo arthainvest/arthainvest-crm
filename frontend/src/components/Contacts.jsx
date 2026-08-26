@@ -4,13 +4,18 @@ import {
   getContactNotes, createContactNote, updateContactNote, deleteContactNote,
   uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup,
   sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate,
-  getCompanies, linkContactCompany, getActivities
+  getCompanies, linkContactCompany, getActivities, getCompanyDeals
 } from '../services/api';
+import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Contacts.css';
 
 const STATUS_OPTIONS = ['Active', 'Renewal Due', 'Lapsed', 'Inactive'];
 const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱', Task: '✅', Meeting: '📅' };
 const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
+const dealLabel = (deal) => {
+  const productInfo = LOAN_PRODUCTS.find((p) => p.id === deal.loan_product);
+  return `${productInfo?.name || deal.loan_product} · ₹${(deal.deal_value || 0).toLocaleString('en-IN')} · ${deal.process_status || 'Login'}`;
+};
 
 const WhatsAppIcon = () => (
   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -99,6 +104,8 @@ export default function Contacts() {
   const [notes, setNotes] = useState([]);
   const [activities, setActivities] = useState([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [companyDeals, setCompanyDeals] = useState([]);
+  const [loadingCompanyDeals, setLoadingCompanyDeals] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [dateDetectMessage, setDateDetectMessage] = useState(null);
@@ -481,6 +488,21 @@ export default function Contacts() {
       setActivities([]);
     } finally {
       setLoadingActivities(false);
+    }
+
+    if (contact.company_id) {
+      setLoadingCompanyDeals(true);
+      try {
+        const dealsData = await getCompanyDeals(token, contact.company_id);
+        setCompanyDeals(Array.isArray(dealsData) ? dealsData : []);
+      } catch (error) {
+        console.error('Error fetching company deals:', error);
+        setCompanyDeals([]);
+      } finally {
+        setLoadingCompanyDeals(false);
+      }
+    } else {
+      setCompanyDeals([]);
     }
   };
 
@@ -1107,7 +1129,7 @@ export default function Contacts() {
                 {loadingActivities ? (
                   <p className="no-notes">Loading…</p>
                 ) : activities.length === 0 ? (
-                  <p className="no-notes">No calls, emails, WhatsApp or SMS logged for this contact yet.</p>
+                  <p className="no-notes">No calls, emails, WhatsApp, SMS, tasks or meetings logged for this contact yet.</p>
                 ) : (
                   activities.map((a) => (
                     <div key={a.id} className="note-entry activity-entry">
@@ -1116,6 +1138,29 @@ export default function Contacts() {
                         {a.outcome && <span className="activity-outcome">{a.outcome}</span>}
                       </div>
                       {a.detail && <p className="note-transcript">{a.detail}</p>}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="notes-history activity-timeline">
+                <div className="notes-history-header">
+                  <h4>Company Deals ({companyDeals.length})</h4>
+                </div>
+                {!selectedContact.company_id ? (
+                  <p className="no-notes">Not linked to a company - link one above to see its deals here.</p>
+                ) : loadingCompanyDeals ? (
+                  <p className="no-notes">Loading…</p>
+                ) : companyDeals.length === 0 ? (
+                  <p className="no-notes">No deals yet for {selectedContact.company_name}.</p>
+                ) : (
+                  companyDeals.map((d) => (
+                    <div key={d.id} className="note-entry activity-entry">
+                      <div className="note-entry-header">
+                        <span>💼 {dealLabel(d)}</span>
+                        <span className="activity-outcome">{d.stage}</span>
+                      </div>
+                      {d.assigned_team_member_name && <p className="note-transcript">Owner: {d.assigned_team_member_name}</p>}
                     </div>
                   ))
                 )}
