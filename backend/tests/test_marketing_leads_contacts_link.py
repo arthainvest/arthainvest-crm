@@ -140,11 +140,15 @@ def test_send_email_campaign_updates_recipient_status_and_logs_activity(auth_cli
     assert next(c for c in campaigns if c["id"] == campaign["id"])["sent_count"] == 1
 
     # The send must show up in the lead's own Activity Timeline, same pipeline as any
-    # other email - this is the whole point of linking real recipients.
+    # other email - this is the whole point of linking real recipients. The campaign
+    # membership itself (added just above) is now also its own Campaign activity item.
     activities = auth_client.get(f"/api/activities?lead_id={lead['id']}").json()
-    assert len(activities) == 1
-    assert activities[0]["channel"] == "Email"
-    assert activities[0]["detail"] == campaign["name"]
+    assert len(activities) == 2
+    email_item = next(a for a in activities if a["channel"] == "Email")
+    assert email_item["detail"] == campaign["name"]
+    campaign_item = next(a for a in activities if a["channel"] == "Campaign")
+    assert campaign_item["detail"] == campaign["name"]
+    assert campaign_item["outcome"] == "Sent"
 
     # A second send must skip the now-Sent recipient (nothing left to send to).
     second = auth_client.post(f"/api/campaigns/{campaign['id']}/send").json()

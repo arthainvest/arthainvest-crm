@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTeam, createTeamMember, updateTeamMember, deleteTeamMember, getTeamAnalytics, getLeads, getContactsList, getCallsList } from '../services/api';
+import { getTeam, createTeamMember, updateTeamMember, deleteTeamMember, getTeamAnalytics, getLeads, getContactsList, getCallsList, getTasksByTeamMember, getMeetingsByTeamMember } from '../services/api';
 import '../styles/Team.css';
 
 const ROLE_LABELS = {
@@ -21,7 +21,7 @@ export default function Team() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [expandedId, setExpandedId] = useState(null);
-  const [drilldown, setDrilldown] = useState({ leads: [], contacts: [], calls: [] });
+  const [drilldown, setDrilldown] = useState({ leads: [], contacts: [], calls: [], tasks: [], meetings: [] });
   const [loadingDrilldown, setLoadingDrilldown] = useState(false);
 
   const token = localStorage.getItem('token');
@@ -96,19 +96,23 @@ export default function Team() {
     setExpandedId(member.id);
     setLoadingDrilldown(true);
     try {
-      const [leadsData, contactsData, callsData] = await Promise.all([
+      const [leadsData, contactsData, callsData, tasksData, meetingsData] = await Promise.all([
         getLeads(token, null, { assignedTeamMemberId: member.id }),
         getContactsList(token, { assignedTeamMemberId: member.id }),
-        getCallsList(token, { teamMemberId: member.id })
+        getCallsList(token, { teamMemberId: member.id }),
+        getTasksByTeamMember(token, member.id),
+        getMeetingsByTeamMember(token, member.id)
       ]);
       setDrilldown({
         leads: Array.isArray(leadsData) ? leadsData : [],
         contacts: Array.isArray(contactsData) ? contactsData : [],
-        calls: Array.isArray(callsData) ? callsData : []
+        calls: Array.isArray(callsData) ? callsData : [],
+        tasks: Array.isArray(tasksData) ? tasksData : [],
+        meetings: Array.isArray(meetingsData) ? meetingsData : []
       });
     } catch (error) {
       console.error('Error fetching team member drilldown:', error);
-      setDrilldown({ leads: [], contacts: [], calls: [] });
+      setDrilldown({ leads: [], contacts: [], calls: [], tasks: [], meetings: [] });
     } finally {
       setLoadingDrilldown(false);
     }
@@ -217,6 +221,30 @@ export default function Team() {
                                 <ul className="drilldown-list">
                                   {drilldown.calls.map((c) => (
                                     <li key={c.id}>{c.lead_name || c.contact_name || c.name || 'Unknown'} <span className="drilldown-status">{c.outcome || 'No outcome'}</span></li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="team-drilldown-group">
+                              <h4>Tasks ({drilldown.tasks.length})</h4>
+                              {drilldown.tasks.length === 0 ? (
+                                <p className="no-data-inline">No tasks assigned.</p>
+                              ) : (
+                                <ul className="drilldown-list">
+                                  {drilldown.tasks.map((t) => (
+                                    <li key={t.id}>{t.title} <span className="drilldown-status">{t.completed ? 'Completed' : 'Pending'}</span></li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="team-drilldown-group">
+                              <h4>Meetings ({drilldown.meetings.length})</h4>
+                              {drilldown.meetings.length === 0 ? (
+                                <p className="no-data-inline">No meetings assigned.</p>
+                              ) : (
+                                <ul className="drilldown-list">
+                                  {drilldown.meetings.map((m) => (
+                                    <li key={m.id}>{m.title} <span className="drilldown-status">{m.status}</span></li>
                                   ))}
                                 </ul>
                               )}

@@ -224,7 +224,10 @@ export default function Quotations() {
                   <td><strong>{q.quotation_number}</strong></td>
                   <td>{q.title}</td>
                   <td>{q.contact_name || q.lead_name || '-'}</td>
-                  <td className="quotation-deal-cell">{q.deal_label || '-'}</td>
+                  <td className="quotation-deal-cell">
+                    {q.deal_label || '-'}
+                    {q.company_name && <div className="quotation-company-sub">🏢 {q.company_name}</div>}
+                  </td>
                   <td>{formatCurrency(q.grand_total)}</td>
                   <td>
                     <select

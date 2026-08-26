@@ -1863,17 +1863,33 @@ async def ai_suggest_lead_followup(lead_id: int, token: str = Query(None)):
 # ============= TASKS & MEETINGS ENDPOINTS (TODAY PAGE) =============
 
 @app.get("/api/tasks", response_model=list[TaskResponse])
-async def get_tasks(token: str = Query(None), date: str = Query(None), view: str = Query(None)):
-    """Tasks for the Today page's Tasks tab. Two modes: the default "one day" view (tasks due
+async def get_tasks(token: str = Query(None), date: str = Query(None), view: str = Query(None), assigned_team_member_id: int = Query(None)):
+    """Tasks for the Today page's Tasks tab. Three modes: the default "one day" view (tasks due
     on `date`, or today if omitted - what "Today"/"Tomorrow" already are, just by navigating
-    the day arrows), and view=high_priority, a cross-date smart filter for every open
-    (incomplete) High-priority task regardless of due date - matching Kylas's "My High
-    Priority Tasks" quick filter, which isn't day-scoped."""
+    the day arrows), view=high_priority, a cross-date smart filter for every open (incomplete)
+    High-priority task regardless of due date - matching Kylas's "My High Priority Tasks" quick
+    filter, which isn't day-scoped - and assigned_team_member_id, an all-dates filter used by
+    the Team/Reports pages' per-member drill-down so it matches what /api/analytics/team's
+    tasks_completed figure actually counts (every task ever assigned to them, not just today's)."""
     get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        if view == "high_priority":
+        if assigned_team_member_id is not None:
+            cursor.execute(
+                """
+                SELECT tasks.*, team_members.name as assigned_team_member_name,
+                       leads.name as lead_name, contacts.name as contact_name
+                FROM tasks
+                LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+                LEFT JOIN leads ON leads.id = tasks.lead_id
+                LEFT JOIN contacts ON contacts.id = tasks.contact_id
+                WHERE tasks.assigned_team_member_id = ?
+                ORDER BY tasks.due_date DESC, tasks.created_at DESC
+                """,
+                (assigned_team_member_id,)
+            )
+        elif view == "high_priority":
             cursor.execute(
                 """
                 SELECT tasks.*, team_members.name as assigned_team_member_name,
@@ -1968,25 +1984,43 @@ async def delete_task(task_id: int, token: str = Query(None)):
     return {"message": "Task deleted"}
 
 @app.get("/api/meetings", response_model=list[MeetingResponse])
-async def get_meetings(token: str = Query(None), date: str = Query(None)):
-    """Meetings scheduled on a given date (defaults to today) - the Today page's Meetings tab."""
+async def get_meetings(token: str = Query(None), date: str = Query(None), assigned_team_member_id: int = Query(None)):
+    """Meetings scheduled on a given date (defaults to today) - the Today page's Meetings tab.
+    assigned_team_member_id switches to an all-dates filter instead, used by the Team/Reports
+    pages' per-member drill-down so it matches what /api/analytics/team's meetings_conducted
+    figure actually counts (every meeting ever assigned to them, not just today's)."""
     get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT meetings.*, team_members.name as assigned_team_member_name,
-                   leads.name as lead_name, contacts.name as contact_name
-            FROM meetings
-            LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
-            LEFT JOIN leads ON leads.id = meetings.lead_id
-            LEFT JOIN contacts ON contacts.id = meetings.contact_id
-            WHERE meetings.meeting_date = COALESCE(?, date('now'))
-            ORDER BY meetings.meeting_time ASC, meetings.created_at ASC
-            """,
-            (date,)
-        )
+        if assigned_team_member_id is not None:
+            cursor.execute(
+                """
+                SELECT meetings.*, team_members.name as assigned_team_member_name,
+                       leads.name as lead_name, contacts.name as contact_name
+                FROM meetings
+                LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
+                LEFT JOIN leads ON leads.id = meetings.lead_id
+                LEFT JOIN contacts ON contacts.id = meetings.contact_id
+                WHERE meetings.assigned_team_member_id = ?
+                ORDER BY meetings.meeting_date DESC, meetings.meeting_time ASC
+                """,
+                (assigned_team_member_id,)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT meetings.*, team_members.name as assigned_team_member_name,
+                       leads.name as lead_name, contacts.name as contact_name
+                FROM meetings
+                LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
+                LEFT JOIN leads ON leads.id = meetings.lead_id
+                LEFT JOIN contacts ON contacts.id = meetings.contact_id
+                WHERE meetings.meeting_date = COALESCE(?, date('now'))
+                ORDER BY meetings.meeting_time ASC, meetings.created_at ASC
+                """,
+                (date,)
+            )
         meetings = [dict(row) for row in cursor.fetchall()]
 
     return meetings
@@ -2499,13 +2533,13 @@ async def get_activities(
     token: str = Query(None), channel: str = Query(None), limit: int = Query(100),
     lead_id: int = Query(None), contact_id: int = Query(None)
 ):
-    """Merges communication_log (Email/WhatsApp/SMS sends), calls, tasks and meetings into one
-    chronological timeline, instead of checking four separate tabs - Kylas groups these under
-    Campaigns > Activities. lead_id/contact_id scope the feed to a single Lead/Contact's own
-    timeline - what the Notes & Follow-up modal's Activity tab shows on Leads/Contacts. Tasks
-    and meetings already carry lead_id/contact_id (editable from the Today page) but were
-    missing here, so linking one to a lead silently never showed up on that lead's own
-    timeline - this closes that gap."""
+    """Merges communication_log (Email/WhatsApp/SMS sends), calls, tasks, meetings and campaign
+    memberships into one chronological timeline, instead of checking five separate tabs - Kylas
+    groups these under Campaigns > Activities. lead_id/contact_id scope the feed to a single
+    Lead/Contact's own timeline - what the Notes & Follow-up modal's Activity tab shows on
+    Leads/Contacts. Campaign membership (campaign_recipients) was previously only visible from
+    the Marketing page's own recipient list - a one-way Campaign -> its recipients link with no
+    way to see, from a Lead/Contact's own view, which campaigns they'd been added to."""
     get_current_user(token)
 
     with get_db() as conn:
@@ -2586,6 +2620,27 @@ async def get_activities(
         cursor.execute(meeting_query, meeting_params)
         meeting_rows = [dict(r) for r in cursor.fetchall()]
 
+        campaign_recipient_query = """
+            SELECT campaign_recipients.*, campaigns.name as campaign_name,
+                   leads.name as lead_name, contacts.name as contact_name
+            FROM campaign_recipients
+            LEFT JOIN campaigns ON campaigns.id = campaign_recipients.campaign_id
+            LEFT JOIN leads ON leads.id = campaign_recipients.lead_id
+            LEFT JOIN contacts ON contacts.id = campaign_recipients.contact_id
+            WHERE 1=1
+        """
+        campaign_recipient_params = []
+        if lead_id is not None:
+            campaign_recipient_query += " AND campaign_recipients.lead_id = ?"
+            campaign_recipient_params.append(lead_id)
+        if contact_id is not None:
+            campaign_recipient_query += " AND campaign_recipients.contact_id = ?"
+            campaign_recipient_params.append(contact_id)
+        campaign_recipient_query += " ORDER BY campaign_recipients.added_at DESC LIMIT ?"
+        campaign_recipient_params.append(limit)
+        cursor.execute(campaign_recipient_query, campaign_recipient_params)
+        campaign_recipient_rows = [dict(r) for r in cursor.fetchall()]
+
     items = []
     for r in comm_rows:
         items.append({
@@ -2634,6 +2689,19 @@ async def get_activities(
             "detail": f"{r['title']} - {r['meeting_date']}" + (f" {r['meeting_time']}" if r.get('meeting_time') else ""),
             "outcome": r.get('status'),
             "timestamp": r.get('created_at'),
+            "lead_id": r.get('lead_id'),
+            "lead_name": r.get('lead_name'),
+            "contact_id": r.get('contact_id'),
+            "contact_name": r.get('contact_name'),
+        })
+    for r in campaign_recipient_rows:
+        items.append({
+            "id": f"campaign-{r['id']}",
+            "channel": "Campaign",
+            "contact": r.get('lead_name') or r.get('contact_name'),
+            "detail": r.get('campaign_name') or 'Campaign',
+            "outcome": r.get('status'),
+            "timestamp": r.get('added_at'),
             "lead_id": r.get('lead_id'),
             "lead_name": r.get('lead_name'),
             "contact_id": r.get('contact_id'),
@@ -2788,17 +2856,22 @@ async def delete_company(company_id: int, token: str = Query(None)):
 def fetch_quotation_with_details(cursor, quotation_id):
     """Read one quotation back joined against its linked lead/contact name and (if linked) its
     Deal - resolved into a human-readable deal_label since a deal has no name of its own, just
-    a lead + loan product + value - plus its line items and a computed grand_total."""
+    a lead + loan product + value - plus its line items and a computed grand_total.
+    Quotations have no company_id of their own; a linked Deal's Company (deals.company_id) is
+    resolved here too, since that was previously only reachable by leaving to the Companies
+    page and finding the matching deal by hand."""
     cursor.execute(
         """
         SELECT quotations.*, leads.name as lead_name, contacts.name as contact_name,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
-               deal_leads.name as deal_lead_name
+               deal_leads.name as deal_lead_name,
+               deals.company_id as company_id, companies.name as company_name
         FROM quotations
         LEFT JOIN leads ON leads.id = quotations.lead_id
         LEFT JOIN contacts ON contacts.id = quotations.contact_id
         LEFT JOIN deals ON deals.id = quotations.deal_id
         LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
+        LEFT JOIN companies ON companies.id = deals.company_id
         WHERE quotations.id = ?
         """,
         (quotation_id,)

@@ -34,6 +34,41 @@ def test_create_quotation_linked_to_deal(auth_client):
     assert next(d for d in deals if d["id"] == deal["id"])["quotation_count"] == 1
 
 
+def test_quotation_resolves_company_through_its_linked_deal(auth_client):
+    """Quotations have no company_id of their own - a linked deal's Company (deals.company_id)
+    must resolve here too, so the Quotations page can show which company a quote is for
+    without the user having to cross-reference the Pipeline/Companies pages by hand."""
+    deal = _first_deal(auth_client)
+    lead = auth_client.get(f"/api/leads/{deal['lead_id']}").json()
+    company = auth_client.post("/api/companies", json={"name": "Quotation Co"}).json()
+    auth_client.put(f"/api/deals/{deal['id']}/company", json={"company_id": company["id"]})
+
+    resp = auth_client.post("/api/quotations", json={
+        "lead_id": lead["id"], "deal_id": deal["id"], "title": "LAP Quotation",
+        "items": [{"description": "Processing Fee", "amount": 5000}],
+    })
+    assert resp.status_code == 200
+    quotation = resp.json()
+    assert quotation["company_id"] == company["id"]
+    assert quotation["company_name"] == "Quotation Co"
+
+    listed = auth_client.get("/api/quotations").json()
+    fetched = next(q for q in listed if q["id"] == quotation["id"])
+    assert fetched["company_name"] == "Quotation Co"
+
+
+def test_quotation_with_no_deal_has_no_company(auth_client):
+    lead = _first_lead(auth_client)
+    resp = auth_client.post("/api/quotations", json={
+        "lead_id": lead["id"], "title": "No Deal Quotation",
+        "items": [{"description": "Fee", "amount": 1000}],
+    })
+    assert resp.status_code == 200
+    quotation = resp.json()
+    assert quotation["company_id"] is None
+    assert quotation["company_name"] is None
+
+
 def test_get_deal_quotations_returns_linked_quotations(auth_client):
     deal = _first_deal(auth_client)
     lead = auth_client.get(f"/api/leads/{deal['lead_id']}").json()

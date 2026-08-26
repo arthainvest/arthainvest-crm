@@ -415,6 +415,11 @@ export const getHighPriorityTasks = async (token) => {
   return response.data;
 };
 
+export const getTasksByTeamMember = async (token, teamMemberId) => {
+  const response = await api.get(`/api/tasks?token=${token}&assigned_team_member_id=${teamMemberId}`);
+  return response.data;
+};
+
 export const createTask = async (token, taskData) => {
   const response = await api.post(`/api/tasks?token=${token}`, taskData);
   return response.data;
@@ -432,6 +437,11 @@ export const deleteTask = async (token, id) => {
 // Today page - Meetings
 export const getMeetings = async (token, date) => {
   const response = await api.get(`/api/meetings?token=${token}&date=${date}`);
+  return response.data;
+};
+
+export const getMeetingsByTeamMember = async (token, teamMemberId) => {
+  const response = await api.get(`/api/meetings?token=${token}&assigned_team_member_id=${teamMemberId}`);
   return response.data;
 };
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   getSalesAnalytics, getContactsAnalytics, getCallsAnalytics,
   getCampaigns, getTeamAnalytics, getSettings, updateSettings, getLeadSourceROI,
-  getLeads, getContactsList
+  getLeads, getContactsList, getCallsList, getTasksByTeamMember, getMeetingsByTeamMember
 } from '../services/api';
 import '../styles/Reports.css';
 
@@ -31,6 +31,9 @@ export default function Reports() {
   const [expandedMemberId, setExpandedMemberId] = useState(null);
   const [memberLeads, setMemberLeads] = useState([]);
   const [memberContacts, setMemberContacts] = useState([]);
+  const [memberCalls, setMemberCalls] = useState([]);
+  const [memberTasks, setMemberTasks] = useState([]);
+  const [memberMeetings, setMemberMeetings] = useState([]);
   const [loadingMemberDrilldown, setLoadingMemberDrilldown] = useState(false);
 
   useEffect(() => {
@@ -96,16 +99,25 @@ export default function Reports() {
     setExpandedMemberId(member.id);
     setLoadingMemberDrilldown(true);
     try {
-      const [leadsData, contactsData] = await Promise.all([
+      const [leadsData, contactsData, callsData, tasksData, meetingsData] = await Promise.all([
         getLeads(token, null, { assignedTeamMemberId: member.id }),
         getContactsList(token, { assignedTeamMemberId: member.id }),
+        getCallsList(token, { teamMemberId: member.id }),
+        getTasksByTeamMember(token, member.id),
+        getMeetingsByTeamMember(token, member.id),
       ]);
       setMemberLeads(Array.isArray(leadsData) ? leadsData : []);
       setMemberContacts(Array.isArray(contactsData) ? contactsData : []);
+      setMemberCalls(Array.isArray(callsData) ? callsData : []);
+      setMemberTasks(Array.isArray(tasksData) ? tasksData : []);
+      setMemberMeetings(Array.isArray(meetingsData) ? meetingsData : []);
     } catch (error) {
-      console.error('Error fetching leads/contacts for team member drill-down:', error);
+      console.error('Error fetching drill-down data for team member:', error);
       setMemberLeads([]);
       setMemberContacts([]);
+      setMemberCalls([]);
+      setMemberTasks([]);
+      setMemberMeetings([]);
     } finally {
       setLoadingMemberDrilldown(false);
     }
@@ -409,6 +421,51 @@ export default function Reports() {
                                       <li key={contact.id}>
                                         <strong>{contact.name}</strong>
                                         {contact.phone && <span> · {contact.phone}</span>}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                              <div className="drilldown-group">
+                                <h4>Calls ({memberCalls.length})</h4>
+                                {memberCalls.length === 0 ? (
+                                  <span className="no-data-inline">No calls logged by {m.name}.</span>
+                                ) : (
+                                  <ul className="drilldown-list">
+                                    {memberCalls.map((call) => (
+                                      <li key={call.id}>
+                                        <strong>{call.lead_name || call.contact_name || call.name || 'Unknown'}</strong>
+                                        <span className="drilldown-status">{call.outcome || 'No outcome'}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                              <div className="drilldown-group">
+                                <h4>Tasks Completed ({memberTasks.filter((t) => t.completed).length})</h4>
+                                {memberTasks.filter((t) => t.completed).length === 0 ? (
+                                  <span className="no-data-inline">No completed tasks for {m.name}.</span>
+                                ) : (
+                                  <ul className="drilldown-list">
+                                    {memberTasks.filter((t) => t.completed).map((task) => (
+                                      <li key={task.id}>
+                                        <strong>{task.title}</strong>
+                                        <span> · due {task.due_date}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                              <div className="drilldown-group">
+                                <h4>Meetings Conducted ({memberMeetings.filter((mt) => mt.status === 'Conducted').length})</h4>
+                                {memberMeetings.filter((mt) => mt.status === 'Conducted').length === 0 ? (
+                                  <span className="no-data-inline">No conducted meetings for {m.name}.</span>
+                                ) : (
+                                  <ul className="drilldown-list">
+                                    {memberMeetings.filter((mt) => mt.status === 'Conducted').map((meeting) => (
+                                      <li key={meeting.id}>
+                                        <strong>{meeting.title}</strong>
+                                        <span> · {meeting.meeting_date}</span>
                                       </li>
                                     ))}
                                   </ul>

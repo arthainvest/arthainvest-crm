@@ -8,7 +8,8 @@
 
 .quotation-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
-.quotation-deal-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-secondary, var(--text-primary)); }
+.quotation-deal-cell { max-width: 220px; font-size: 13px; color: var(--text-secondary, var(--text-primary)); }
+.quotation-company-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .btn-small { padding: 6px 12px; border: 1px solid #90caf9; background: var(--bg-surface); color: #1976d2; border-radius: 4px; cursor: pointer; font-size: 12px; }
 .btn-small.delete { color: #a71d2a; border-color: #f1a7a7; }

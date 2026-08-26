@@ -17,7 +17,7 @@ const LOG_TABS = [
   { id: 'dialer', label: '🎯 Dialer', title: 'My Call Dialer' },
 ];
 
-const ACTIVITY_CHANNELS = ['All', 'Call', 'Email', 'WhatsApp', 'SMS', 'Task', 'Meeting'];
+const ACTIVITY_CHANNELS = ['All', 'Call', 'Email', 'WhatsApp', 'SMS', 'Task', 'Meeting', 'Campaign'];
 
 export default function Calls() {
   const [activeTab, setActiveTab] = useState('calls');
@@ -347,7 +347,7 @@ export default function Calls() {
             </thead>
             <tbody>
               {activities.length === 0 ? (
-                <tr><td colSpan="6" className="no-data">No activity yet across calls, email, WhatsApp or SMS.</td></tr>
+                <tr><td colSpan="6" className="no-data">No activity yet across calls, email, WhatsApp, SMS, tasks, meetings or campaigns.</td></tr>
               ) : activities.map((a) => (
                 <tr key={a.id}>
                   <td><span className={`badge-${a.channel.toLowerCase()}`}>{a.channel}</span></td>

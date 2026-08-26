@@ -10,7 +10,7 @@ import '../styles/LeadsList.css';
 
 const STATUS_OPTIONS = ['New', 'Contacted', 'Interested', 'Document Pending', 'In Process', 'Qualified', 'Not Interested', 'CIBIL Issue', 'Lost to Competition'];
 
-const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱', Task: '✅', Meeting: '📅' };
+const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱', Task: '✅', Meeting: '📅', Campaign: '📢' };
 
 const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
 const dealLabel = (deal) => {
@@ -967,7 +967,7 @@ export default function LeadsList() {
               {loadingActivities ? (
                 <p className="no-notes">Loading…</p>
               ) : activities.length === 0 ? (
-                <p className="no-notes">No calls, emails, WhatsApp, SMS, tasks or meetings logged for this lead yet.</p>
+                <p className="no-notes">No calls, emails, WhatsApp, SMS, tasks, meetings or campaigns logged for this lead yet.</p>
               ) : (
                 activities.map((a) => (
                   <div key={a.id} className="note-entry activity-entry">

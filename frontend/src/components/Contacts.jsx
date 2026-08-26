@@ -10,7 +10,7 @@ import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Contacts.css';
 
 const STATUS_OPTIONS = ['Active', 'Renewal Due', 'Lapsed', 'Inactive'];
-const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱', Task: '✅', Meeting: '📅' };
+const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱', Task: '✅', Meeting: '📅', Campaign: '📢' };
 const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
 const dealLabel = (deal) => {
   const productInfo = LOAN_PRODUCTS.find((p) => p.id === deal.loan_product);
@@ -1129,7 +1129,7 @@ export default function Contacts() {
                 {loadingActivities ? (
                   <p className="no-notes">Loading…</p>
                 ) : activities.length === 0 ? (
-                  <p className="no-notes">No calls, emails, WhatsApp, SMS, tasks or meetings logged for this contact yet.</p>
+                  <p className="no-notes">No calls, emails, WhatsApp, SMS, tasks, meetings or campaigns logged for this contact yet.</p>
                 ) : (
                   activities.map((a) => (
                     <div key={a.id} className="note-entry activity-entry">

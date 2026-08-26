@@ -169,6 +169,33 @@ def test_activities_feed_channel_filter_accepts_task_and_meeting(auth_client):
     assert meeting_only[0]["channel"] == "Meeting"
 
 
+def test_activities_feed_includes_campaign_membership(auth_client):
+    """campaign_recipients was previously only visible from the Marketing page's own recipient
+    list (Campaign -> its recipients). A Lead/Contact's own Activity Timeline must show the
+    reverse - which campaigns they've been added to - closing the one-way link."""
+    lead = _first_lead(auth_client)
+    campaign = auth_client.get("/api/campaigns").json()[0]
+    auth_client.post(f"/api/campaigns/{campaign['id']}/recipients", json={"lead_ids": [lead["id"]]})
+
+    resp = auth_client.get(f"/api/activities?lead_id={lead['id']}")
+    assert resp.status_code == 200
+    items = resp.json()
+    campaign_item = next(i for i in items if i["channel"] == "Campaign")
+    assert campaign_item["detail"] == campaign["name"]
+    assert campaign_item["lead_id"] == lead["id"]
+    assert campaign_item["outcome"] == "Pending"
+
+
+def test_activities_feed_channel_filter_accepts_campaign(auth_client):
+    lead = _first_lead(auth_client)
+    campaign = auth_client.get("/api/campaigns").json()[0]
+    auth_client.post(f"/api/campaigns/{campaign['id']}/recipients", json={"lead_ids": [lead["id"]]})
+
+    campaign_only = auth_client.get("/api/activities?channel=Campaign").json()
+    assert len(campaign_only) == 1
+    assert campaign_only[0]["channel"] == "Campaign"
+
+
 def test_activities_feed_unlinked_items_have_null_lead_and_contact(auth_client):
     auth_client.post("/api/calls", json={"name": "Cold Call Prospect"})
     items = auth_client.get("/api/activities").json()
