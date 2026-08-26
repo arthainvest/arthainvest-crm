@@ -543,6 +543,25 @@ def init_db():
             )
         """)
 
+        # Bridges the gap between triggering a Priti (Vapi) voice call and Vapi's later
+        # end-of-call-report webhook, which only carries the call's own id - not which
+        # lead/contact/team member it was for. Without this, the webhook's `calls` insert has
+        # no way to resolve those and the logged call is permanently unlinked.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS voice_call_context (
+                vapi_call_id TEXT PRIMARY KEY,
+                lead_id INTEGER,
+                contact_id INTEGER,
+                team_member_id INTEGER,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (lead_id) REFERENCES leads(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (team_member_id) REFERENCES team_members(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
         # Same retrofit pattern as deals.loan_product - only matters for a database that
         # already existed before these columns were added.
         try:

@@ -3508,7 +3508,18 @@ async def trigger_voice_call(payload: VoiceCallTriggerRequest, token: str = Quer
         if resp.status_code >= 400:
             return VoiceCallTriggerResponse(configured=True, message=f"Vapi call failed: {resp.text[:200]}")
         call_data = resp.json()
-        return VoiceCallTriggerResponse(configured=True, message=f"Priti is calling {person['name']} now.", vapi_call_id=call_data.get('id'))
+        vapi_call_id = call_data.get('id')
+        if vapi_call_id:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM team_members WHERE user_id = ?", (current_user['user_id'],))
+                member_row = cursor.fetchone()
+                cursor.execute(
+                    "INSERT INTO voice_call_context (vapi_call_id, lead_id, contact_id, team_member_id, created_by) VALUES (?, ?, ?, ?, ?)",
+                    (vapi_call_id, payload.lead_id, payload.contact_id, member_row['id'] if member_row else None, current_user['user_id'])
+                )
+                conn.commit()
+        return VoiceCallTriggerResponse(configured=True, message=f"Priti is calling {person['name']} now.", vapi_call_id=vapi_call_id)
     except Exception as e:
         return VoiceCallTriggerResponse(configured=True, message=f"Vapi call failed: {str(e)}")
 
@@ -3528,19 +3539,39 @@ async def voice_agent_webhook(payload: dict):
     call = message.get("call", {}) or {}
     customer = call.get("customer", {}) or {}
     analysis = message.get("analysis", {}) or {}
+    vapi_call_id = call.get("id")
 
     with get_db() as conn:
         cursor = conn.cursor()
+
+        # Resolve which lead/contact/team member this call was actually for, stashed by
+        # trigger_voice_call under the same vapi_call_id - without this the call logs but is
+        # permanently unlinked, invisible from that lead/contact's own Activity Timeline.
+        lead_id = contact_id = team_member_id = created_by = None
+        if vapi_call_id:
+            cursor.execute(
+                "SELECT lead_id, contact_id, team_member_id, created_by FROM voice_call_context WHERE vapi_call_id = ?",
+                (vapi_call_id,)
+            )
+            context_row = cursor.fetchone()
+            if context_row:
+                lead_id, contact_id, team_member_id, created_by = (
+                    context_row['lead_id'], context_row['contact_id'],
+                    context_row['team_member_id'], context_row['created_by']
+                )
+                cursor.execute("DELETE FROM voice_call_context WHERE vapi_call_id = ?", (vapi_call_id,))
+
         cursor.execute(
             """
-            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
-            VALUES (?, ?, ?, 'Outbound', ?, date('now'), NULL)
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id)
+            VALUES (?, ?, ?, 'Voice Agent', ?, date('now'), ?, ?, ?, ?)
             """,
             (
                 customer.get('name') or 'Unknown',
                 customer.get('number'),
                 int(message.get('durationSeconds') or 0),
                 analysis.get('summary') or message.get('endedReason') or 'Completed',
+                created_by, team_member_id, lead_id, contact_id
             )
         )
         conn.commit()
