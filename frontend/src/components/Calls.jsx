@@ -273,17 +273,19 @@ export default function Calls() {
               <tr>
                 <th>To</th>
                 <th>Subject</th>
+                <th>Linked To</th>
                 <th>Status</th>
                 <th>Sent</th>
               </tr>
             </thead>
             <tbody>
               {emailLog.length === 0 ? (
-                <tr><td colSpan="4" className="no-data">No emails sent yet - use the Email button on Contacts/Leads, or a Renewal Reminder.</td></tr>
+                <tr><td colSpan="5" className="no-data">No emails sent yet - use the Email button on Contacts/Leads, or a Renewal Reminder.</td></tr>
               ) : emailLog.map((entry) => (
                 <tr key={entry.id}>
                   <td>{entry.recipient}</td>
                   <td>{entry.subject || '-'}</td>
+                  <td>{entry.lead_name ? `📈 ${entry.lead_name}` : entry.contact_name ? `👥 ${entry.contact_name}` : '-'}</td>
                   <td><span className={`badge-${entry.status.toLowerCase()}`}>{entry.status}</span></td>
                   <td>{new Date(entry.created_at).toLocaleString('en-IN')}</td>
                 </tr>
@@ -300,17 +302,19 @@ export default function Calls() {
               <tr>
                 <th>To</th>
                 <th>Message</th>
+                <th>Linked To</th>
                 <th>Status</th>
                 <th>Sent</th>
               </tr>
             </thead>
             <tbody>
               {whatsappLog.length === 0 ? (
-                <tr><td colSpan="4" className="no-data">No WhatsApp messages sent yet via the WhatsApp Business API - only real API sends are logged here, not wa.me link fallbacks (the browser handles those, so this server never sees them).</td></tr>
+                <tr><td colSpan="5" className="no-data">No WhatsApp messages sent yet via the WhatsApp Business API - only real API sends are logged here, not wa.me link fallbacks (the browser handles those, so this server never sees them).</td></tr>
               ) : whatsappLog.map((entry) => (
                 <tr key={entry.id}>
                   <td>{entry.recipient}</td>
                   <td className="log-message-cell">{entry.message}</td>
+                  <td>{entry.lead_name ? `📈 ${entry.lead_name}` : entry.contact_name ? `👥 ${entry.contact_name}` : '-'}</td>
                   <td><span className={`badge-${entry.status.toLowerCase()}`}>{entry.status}</span></td>
                   <td>{new Date(entry.created_at).toLocaleString('en-IN')}</td>
                 </tr>
