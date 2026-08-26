@@ -227,6 +227,7 @@ export default function Quotations() {
                   <td className="quotation-deal-cell">
                     {q.deal_label || '-'}
                     {q.company_name && <div className="quotation-company-sub">🏢 {q.company_name}</div>}
+                    {q.assigned_team_member_name && <div className="quotation-company-sub">🧑‍🤝‍🧑 {q.assigned_team_member_name}</div>}
                   </td>
                   <td>{formatCurrency(q.grand_total)}</td>
                   <td>

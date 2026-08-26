@@ -57,6 +57,42 @@ def test_quotation_resolves_company_through_its_linked_deal(auth_client):
     assert fetched["company_name"] == "Quotation Co"
 
 
+def test_quotation_resolves_assigned_team_member_through_its_linked_deal(auth_client):
+    """Quotations have no assigned_team_member_id of their own - a linked deal's assigned team
+    member (deals.assigned_team_member_id) must resolve here too, same as company_name, so the
+    Quotations page can show who owns the underlying deal without cross-referencing Pipeline."""
+    deal = _first_deal(auth_client)
+    lead = auth_client.get(f"/api/leads/{deal['lead_id']}").json()
+    rajesh = next(m for m in auth_client.get("/api/team").json() if m["name"] == "Rajesh Kumar")
+    auth_client.put(f"/api/deals/{deal['id']}/assign", json={"team_member_id": rajesh["id"]})
+
+    resp = auth_client.post("/api/quotations", json={
+        "lead_id": lead["id"], "deal_id": deal["id"], "title": "Team Member Quotation",
+        "items": [{"description": "Fee", "amount": 750}],
+    })
+    assert resp.status_code == 200
+    quotation = resp.json()
+    assert quotation["assigned_team_member_id"] == rajesh["id"]
+    assert quotation["assigned_team_member_name"] == "Rajesh Kumar"
+
+    listed = auth_client.get("/api/quotations").json()
+    fetched = next(q for q in listed if q["id"] == quotation["id"])
+    assert fetched["assigned_team_member_name"] == "Rajesh Kumar"
+
+
+def test_quotation_with_unassigned_deal_has_no_assigned_team_member(auth_client):
+    deal = _first_deal(auth_client)
+    lead = auth_client.get(f"/api/leads/{deal['lead_id']}").json()
+    resp = auth_client.post("/api/quotations", json={
+        "lead_id": lead["id"], "deal_id": deal["id"], "title": "Unassigned Deal Quotation",
+        "items": [{"description": "Fee", "amount": 250}],
+    })
+    assert resp.status_code == 200
+    quotation = resp.json()
+    assert quotation["assigned_team_member_id"] is None
+    assert quotation["assigned_team_member_name"] is None
+
+
 def test_quotation_with_no_deal_has_no_company(auth_client):
     lead = _first_lead(auth_client)
     resp = auth_client.post("/api/quotations", json={

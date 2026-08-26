@@ -699,6 +699,8 @@ class QuotationResponse(BaseModel):
     deal_label: Optional[str] = None
     company_id: Optional[int] = None
     company_name: Optional[str] = None
+    assigned_team_member_id: Optional[int] = None
+    assigned_team_member_name: Optional[str] = None
     title: str
     status: str
     valid_until: Optional[str] = None

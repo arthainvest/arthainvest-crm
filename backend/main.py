@@ -2931,21 +2931,25 @@ def fetch_quotation_with_details(cursor, quotation_id):
     """Read one quotation back joined against its linked lead/contact name and (if linked) its
     Deal - resolved into a human-readable deal_label since a deal has no name of its own, just
     a lead + loan product + value - plus its line items and a computed grand_total.
-    Quotations have no company_id of their own; a linked Deal's Company (deals.company_id) is
-    resolved here too, since that was previously only reachable by leaving to the Companies
-    page and finding the matching deal by hand."""
+    Quotations have no company_id or assigned_team_member_id of their own; a linked Deal's
+    Company (deals.company_id) and assigned team member (deals.assigned_team_member_id) are
+    both resolved here too, since neither was previously reachable without leaving to
+    Companies/Pipeline and finding the matching deal by hand."""
     cursor.execute(
         """
         SELECT quotations.*, leads.name as lead_name, contacts.name as contact_name,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
                deal_leads.name as deal_lead_name,
-               deals.company_id as company_id, companies.name as company_name
+               deals.company_id as company_id, companies.name as company_name,
+               deals.assigned_team_member_id as assigned_team_member_id,
+               team_members.name as assigned_team_member_name
         FROM quotations
         LEFT JOIN leads ON leads.id = quotations.lead_id
         LEFT JOIN contacts ON contacts.id = quotations.contact_id
         LEFT JOIN deals ON deals.id = quotations.deal_id
         LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
         LEFT JOIN companies ON companies.id = deals.company_id
+        LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
         WHERE quotations.id = ?
         """,
         (quotation_id,)
