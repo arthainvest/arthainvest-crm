@@ -501,8 +501,10 @@ async def delete_lead(lead_id: int, token: str = Query(None)):
 # ============= DEALS/PIPELINE ENDPOINTS =============
 
 @app.get("/api/deals", response_model=list[DealResponse])
-async def get_deals(stage: str = Query(None), token: str = Query(None)):
-    """Get all deals, optionally filtered by stage"""
+async def get_deals(stage: str = Query(None), lead_id: int = Query(None), token: str = Query(None)):
+    """Get all deals, optionally filtered by stage and/or the originating lead - the latter
+    lets the Leads page show whether a lead has already been converted into a real deal,
+    the reverse of deals.lead_id, instead of that link only being visible from Pipeline."""
     get_current_user(token)
 
     with get_db() as conn:
@@ -516,10 +518,17 @@ async def get_deals(stage: str = Query(None), token: str = Query(None)):
             LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
             LEFT JOIN companies ON companies.id = deals.company_id
         """
+        conditions = []
+        params = []
         if stage:
-            cursor.execute(base_query + " WHERE deals.stage = ? ORDER BY deals.created_at DESC", (stage,))
-        else:
-            cursor.execute(base_query + " ORDER BY deals.created_at DESC")
+            conditions.append("deals.stage = ?")
+            params.append(stage)
+        if lead_id is not None:
+            conditions.append("deals.lead_id = ?")
+            params.append(lead_id)
+
+        query = base_query + (" WHERE " + " AND ".join(conditions) if conditions else "") + " ORDER BY deals.created_at DESC"
+        cursor.execute(query, params)
 
         deals = [dict(row) for row in cursor.fetchall()]
 

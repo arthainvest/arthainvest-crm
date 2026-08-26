@@ -108,10 +108,11 @@ export const uploadLeadNoteAudio = async (token, leadId, noteId, audioBlob) => {
 };
 
 // Deals
-export const getDeals = async (token, stage = null) => {
+export const getDeals = async (token, stage = null, { leadId } = {}) => {
   const params = new URLSearchParams();
   if (token) params.append('token', token);
   if (stage) params.append('stage', stage);
+  if (leadId) params.append('lead_id', leadId);
 
   const response = await api.get(`/api/deals?${params.toString()}`);
   return response.data;

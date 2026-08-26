@@ -3,7 +3,7 @@ import {
   getLeads, createLead, updateLead, assignLead, getTeam,
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
   uploadLeadNoteAudio, API_URL, dialCall, aiSuggestLeadFollowup,
-  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate, assignToDialer, getActivities
+  sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate, assignToDialer, getActivities, getDeals
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/LeadsList.css';
@@ -13,6 +13,10 @@ const STATUS_OPTIONS = ['New', 'Contacted', 'Interested', 'Document Pending', 'I
 const ACTIVITY_ICONS = { Call: '📞', Email: '✉️', WhatsApp: '💬', SMS: '📱', Task: '✅', Meeting: '📅' };
 
 const statusClass = (status) => (status || '').toLowerCase().replace(/\s+/g, '-');
+const dealLabel = (deal) => {
+  const productInfo = LOAN_PRODUCTS.find((p) => p.id === deal.loan_product);
+  return `${productInfo?.name || deal.loan_product} · ₹${(deal.deal_value || 0).toLocaleString('en-IN')} · ${deal.process_status || 'Login'}`;
+};
 
 // A naive line.split(',') breaks on quoted fields containing commas (e.g. "Doe, John") or
 // escaped quotes ("Say ""hi"""). This walks the line char-by-char tracking quote state instead.
@@ -87,6 +91,8 @@ export default function LeadsList() {
   const [notes, setNotes] = useState([]);
   const [activities, setActivities] = useState([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [leadDeals, setLeadDeals] = useState([]);
+  const [loadingLeadDeals, setLoadingLeadDeals] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [dateDetectMessage, setDateDetectMessage] = useState(null);
@@ -410,6 +416,16 @@ export default function LeadsList() {
       setActivities([]);
     } finally {
       setLoadingActivities(false);
+    }
+    setLoadingLeadDeals(true);
+    try {
+      const dealsData = await getDeals(token, null, { leadId: lead.id });
+      setLeadDeals(Array.isArray(dealsData) ? dealsData : []);
+    } catch (error) {
+      console.error('Error fetching deals for lead:', error);
+      setLeadDeals([]);
+    } finally {
+      setLoadingLeadDeals(false);
     }
   };
 
@@ -951,7 +967,7 @@ export default function LeadsList() {
               {loadingActivities ? (
                 <p className="no-notes">Loading…</p>
               ) : activities.length === 0 ? (
-                <p className="no-notes">No calls, emails, WhatsApp or SMS logged for this lead yet.</p>
+                <p className="no-notes">No calls, emails, WhatsApp, SMS, tasks or meetings logged for this lead yet.</p>
               ) : (
                 activities.map((a) => (
                   <div key={a.id} className="note-entry activity-entry">
@@ -960,6 +976,27 @@ export default function LeadsList() {
                       {a.outcome && <span className="activity-outcome">{a.outcome}</span>}
                     </div>
                     {a.detail && <p className="note-transcript">{a.detail}</p>}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="notes-history activity-timeline">
+              <div className="notes-history-header">
+                <h4>Deals ({leadDeals.length})</h4>
+              </div>
+              {loadingLeadDeals ? (
+                <p className="no-notes">Loading…</p>
+              ) : leadDeals.length === 0 ? (
+                <p className="no-notes">Not converted to a deal yet.</p>
+              ) : (
+                leadDeals.map((d) => (
+                  <div key={d.id} className="note-entry activity-entry">
+                    <div className="note-entry-header">
+                      <span>💼 {dealLabel(d)}</span>
+                      <span className="activity-outcome">{d.stage}</span>
+                    </div>
+                    {d.company_name && <p className="note-transcript">Company: {d.company_name}</p>}
                   </div>
                 ))
               )}
