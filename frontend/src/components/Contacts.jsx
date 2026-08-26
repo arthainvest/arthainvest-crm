@@ -260,6 +260,10 @@ export default function Contacts() {
               const match = teamMembers.find((m) => m.name.toLowerCase() === assignedName.toLowerCase());
               if (match) await assignContact(token, newContact.id, match.id);
             }
+            if (row.company) {
+              const companyMatch = companies.find((co) => co.name.toLowerCase() === row.company.toLowerCase());
+              if (companyMatch) await linkContactCompany(token, newContact.id, companyMatch.id);
+            }
             created++;
           } catch (rowErr) {
             console.error('Error importing row:', row, rowErr);
