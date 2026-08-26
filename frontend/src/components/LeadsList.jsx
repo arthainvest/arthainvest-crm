@@ -239,13 +239,15 @@ export default function LeadsList() {
           const cols = parseCSVLine(row);
           const obj = {};
           headers.forEach((h, i) => { obj[h] = cols[i] || ''; });
+          const assignedName = (obj.employee || obj['assigned to'] || obj['assigned employee'] || '').trim();
           return {
             name: obj.name || 'Unnamed Lead',
             company: obj.company || '',
             email: obj.email || '',
             phone: obj.phone || '',
             product: obj.product || '',
-            source: obj.source || ''
+            source: obj.source || '',
+            assignedName
           };
         });
 
@@ -253,7 +255,12 @@ export default function LeadsList() {
         let failed = 0;
         for (const row of imported) {
           try {
-            await createLead(token, row);
+            const { assignedName, ...leadData } = row;
+            const newLead = await createLead(token, leadData);
+            if (assignedName) {
+              const match = teamMembers.find((m) => m.name.toLowerCase() === assignedName.toLowerCase());
+              if (match) await assignLead(token, newLead.id, match.id);
+            }
             created++;
           } catch (rowErr) {
             console.error('Error importing row:', row, rowErr);
@@ -274,8 +281,8 @@ export default function LeadsList() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Name', 'Company', 'Email', 'Phone', 'Status', 'Score'];
-    const rows = leads.map((l) => [l.name, l.company || '', l.email || '', l.phone || '', l.status || '', l.ai_score ?? '']);
+    const headers = ['Name', 'Company', 'Email', 'Phone', 'Status', 'Score', 'Employee'];
+    const rows = leads.map((l) => [l.name, l.company || '', l.email || '', l.phone || '', l.status || '', l.ai_score ?? '', l.assigned_team_member_name || '']);
     const csvContent = [headers, ...rows]
       .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
       .join('\n');
