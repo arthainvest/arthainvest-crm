@@ -2984,6 +2984,32 @@ async def get_company_quotations(company_id: int, token: str = Query(None)):
 
     return quotations
 
+@app.get("/api/companies/{company_id}/team_members", response_model=list[TeamMemberResponse])
+async def get_company_team_members(company_id: int, token: str = Query(None)):
+    """Team members who have worked with this Company - derived from all deals assigned to them
+    that have this company_id. Each team member appears once even if they have multiple deals."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            """
+            SELECT DISTINCT team_members.* FROM team_members
+            INNER JOIN deals ON (deals.assigned_team_member_id = team_members.id OR
+                                (deals.owner_id = team_members.user_id AND deals.assigned_team_member_id IS NULL))
+            WHERE deals.company_id = ?
+            ORDER BY team_members.role, team_members.name
+            """,
+            (company_id,)
+        )
+        members = [dict(row) for row in cursor.fetchall()]
+
+    return members
+
 @app.post("/api/companies", response_model=CompanyResponse)
 async def create_company(company: CompanyCreate, token: str = Query(None)):
     current_user = get_current_user(token)
@@ -3889,6 +3915,34 @@ async def get_team_analytics(token: str = Query(None)):
 
     rows.sort(key=lambda r: (TEAM_ROLE_ORDER.get(r.role, 99), r.name))
     return rows
+
+@app.get("/api/team/{team_member_id}/companies", response_model=list[CompanyResponse])
+async def get_team_member_companies(team_member_id: int, token: str = Query(None)):
+    """Companies this team member has worked with - derived from all deals assigned to them
+    (explicitly via assigned_team_member_id, or via legacy login-linked owner_id). Each company
+    appears once even if they have multiple deals with the same company."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM team_members WHERE id = ?", (team_member_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Team member not found")
+        uid = row['user_id'] if row['user_id'] is not None else -1
+
+        cursor.execute(
+            """
+            SELECT DISTINCT companies.* FROM companies
+            INNER JOIN deals ON deals.company_id = companies.id
+            WHERE deals.assigned_team_member_id = ? OR (deals.owner_id = ? AND deals.assigned_team_member_id IS NULL)
+            ORDER BY companies.name
+            """,
+            (team_member_id, uid)
+        )
+        companies = [dict(row) for row in cursor.fetchall()]
+
+    return companies
 
 # ============= MORE ANALYTICS ENDPOINTS =============
 
