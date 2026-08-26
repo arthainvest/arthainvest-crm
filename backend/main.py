@@ -18,7 +18,7 @@ from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
     LeadCreate, LeadUpdate, LeadAssign, LeadResponse,
-    DealCreate, DealMove, DealAssign, DealCompanyAssign, DealProcessStatusUpdate, DealResponse,
+    DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     CampaignRecipientAdd, CampaignRecipientResponse, CampaignSendResult,
     IntegrationToggle, IntegrationResponse,
@@ -132,15 +132,16 @@ def fetch_deal_with_member_name(cursor, deal_id):
     """Read one deal back out joined against team_members, so the frontend gets the assigned
     employee's name alongside the raw id - avoids a second round-trip per row on the Pipeline
     table just to resolve id -> name. Also counts linked Quotations (same subquery pattern as
-    companies.contact_count) and resolves the linked Company's name, if any."""
+    companies.contact_count) and resolves the linked Company's name and Contact's name, if any."""
     cursor.execute(
         """
         SELECT deals.*, team_members.name as assigned_team_member_name,
-               companies.name as company_name,
+               companies.name as company_name, contacts.name as contact_name,
                (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
         FROM deals
         LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
         LEFT JOIN companies ON companies.id = deals.company_id
+        LEFT JOIN contacts ON contacts.id = deals.contact_id
         WHERE deals.id = ?
         """,
         (deal_id,)
@@ -473,7 +474,7 @@ async def convert_lead_to_contact(lead_id: int, token: str = Query(None)):
         )
         contact_id = cursor.lastrowid
 
-        for table in ['tasks', 'meetings', 'calls', 'communication_log', 'campaign_recipients']:
+        for table in ['tasks', 'meetings', 'calls', 'communication_log', 'campaign_recipients', 'deals']:
             cursor.execute(
                 f"UPDATE {table} SET contact_id = ? WHERE lead_id = ? AND contact_id IS NULL",
                 (contact_id, lead_id)
@@ -577,11 +578,12 @@ async def get_deals(stage: str = Query(None), lead_id: int = Query(None), assign
 
         base_query = """
             SELECT deals.*, team_members.name as assigned_team_member_name,
-                   companies.name as company_name,
+                   companies.name as company_name, contacts.name as contact_name,
                    (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
             FROM deals
             LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
             LEFT JOIN companies ON companies.id = deals.company_id
+            LEFT JOIN contacts ON contacts.id = deals.contact_id
         """
         conditions = []
         params = []
@@ -704,6 +706,31 @@ async def link_deal_company(deal_id: int, link: DealCompanyAssign, token: str = 
         cursor.execute(
             "UPDATE deals SET company_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (link.company_id, deal_id)
+        )
+        conn.commit()
+
+        return fetch_deal_with_member_name(cursor, deal_id)
+
+@app.put("/api/deals/{deal_id}/contact", response_model=DealResponse)
+async def link_deal_contact(deal_id: int, link: DealContactAssign, token: str = Query(None)):
+    """Link (or unlink, if contact_id is null) a deal to a Contact - the Contact's own
+    Activity Timeline then shows all the deal's activity (calls, tasks, etc)."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        if link.contact_id is not None:
+            cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Contact not found")
+
+        cursor.execute(
+            "UPDATE deals SET contact_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.contact_id, deal_id)
         )
         conn.commit()
 
@@ -2885,15 +2912,45 @@ async def get_company_deals(company_id: int, token: str = Query(None)):
         cursor.execute(
             """
             SELECT deals.*, team_members.name as assigned_team_member_name,
-                   companies.name as company_name,
+                   companies.name as company_name, contacts.name as contact_name,
                    (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
             FROM deals
             LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
             LEFT JOIN companies ON companies.id = deals.company_id
+            LEFT JOIN contacts ON contacts.id = deals.contact_id
             WHERE deals.company_id = ?
             ORDER BY deals.created_at DESC
             """,
             (company_id,)
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    return rows
+
+@app.get("/api/contacts/{contact_id}/deals", response_model=list[DealResponse])
+async def get_contact_deals(contact_id: int, token: str = Query(None)):
+    """Deals directly linked to this Contact record - the reverse of deals.contact_id."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        cursor.execute(
+            """
+            SELECT deals.*, team_members.name as assigned_team_member_name,
+                   companies.name as company_name, contacts.name as contact_name,
+                   (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
+            FROM deals
+            LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
+            LEFT JOIN companies ON companies.id = deals.company_id
+            LEFT JOIN contacts ON contacts.id = deals.contact_id
+            WHERE deals.contact_id = ?
+            ORDER BY deals.created_at DESC
+            """,
+            (contact_id,)
         )
         rows = [dict(r) for r in cursor.fetchall()]
 

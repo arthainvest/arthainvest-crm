@@ -83,6 +83,9 @@ class DealAssign(BaseModel):
 class DealCompanyAssign(BaseModel):
     company_id: Optional[int] = None  # None unlinks the deal from any Company record
 
+class DealContactAssign(BaseModel):
+    contact_id: Optional[int] = None  # None unlinks the deal from any Contact
+
 class DealProcessStatusUpdate(BaseModel):
     process_status: str  # Login, Sanction, Hold, Disbursed
 
@@ -101,6 +104,8 @@ class DealResponse(BaseModel):
     quotation_count: int = 0
     company_id: Optional[int] = None
     company_name: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
 
 # Campaign Schemas
 class CampaignCreate(BaseModel):
