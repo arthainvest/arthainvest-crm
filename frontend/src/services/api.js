@@ -286,8 +286,10 @@ export const uploadNoteAudio = async (token, contactId, noteId, audioBlob) => {
 };
 
 // Calls
-export const getCallsList = async (token) => {
-  const response = await api.get(`/api/calls?token=${token}`);
+export const getCallsList = async (token, { teamMemberId } = {}) => {
+  const params = new URLSearchParams({ token });
+  if (teamMemberId) params.append('team_member_id', teamMemberId);
+  const response = await api.get(`/api/calls?${params.toString()}`);
   return response.data;
 };
 

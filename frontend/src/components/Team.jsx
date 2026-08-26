@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTeam, createTeamMember, updateTeamMember, deleteTeamMember, getTeamAnalytics } from '../services/api';
+import { getTeam, createTeamMember, updateTeamMember, deleteTeamMember, getTeamAnalytics, getLeads, getContactsList, getCallsList } from '../services/api';
 import '../styles/Team.css';
 
 const ROLE_LABELS = {
@@ -20,6 +20,9 @@ export default function Team() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [expandedId, setExpandedId] = useState(null);
+  const [drilldown, setDrilldown] = useState({ leads: [], contacts: [], calls: [] });
+  const [loadingDrilldown, setLoadingDrilldown] = useState(false);
 
   const token = localStorage.getItem('token');
   const isAdmin = (localStorage.getItem('role') || '').toLowerCase() === 'admin';
@@ -85,6 +88,32 @@ export default function Team() {
     }
   };
 
+  const toggleExpand = async (member) => {
+    if (expandedId === member.id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(member.id);
+    setLoadingDrilldown(true);
+    try {
+      const [leadsData, contactsData, callsData] = await Promise.all([
+        getLeads(token, null, { assignedTeamMemberId: member.id }),
+        getContactsList(token, { assignedTeamMemberId: member.id }),
+        getCallsList(token, { teamMemberId: member.id })
+      ]);
+      setDrilldown({
+        leads: Array.isArray(leadsData) ? leadsData : [],
+        contacts: Array.isArray(contactsData) ? contactsData : [],
+        calls: Array.isArray(callsData) ? callsData : []
+      });
+    } catch (error) {
+      console.error('Error fetching team member drilldown:', error);
+      setDrilldown({ leads: [], contacts: [], calls: [] });
+    } finally {
+      setLoadingDrilldown(false);
+    }
+  };
+
   // Every role always gets its own section, even with nobody in it yet - otherwise a role
   // that exists in the dropdown (e.g. Business Manager) but has no one assigned looks like it
   // was never added at all, rather than "added, just empty."
@@ -132,7 +161,7 @@ export default function Team() {
                       {member.email && <p>📧 {member.email}</p>}
                       {member.phone && <p>📱 {member.phone}</p>}
                     </div>
-                    <div className="team-stats">
+                    <div className="team-stats team-stats-clickable" onClick={() => toggleExpand(member)}>
                       <div className="team-stat">
                         <span className="team-stat-value">{fmt(stats?.calls)}</span>
                         <span className="team-stat-label">Calls</span>
@@ -146,6 +175,56 @@ export default function Team() {
                         <span className="team-stat-label">Revenue</span>
                       </div>
                     </div>
+                    <button className="team-expand-toggle" onClick={() => toggleExpand(member)}>
+                      <span className={`expand-arrow ${expandedId === member.id ? 'open' : ''}`}>▸</span>
+                      {expandedId === member.id ? 'Hide assigned records' : 'View assigned records'}
+                    </button>
+                    {expandedId === member.id && (
+                      <div className="team-drilldown">
+                        {loadingDrilldown ? (
+                          <p className="no-data-inline">Loading...</p>
+                        ) : (
+                          <>
+                            <div className="team-drilldown-group">
+                              <h4>Leads ({drilldown.leads.length})</h4>
+                              {drilldown.leads.length === 0 ? (
+                                <p className="no-data-inline">No leads assigned.</p>
+                              ) : (
+                                <ul className="drilldown-list">
+                                  {drilldown.leads.map((l) => (
+                                    <li key={l.id}>{l.name} <span className="drilldown-status">{l.status}</span></li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="team-drilldown-group">
+                              <h4>Contacts ({drilldown.contacts.length})</h4>
+                              {drilldown.contacts.length === 0 ? (
+                                <p className="no-data-inline">No contacts assigned.</p>
+                              ) : (
+                                <ul className="drilldown-list">
+                                  {drilldown.contacts.map((c) => (
+                                    <li key={c.id}>{c.name} <span className="drilldown-status">{c.status}</span></li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="team-drilldown-group">
+                              <h4>Calls ({drilldown.calls.length})</h4>
+                              {drilldown.calls.length === 0 ? (
+                                <p className="no-data-inline">No calls logged.</p>
+                              ) : (
+                                <ul className="drilldown-list">
+                                  {drilldown.calls.map((c) => (
+                                    <li key={c.id}>{c.lead_name || c.contact_name || c.name || 'Unknown'} <span className="drilldown-status">{c.outcome || 'No outcome'}</span></li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                     {isAdmin && (
                       <div className="team-card-actions">
                         <button className="btn-small" onClick={() => handleEditClick(member)}>Edit</button>

@@ -2052,23 +2052,34 @@ async def delete_meeting(meeting_id: int, token: str = Query(None)):
 # ============= CALLS ENDPOINTS =============
 
 @app.get("/api/calls", response_model=list[CallResponse])
-async def get_calls(token: str = Query(None)):
-    """Get all logged calls"""
+async def get_calls(token: str = Query(None), team_member_id: int = Query(None)):
+    """Get all logged calls, optionally filtered to one team member - used by the Team page's
+    per-member drill-down so a card's "Calls" stat can be expanded into the real logged calls
+    behind it, the same way Reports' Team Productivity drills into leads/contacts. Matches
+    get_team_analytics' OR-fallback exactly (explicit team_member_id, or login-linked
+    created_by for legacy unassigned calls) so the drill-down's count never contradicts the
+    "N Calls" figure already shown on the same card."""
     get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        query = """
             SELECT calls.*, team_members.name as team_member_name,
                    leads.name as lead_name, contacts.name as contact_name
             FROM calls
             LEFT JOIN team_members ON team_members.id = calls.team_member_id
             LEFT JOIN leads ON leads.id = calls.lead_id
             LEFT JOIN contacts ON contacts.id = calls.contact_id
-            ORDER BY calls.call_date DESC, calls.created_at DESC
-            """
-        )
+        """
+        params = []
+        if team_member_id is not None:
+            cursor.execute("SELECT user_id FROM team_members WHERE id = ?", (team_member_id,))
+            row = cursor.fetchone()
+            uid_param = row['user_id'] if row and row['user_id'] is not None else -1
+            query += " WHERE (calls.team_member_id = ? OR (calls.created_by = ? AND calls.team_member_id IS NULL))"
+            params.extend([team_member_id, uid_param])
+        query += " ORDER BY calls.call_date DESC, calls.created_at DESC"
+        cursor.execute(query, params)
         calls = [call_row_to_dict(row) for row in cursor.fetchall()]
 
     return calls
