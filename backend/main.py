@@ -28,7 +28,7 @@ from schemas import (
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskResponse,
     MeetingCreate, MeetingUpdate, MeetingResponse,
-    CallCreate, CallAssign, CallResponse, EmployeeCallStats,
+    CallCreate, CallAssign, CallContactAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
     DialRequest, DialResponse, AISummaryResponse,
     DetectDateRequest, DetectDateResponse,
@@ -2314,6 +2314,54 @@ async def delete_call(call_id: int, token: str = Query(None)):
         conn.commit()
 
     return {"message": "Call deleted"}
+
+@app.put("/api/calls/{call_id}/contact", response_model=CallResponse)
+async def link_call_contact(call_id: int, link: CallContactAssign, token: str = Query(None)):
+    """Link (or unlink, if contact_id is null) a call to a Contact."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        if link.contact_id is not None:
+            cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Contact not found")
+
+        cursor.execute(
+            "UPDATE calls SET contact_id = ? WHERE id = ?",
+            (link.contact_id, call_id)
+        )
+        conn.commit()
+
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+
+@app.get("/api/contacts/{contact_id}/calls", response_model=list[CallResponse])
+async def get_contact_calls(contact_id: int, token: str = Query(None)):
+    """Calls directly linked to this Contact."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        cursor.execute(
+            "SELECT id FROM calls WHERE contact_id = ? ORDER BY call_date DESC, created_at DESC",
+            (contact_id,)
+        )
+        rows = cursor.fetchall()
+        calls = []
+        for row in rows:
+            call = fetch_call_with_member_name(cursor, row['id'])
+            if call:
+                calls.append(call_row_to_dict(call))
+
+    return calls
 
 @app.post("/api/calls/dial", response_model=DialResponse)
 async def dial_call(dial: DialRequest, token: str = Query(None)):
