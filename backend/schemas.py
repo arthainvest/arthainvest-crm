@@ -601,6 +601,8 @@ class DialerQueueItemResponse(BaseModel):
     team_member_id: int
     team_member_name: Optional[str] = None
     status: str  # Pending, Called, Skipped
+    assigned_by: Optional[int] = None
+    assigned_by_name: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
 

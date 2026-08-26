@@ -2415,10 +2415,12 @@ def fetch_dialer_item(cursor, queue_id):
         """
         SELECT dial_queue.*,
                team_members.name as team_member_name,
+               COALESCE(users.full_name, users.username) as assigned_by_name,
                COALESCE(leads.name, contacts.name) as name,
                COALESCE(leads.phone, contacts.phone) as phone
         FROM dial_queue
         LEFT JOIN team_members ON team_members.id = dial_queue.team_member_id
+        LEFT JOIN users ON users.id = dial_queue.assigned_by
         LEFT JOIN leads ON leads.id = dial_queue.lead_id
         LEFT JOIN contacts ON contacts.id = dial_queue.contact_id
         WHERE dial_queue.id = ?
@@ -2485,10 +2487,12 @@ async def get_dialer_queue(token: str = Query(None), team_member_id: int = Query
         query = """
             SELECT dial_queue.*,
                    team_members.name as team_member_name,
+                   COALESCE(users.full_name, users.username) as assigned_by_name,
                    COALESCE(leads.name, contacts.name) as name,
                    COALESCE(leads.phone, contacts.phone) as phone
             FROM dial_queue
             LEFT JOIN team_members ON team_members.id = dial_queue.team_member_id
+            LEFT JOIN users ON users.id = dial_queue.assigned_by
             LEFT JOIN leads ON leads.id = dial_queue.lead_id
             LEFT JOIN contacts ON contacts.id = dial_queue.contact_id
             WHERE 1=1

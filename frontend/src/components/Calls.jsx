@@ -389,6 +389,7 @@ export default function Calls() {
                     <th>Name</th>
                     <th>Phone</th>
                     <th>Source</th>
+                    <th>Assigned By</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -398,6 +399,7 @@ export default function Calls() {
                       <td><strong>{item.name}</strong></td>
                       <td>{item.phone || '-'}</td>
                       <td>{item.lead_id ? 'Lead' : 'Contact'}</td>
+                      <td>{item.assigned_by_name || '-'}</td>
                       <td className="dialer-actions">
                         <button className="btn-small" onClick={() => handleDialerCall(item)} title="Call">📞 Call</button>
                         <button className="btn-small" onClick={() => handleDialerMark(item, 'Called')} title="Mark Called">✅ Called</button>
