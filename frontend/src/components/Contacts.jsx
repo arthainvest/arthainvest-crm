@@ -286,7 +286,7 @@ export default function Contacts() {
   const handleExportCSV = () => {
     const headers = ['Name', 'Company', 'Email', 'Phone', 'City/Area', 'Score', 'Amount', 'Bank', 'Status', 'Renewal Date', 'Employee'];
     const rows = filteredContacts.map((c) => [
-      c.name, c.company || '', c.email || '', c.phone || '', c.city || '', c.score ?? '',
+      c.name, c.company_name || c.company || '', c.email || '', c.phone || '', c.city || '', c.score ?? '',
       c.amount ?? '', c.bank || '', c.status || '', c.renewal_date || '', c.assigned_team_member_name || ''
     ]);
     const csvContent = [headers, ...rows]
