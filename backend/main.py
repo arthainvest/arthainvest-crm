@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from contextlib import asynccontextmanager
 import sqlite3
-from typing import List
+from typing import List, Optional
 import os
 import json
 import uuid
@@ -1188,6 +1188,17 @@ async def update_settings(settings: SettingsUpdate, token: str = Query(None)):
             set_clause = ', '.join(f"{k} = ?" for k, _ in updates)
             values = [v for _, v in updates] + [current_user['user_id']]
             cursor.execute(f"UPDATE user_settings SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", values)
+
+        # A user's own Profile Information (name/email/phone) is the authoritative source for
+        # what to call them - if this login is linked to a team roster entry
+        # (team_members.user_id), keep that entry's name/email/phone in sync automatically,
+        # so Reports/Calls/Pipeline assignment dropdowns always show the current name without
+        # an admin having to separately edit the Team page.
+        roster_updates = [(k, v) for k, v in [('name', settings.full_name), ('email', settings.email), ('phone', settings.phone)] if v is not None]
+        if roster_updates:
+            roster_set_clause = ', '.join(f"{k} = ?" for k, _ in roster_updates)
+            roster_values = [v for _, v in roster_updates] + [current_user['user_id']]
+            cursor.execute(f"UPDATE team_members SET {roster_set_clause} WHERE user_id = ?", roster_values)
 
         conn.commit()
         cursor.execute("SELECT * FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
@@ -3325,6 +3336,23 @@ async def get_team(token: str = Query(None)):
 
     members.sort(key=lambda m: (TEAM_ROLE_ORDER.get(m['role'], 99), m['name']))
     return members
+
+@app.get("/api/team/me", response_model=Optional[TeamMemberResponse])
+async def get_my_team_member(token: str = Query(None)):
+    """The team roster entry (if any) linked to the logged-in account via
+    team_members.user_id - surfaces the same link Reports/Calls already use internally for
+    activity tracking, so Settings can show "you're listed on the roster as X" and keep that
+    entry's name/email/phone in sync when the user edits their own profile. Returns null
+    (not a 404) when this login isn't linked to any roster entry - that's an expected state
+    for a login without a roster entry yet, not an error."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM team_members WHERE user_id = ?", (current_user['user_id'],))
+        row = cursor.fetchone()
+
+    return dict(row) if row else None
 
 @app.post("/api/team", response_model=TeamMemberResponse)
 async def create_team_member(member: TeamMemberCreate, token: str = Query(None)):

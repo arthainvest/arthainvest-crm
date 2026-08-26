@@ -391,6 +391,12 @@ export const getTeam = async (token) => {
   return response.data;
 };
 
+// The roster entry (if any) linked to the logged-in account - null if not linked yet.
+export const getMyTeamMember = async (token) => {
+  const response = await api.get(`/api/team/me?token=${token}`);
+  return response.data;
+};
+
 // Today page - Tasks
 export const getTasks = async (token, date) => {
   const response = await api.get(`/api/tasks?token=${token}&date=${date}`);

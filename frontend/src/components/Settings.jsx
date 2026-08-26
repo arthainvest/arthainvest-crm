@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSettings, updateSettings, getTeam } from '../services/api';
+import { getSettings, updateSettings, getTeam, getMyTeamMember } from '../services/api';
 import { applyTheme } from '../utils/theme';
 import '../styles/Settings.css';
 
@@ -57,6 +57,8 @@ export default function Settings() {
   const [savedSettings, setSavedSettings] = useState(defaultSettings);
   const [saved, setSaved] = useState(false);
   const [teamMembers, setTeamMembers] = useState([]);
+  const [myTeamMember, setMyTeamMember] = useState(null);
+  const [myTeamMemberLoaded, setMyTeamMemberLoaded] = useState(false);
   const token = localStorage.getItem('token');
   const isAdmin = (localStorage.getItem('role') || '').toLowerCase() === 'admin';
   const navigate = useNavigate();
@@ -64,7 +66,19 @@ export default function Settings() {
   useEffect(() => {
     fetchSettings();
     if (isAdmin) fetchTeamMembers();
+    fetchMyTeamMember();
   }, []);
+
+  const fetchMyTeamMember = async () => {
+    try {
+      const data = await getMyTeamMember(token);
+      setMyTeamMember(data || null);
+    } catch (error) {
+      console.error('Error fetching linked team roster entry:', error);
+    } finally {
+      setMyTeamMemberLoaded(true);
+    }
+  };
 
   const fetchTeamMembers = async () => {
     try {
@@ -110,6 +124,9 @@ export default function Settings() {
       applyTheme(mapped.theme);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      // Saving Profile Information may have just synced the linked roster entry's
+      // name/email/phone server-side - refresh so the "linked as" line reflects it.
+      fetchMyTeamMember();
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('Failed to save settings. Please try again.');
@@ -132,6 +149,18 @@ export default function Settings() {
       <div className="settings-content">
         <div className="settings-section">
           <h2>Profile Information</h2>
+          {myTeamMemberLoaded && (
+            myTeamMember ? (
+              <p className="settings-section-hint settings-roster-link">
+                🔗 Linked to the team roster as <strong>{myTeamMember.name}</strong> ({ROLE_LABELS[myTeamMember.role] || myTeamMember.role}).
+                Saving here keeps that roster entry's name/email/phone in sync automatically.
+              </p>
+            ) : (
+              <p className="settings-section-hint">
+                Not yet listed on the team roster{isAdmin ? ' - add yourself from the Team page to appear in Reports and assignment dropdowns.' : ' - ask an Admin to add you to the team roster.'}
+              </p>
+            )
+          )}
           <div className="form-group">
             <label>Full Name</label>
             <input
