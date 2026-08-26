@@ -197,12 +197,16 @@ def fetch_call_with_member_name(cursor, call_id):
     return dict(cursor.fetchone())
 
 def fetch_task_with_member_name(cursor, task_id):
-    """Same join-by-id pattern as fetch_deal_with_member_name, for tasks."""
+    """Same join-by-id pattern as fetch_deal_with_member_name, for tasks - also resolves the
+    linked lead/contact name, if any, same as fetch_meeting_with_names."""
     cursor.execute(
         """
-        SELECT tasks.*, team_members.name as assigned_team_member_name
+        SELECT tasks.*, team_members.name as assigned_team_member_name,
+               leads.name as lead_name, contacts.name as contact_name
         FROM tasks
         LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+        LEFT JOIN leads ON leads.id = tasks.lead_id
+        LEFT JOIN contacts ON contacts.id = tasks.contact_id
         WHERE tasks.id = ?
         """,
         (task_id,)
@@ -1830,9 +1834,12 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
         if view == "high_priority":
             cursor.execute(
                 """
-                SELECT tasks.*, team_members.name as assigned_team_member_name
+                SELECT tasks.*, team_members.name as assigned_team_member_name,
+                       leads.name as lead_name, contacts.name as contact_name
                 FROM tasks
                 LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+                LEFT JOIN leads ON leads.id = tasks.lead_id
+                LEFT JOIN contacts ON contacts.id = tasks.contact_id
                 WHERE tasks.priority = 'High' AND tasks.completed = 0
                 ORDER BY tasks.due_date ASC, tasks.created_at ASC
                 """
@@ -1840,9 +1847,12 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
         else:
             cursor.execute(
                 """
-                SELECT tasks.*, team_members.name as assigned_team_member_name
+                SELECT tasks.*, team_members.name as assigned_team_member_name,
+                       leads.name as lead_name, contacts.name as contact_name
                 FROM tasks
                 LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+                LEFT JOIN leads ON leads.id = tasks.lead_id
+                LEFT JOIN contacts ON contacts.id = tasks.contact_id
                 WHERE tasks.due_date = COALESCE(?, date('now'))
                 ORDER BY tasks.completed ASC, tasks.created_at ASC
                 """,
@@ -1860,8 +1870,8 @@ async def create_task(task: TaskCreate, token: str = Query(None)):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO tasks (title, due_date, priority, created_by, assigned_team_member_id) VALUES (?, ?, ?, ?, ?)",
-            (task.title, task.due_date, task.priority or 'Normal', current_user['user_id'], task.assigned_team_member_id)
+            "INSERT INTO tasks (title, due_date, priority, created_by, assigned_team_member_id, lead_id, contact_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (task.title, task.due_date, task.priority or 'Normal', current_user['user_id'], task.assigned_team_member_id, task.lead_id, task.contact_id)
         )
         conn.commit()
         task_id = cursor.lastrowid
@@ -1876,7 +1886,7 @@ async def update_task(task_id: int, task: TaskUpdate, token: str = Query(None)):
 
     updates = []
     values = []
-    for field in ['title', 'due_date', 'completed', 'priority', 'assigned_team_member_id']:
+    for field in ['title', 'due_date', 'completed', 'priority', 'assigned_team_member_id', 'lead_id', 'contact_id']:
         value = getattr(task, field)
         if value is not None:
             updates.append(f"{field} = ?")

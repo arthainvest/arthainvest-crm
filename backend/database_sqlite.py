@@ -347,18 +347,28 @@ def init_db():
                 priority TEXT DEFAULT 'Normal',
                 created_by INTEGER,
                 assigned_team_member_id INTEGER,
+                lead_id INTEGER,
+                contact_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (created_by) REFERENCES users(id),
-                FOREIGN KEY (assigned_team_member_id) REFERENCES team_members(id)
+                FOREIGN KEY (assigned_team_member_id) REFERENCES team_members(id),
+                FOREIGN KEY (lead_id) REFERENCES leads(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id)
             )
         """)
 
-        # tasks already existed in databases from earlier this session, before priority existed.
-        try:
-            cursor.execute("ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT 'Normal'")
-        except sqlite3.OperationalError:
-            pass
+        # tasks already existed in databases from earlier this session, before priority/
+        # lead_id/contact_id existed.
+        for ddl in [
+            "ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT 'Normal'",
+            "ALTER TABLE tasks ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+            "ALTER TABLE tasks ADD COLUMN contact_id INTEGER REFERENCES contacts(id)",
+        ]:
+            try:
+                cursor.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS meetings (

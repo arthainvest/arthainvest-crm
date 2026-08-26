@@ -311,6 +311,8 @@ class TaskCreate(BaseModel):
     due_date: str  # ISO "YYYY-MM-DD"
     priority: Optional[str] = None  # Low, Normal, High
     assigned_team_member_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -318,6 +320,8 @@ class TaskUpdate(BaseModel):
     completed: Optional[bool] = None
     priority: Optional[str] = None
     assigned_team_member_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
 
 class TaskResponse(BaseModel):
     id: int
@@ -327,6 +331,10 @@ class TaskResponse(BaseModel):
     priority: str = "Normal"
     assigned_team_member_id: Optional[int] = None
     assigned_team_member_name: Optional[str] = None
+    lead_id: Optional[int] = None
+    lead_name: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

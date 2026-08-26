@@ -16,7 +16,7 @@ const formatDateISO = (d) => {
   return `${year}-${month}-${day}`;
 };
 
-const emptyTaskForm = { title: '', priority: 'Normal', assigned_team_member_id: '' };
+const emptyTaskForm = { title: '', priority: 'Normal', assigned_team_member_id: '', lead_id: '', contact_id: '' };
 const emptyMeetingForm = { title: '', meeting_time: '', lead_id: '', contact_id: '', location: '', notes: '', assigned_team_member_id: '' };
 
 export default function Today() {
@@ -116,7 +116,9 @@ export default function Today() {
         title: taskForm.title,
         due_date: selectedDate,
         priority: taskForm.priority || 'Normal',
-        assigned_team_member_id: taskForm.assigned_team_member_id ? Number(taskForm.assigned_team_member_id) : null
+        assigned_team_member_id: taskForm.assigned_team_member_id ? Number(taskForm.assigned_team_member_id) : null,
+        lead_id: taskForm.lead_id ? Number(taskForm.lead_id) : null,
+        contact_id: taskForm.contact_id ? Number(taskForm.contact_id) : null
       });
       setShowTaskForm(false);
       setTaskForm(emptyTaskForm);
@@ -227,6 +229,11 @@ export default function Today() {
                     {new Date(`${task.due_date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                   </span>
                 )}
+                {(task.lead_name || task.contact_name) && (
+                  <span className="today-assignee-badge" title={task.lead_name ? 'Linked lead' : 'Linked contact'}>
+                    {task.lead_name ? `📈 ${task.lead_name}` : `👥 ${task.contact_name}`}
+                  </span>
+                )}
                 {task.assigned_team_member_name && (
                   <span className="today-assignee-badge">{task.assigned_team_member_name}</span>
                 )}
@@ -287,6 +294,26 @@ export default function Today() {
                     <option value="Low">Low</option>
                     <option value="Normal">Normal</option>
                     <option value="High">High</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Link to Lead</label>
+                  <select
+                    value={taskForm.lead_id}
+                    onChange={(e) => setTaskForm({ ...taskForm, lead_id: e.target.value, contact_id: '' })}
+                  >
+                    <option value="">-- None --</option>
+                    {leads.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Link to Contact</label>
+                  <select
+                    value={taskForm.contact_id}
+                    onChange={(e) => setTaskForm({ ...taskForm, contact_id: e.target.value, lead_id: '' })}
+                  >
+                    <option value="">-- None --</option>
+                    {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
