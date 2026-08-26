@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyContacts, getCompanyDeals } from '../services/api';
+import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyContacts, getCompanyDeals, getCompanyQuotations } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Companies.css';
 
@@ -17,6 +17,7 @@ export default function Companies() {
   const [expandedId, setExpandedId] = useState(null);
   const [linkedContacts, setLinkedContacts] = useState([]);
   const [linkedDeals, setLinkedDeals] = useState([]);
+  const [linkedQuotations, setLinkedQuotations] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const token = localStorage.getItem('token');
 
@@ -41,16 +42,19 @@ export default function Companies() {
     setExpandedId(companyId);
     setLoadingContacts(true);
     try {
-      const [contactsData, dealsData] = await Promise.all([
+      const [contactsData, dealsData, quotationsData] = await Promise.all([
         getCompanyContacts(token, companyId),
         getCompanyDeals(token, companyId),
+        getCompanyQuotations(token, companyId),
       ]);
       setLinkedContacts(Array.isArray(contactsData) ? contactsData : []);
       setLinkedDeals(Array.isArray(dealsData) ? dealsData : []);
+      setLinkedQuotations(Array.isArray(quotationsData) ? quotationsData : []);
     } catch (err) {
-      console.error('Failed to fetch linked contacts/deals:', err);
+      console.error('Failed to fetch linked contacts/deals/quotations:', err);
       setLinkedContacts([]);
       setLinkedDeals([]);
+      setLinkedQuotations([]);
     } finally {
       setLoadingContacts(false);
     }
@@ -133,6 +137,7 @@ export default function Companies() {
                 <th>Website</th>
                 <th>Contacts</th>
                 <th>Deals</th>
+                <th>Quotations</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -145,8 +150,8 @@ export default function Companies() {
                         type="button"
                         className="company-expand-toggle"
                         onClick={() => toggleExpand(c.id)}
-                        title={expandedId === c.id ? 'Hide linked records' : 'Show linked contacts/deals'}
-                        disabled={!c.contact_count && !c.deal_count}
+                        title={expandedId === c.id ? 'Hide linked records' : 'Show linked contacts/deals/quotations'}
+                        disabled={!c.contact_count && !c.deal_count && !c.quotation_count}
                       >
                         <span className={`expand-arrow ${expandedId === c.id ? 'open' : ''}`}>▸</span>
                       </button>
@@ -164,6 +169,9 @@ export default function Companies() {
                       <span className="company-contact-count">{c.deal_count} deal{c.deal_count === 1 ? '' : 's'}</span>
                     </td>
                     <td>
+                      <span className="company-contact-count">{c.quotation_count} quotation{c.quotation_count === 1 ? '' : 's'}</span>
+                    </td>
+                    <td>
                       <button className="btn-small" onClick={() => openEditModal(c)}>Edit</button>
                       <button className="btn-small delete" onClick={() => handleDelete(c.id)}>Delete</button>
                     </td>
@@ -171,7 +179,7 @@ export default function Companies() {
                   {expandedId === c.id && (
                     <tr className="company-contacts-row">
                       <td></td>
-                      <td colSpan="9">
+                      <td colSpan="10">
                         {loadingContacts ? (
                           <span className="no-data-inline">Loading…</span>
                         ) : (
@@ -202,6 +210,21 @@ export default function Companies() {
                                     <li key={deal.id}>
                                       <strong>Deal #{deal.id}</strong>
                                       <span> · {dealLabel(deal)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="company-linked-group">
+                              <h4>Quotations</h4>
+                              {linkedQuotations.length === 0 ? (
+                                <span className="no-data-inline">No quotations for this company's deals.</span>
+                              ) : (
+                                <ul className="company-linked-contacts">
+                                  {linkedQuotations.map((q) => (
+                                    <li key={q.id}>
+                                      <strong>{q.quotation_number}</strong>
+                                      <span> · {q.title} · ₹{q.grand_total.toLocaleString('en-IN')} · {q.status}</span>
                                     </li>
                                   ))}
                                 </ul>

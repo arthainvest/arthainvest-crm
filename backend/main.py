@@ -2730,7 +2730,9 @@ async def get_activities(
 _COMPANY_WITH_CONTACT_COUNT_SQL = """
     SELECT companies.*,
            (SELECT COUNT(*) FROM contacts WHERE contacts.company_id = companies.id) as contact_count,
-           (SELECT COUNT(*) FROM deals WHERE deals.company_id = companies.id) as deal_count
+           (SELECT COUNT(*) FROM deals WHERE deals.company_id = companies.id) as deal_count,
+           (SELECT COUNT(*) FROM quotations JOIN deals ON deals.id = quotations.deal_id
+            WHERE deals.company_id = companies.id) as quotation_count
     FROM companies
 """
 
@@ -2801,6 +2803,34 @@ async def get_company_deals(company_id: int, token: str = Query(None)):
         rows = [dict(r) for r in cursor.fetchall()]
 
     return rows
+
+@app.get("/api/companies/{company_id}/quotations", response_model=list[QuotationResponse])
+async def get_company_quotations(company_id: int, token: str = Query(None)):
+    """Quotations linked to this Company - reached only indirectly, through the deals linked
+    to it (quotations.deal_id -> deals.company_id), since quotations have no company_id of
+    their own. Shown on the Companies page alongside linked contacts/deals, completing the
+    same reverse-lookup that Quotations.jsx already resolves forward."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            """
+            SELECT quotations.id FROM quotations
+            JOIN deals ON deals.id = quotations.deal_id
+            WHERE deals.company_id = ?
+            ORDER BY quotations.created_at DESC
+            """,
+            (company_id,)
+        )
+        ids = [r['id'] for r in cursor.fetchall()]
+        quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
+
+    return quotations
 
 @app.post("/api/companies", response_model=CompanyResponse)
 async def create_company(company: CompanyCreate, token: str = Query(None)):

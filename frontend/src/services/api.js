@@ -563,6 +563,11 @@ export const getCompanyDeals = async (token, companyId) => {
   return response.data;
 };
 
+export const getCompanyQuotations = async (token, companyId) => {
+  const response = await api.get(`/api/companies/${companyId}/quotations?token=${token}`);
+  return response.data;
+};
+
 export const linkDealCompany = async (token, dealId, companyId) => {
   const response = await api.put(`/api/deals/${dealId}/company?token=${token}`, { company_id: companyId });
   return response.data;

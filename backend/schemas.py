@@ -652,6 +652,7 @@ class CompanyResponse(BaseModel):
     notes: Optional[str] = None
     contact_count: int = 0
     deal_count: int = 0
+    quotation_count: int = 0
     created_at: datetime
     updated_at: datetime
 
