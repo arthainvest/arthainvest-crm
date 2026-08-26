@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
-    LeadCreate, LeadUpdate, LeadAssign, LeadResponse,
+    LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     CampaignRecipientAdd, CampaignRecipientResponse, CampaignSendResult,
@@ -155,10 +155,12 @@ def fetch_lead_with_member_name(cursor, lead_id):
     cursor.execute(
         """
         SELECT leads.*, team_members.name as assigned_team_member_name,
-               converted_contact.name as converted_contact_name
+               converted_contact.name as converted_contact_name,
+               calls.name as call_name
         FROM leads
         LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
         LEFT JOIN contacts AS converted_contact ON converted_contact.id = leads.converted_contact_id
+        LEFT JOIN calls ON calls.id = leads.call_id
         WHERE leads.id = ?
         """,
         (lead_id,)
@@ -558,6 +560,54 @@ async def delete_lead(lead_id: int, token: str = Query(None)):
         _delete_audio_file(audio_url)
 
     return {"message": "Lead deleted"}
+
+@app.put("/api/leads/{lead_id}/call", response_model=LeadResponse)
+async def link_lead_call(lead_id: int, link: LeadCallAssign, token: str = Query(None)):
+    """Link (or unlink, if call_id is null) a lead to a Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Lead not found")
+
+        if link.call_id is not None:
+            cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "UPDATE leads SET call_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.call_id, lead_id)
+        )
+        conn.commit()
+
+        return fetch_lead_with_member_name(cursor, lead_id)
+
+@app.get("/api/calls/{call_id}/leads", response_model=list[LeadResponse])
+async def get_call_leads(call_id: int, token: str = Query(None)):
+    """Leads directly linked to this Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "SELECT id FROM leads WHERE call_id = ? ORDER BY created_at DESC",
+            (call_id,)
+        )
+        rows = cursor.fetchall()
+        leads = []
+        for row in rows:
+            lead = fetch_lead_with_member_name(cursor, row['id'])
+            if lead:
+                leads.append(lead)
+
+        return leads
 
 # ============= DEALS/PIPELINE ENDPOINTS =============
 

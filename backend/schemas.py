@@ -64,6 +64,8 @@ class LeadResponse(BaseModel):
     assigned_team_member_name: Optional[str] = None
     converted_contact_id: Optional[int] = None
     converted_contact_name: Optional[str] = None
+    call_id: Optional[int] = None
+    call_name: Optional[str] = None
 
 # Deal Schemas
 class DealCreate(BaseModel):
@@ -97,6 +99,9 @@ class CallContactAssign(BaseModel):
 
 class TaskContactAssign(BaseModel):
     contact_id: Optional[int] = None  # None unlinks the task from any Contact
+
+class LeadCallAssign(BaseModel):
+    call_id: Optional[int] = None  # None unlinks the lead from any Call
 
 class DealProcessStatusUpdate(BaseModel):
     process_status: str  # Login, Sanction, Hold, Disbursed
