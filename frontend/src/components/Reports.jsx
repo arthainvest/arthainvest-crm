@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   getSalesAnalytics, getContactsAnalytics, getCallsAnalytics,
-  getCampaigns, getTeamAnalytics, getSettings, updateSettings, getLeadSourceROI
+  getCampaigns, getTeamAnalytics, getSettings, updateSettings, getLeadSourceROI,
+  getLeads, getContactsList
 } from '../services/api';
 import '../styles/Reports.css';
 
@@ -20,6 +21,17 @@ export default function Reports() {
   const [showSettings, setShowSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const token = localStorage.getItem('token');
+
+  // Drill-down: Lead Source ROI row -> the actual leads from that source
+  const [expandedSource, setExpandedSource] = useState(null);
+  const [sourceLeads, setSourceLeads] = useState([]);
+  const [loadingSourceLeads, setLoadingSourceLeads] = useState(false);
+
+  // Drill-down: Team Productivity row -> that member's actual leads + contacts
+  const [expandedMemberId, setExpandedMemberId] = useState(null);
+  const [memberLeads, setMemberLeads] = useState([]);
+  const [memberContacts, setMemberContacts] = useState([]);
+  const [loadingMemberDrilldown, setLoadingMemberDrilldown] = useState(false);
 
   useEffect(() => {
     getSalesAnalytics(token)
@@ -55,6 +67,47 @@ export default function Reports() {
       alert('Failed to save report settings. Please try again.');
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const toggleSourceExpand = async (source) => {
+    if (expandedSource === source) {
+      setExpandedSource(null);
+      return;
+    }
+    setExpandedSource(source);
+    setLoadingSourceLeads(true);
+    try {
+      const data = await getLeads(token, null, { source });
+      setSourceLeads(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching leads for source drill-down:', error);
+      setSourceLeads([]);
+    } finally {
+      setLoadingSourceLeads(false);
+    }
+  };
+
+  const toggleMemberExpand = async (member) => {
+    if (expandedMemberId === member.id) {
+      setExpandedMemberId(null);
+      return;
+    }
+    setExpandedMemberId(member.id);
+    setLoadingMemberDrilldown(true);
+    try {
+      const [leadsData, contactsData] = await Promise.all([
+        getLeads(token, null, { assignedTeamMemberId: member.id }),
+        getContactsList(token, { assignedTeamMemberId: member.id }),
+      ]);
+      setMemberLeads(Array.isArray(leadsData) ? leadsData : []);
+      setMemberContacts(Array.isArray(contactsData) ? contactsData : []);
+    } catch (error) {
+      console.error('Error fetching leads/contacts for team member drill-down:', error);
+      setMemberLeads([]);
+      setMemberContacts([]);
+    } finally {
+      setLoadingMemberDrilldown(false);
     }
   };
 
@@ -203,6 +256,7 @@ export default function Reports() {
             <table className="team-productivity-table">
               <thead>
                 <tr>
+                  <th></th>
                   <th>Source</th>
                   <th>Leads</th>
                   <th>Converted to Deal</th>
@@ -213,14 +267,41 @@ export default function Reports() {
               </thead>
               <tbody>
                 {leadSources.map((s) => (
-                  <tr key={s.source}>
-                    <td>{s.source}</td>
-                    <td>{s.total_leads}</td>
-                    <td>{s.total_deals}</td>
-                    <td>{s.conversion_rate}%</td>
-                    <td>₹{Number(s.total_deal_value).toLocaleString('en-IN')}</td>
-                    <td>₹{Number(s.closed_deal_value).toLocaleString('en-IN')}</td>
-                  </tr>
+                  <React.Fragment key={s.source}>
+                    <tr className="drilldown-row" onClick={() => toggleSourceExpand(s.source)}>
+                      <td>
+                        <span className={`expand-arrow ${expandedSource === s.source ? 'open' : ''}`}>▸</span>
+                      </td>
+                      <td>{s.source}</td>
+                      <td>{s.total_leads}</td>
+                      <td>{s.total_deals}</td>
+                      <td>{s.conversion_rate}%</td>
+                      <td>₹{Number(s.total_deal_value).toLocaleString('en-IN')}</td>
+                      <td>₹{Number(s.closed_deal_value).toLocaleString('en-IN')}</td>
+                    </tr>
+                    {expandedSource === s.source && (
+                      <tr className="drilldown-detail-row">
+                        <td></td>
+                        <td colSpan="6">
+                          {loadingSourceLeads ? (
+                            <span className="no-data-inline">Loading…</span>
+                          ) : sourceLeads.length === 0 ? (
+                            <span className="no-data-inline">No leads found for this source.</span>
+                          ) : (
+                            <ul className="drilldown-list">
+                              {sourceLeads.map((lead) => (
+                                <li key={lead.id}>
+                                  <strong>{lead.name}</strong>
+                                  <span className={`drilldown-status status-${(lead.status || '').toLowerCase().replace(/\s+/g, '-')}`}>{lead.status}</span>
+                                  {lead.phone && <span> · {lead.phone}</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
@@ -268,6 +349,7 @@ export default function Reports() {
             <table className="team-productivity-table">
               <thead>
                 <tr>
+                  <th></th>
                   <th>Team Member</th>
                   <th>Role</th>
                   <th>Calls</th>
@@ -280,16 +362,64 @@ export default function Reports() {
               </thead>
               <tbody>
                 {teamStats.map((m) => (
-                  <tr key={m.id}>
-                    <td>{m.name}</td>
-                    <td>{ROLE_LABELS[m.role] || m.role}</td>
-                    <td>{fmtStat(m.calls)}</td>
-                    <td>{fmtStat(m.deals_closed)}</td>
-                    <td>{fmtStat(m.revenue, true)}</td>
-                    <td>{m.conversion_rate === null || m.conversion_rate === undefined ? '—' : `${m.conversion_rate}%`}</td>
-                    <td>{fmtStat(m.tasks_completed)}</td>
-                    <td>{fmtStat(m.meetings_conducted)}</td>
-                  </tr>
+                  <React.Fragment key={m.id}>
+                    <tr className="drilldown-row" onClick={() => toggleMemberExpand(m)}>
+                      <td>
+                        <span className={`expand-arrow ${expandedMemberId === m.id ? 'open' : ''}`}>▸</span>
+                      </td>
+                      <td>{m.name}</td>
+                      <td>{ROLE_LABELS[m.role] || m.role}</td>
+                      <td>{fmtStat(m.calls)}</td>
+                      <td>{fmtStat(m.deals_closed)}</td>
+                      <td>{fmtStat(m.revenue, true)}</td>
+                      <td>{m.conversion_rate === null || m.conversion_rate === undefined ? '—' : `${m.conversion_rate}%`}</td>
+                      <td>{fmtStat(m.tasks_completed)}</td>
+                      <td>{fmtStat(m.meetings_conducted)}</td>
+                    </tr>
+                    {expandedMemberId === m.id && (
+                      <tr className="drilldown-detail-row">
+                        <td></td>
+                        <td colSpan="8">
+                          {loadingMemberDrilldown ? (
+                            <span className="no-data-inline">Loading…</span>
+                          ) : (
+                            <div className="drilldown-groups">
+                              <div className="drilldown-group">
+                                <h4>Leads ({memberLeads.length})</h4>
+                                {memberLeads.length === 0 ? (
+                                  <span className="no-data-inline">No leads assigned to {m.name}.</span>
+                                ) : (
+                                  <ul className="drilldown-list">
+                                    {memberLeads.map((lead) => (
+                                      <li key={lead.id}>
+                                        <strong>{lead.name}</strong>
+                                        <span className={`drilldown-status status-${(lead.status || '').toLowerCase().replace(/\s+/g, '-')}`}>{lead.status}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                              <div className="drilldown-group">
+                                <h4>Contacts ({memberContacts.length})</h4>
+                                {memberContacts.length === 0 ? (
+                                  <span className="no-data-inline">No contacts assigned to {m.name}.</span>
+                                ) : (
+                                  <ul className="drilldown-list">
+                                    {memberContacts.map((contact) => (
+                                      <li key={contact.id}>
+                                        <strong>{contact.name}</strong>
+                                        {contact.phone && <span> · {contact.phone}</span>}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

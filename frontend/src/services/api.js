@@ -41,10 +41,12 @@ export const registerUser = async (userData) => {
 };
 
 // Leads
-export const getLeads = async (token, status = null) => {
+export const getLeads = async (token, status = null, { source, assignedTeamMemberId } = {}) => {
   const params = new URLSearchParams();
   if (token) params.append('token', token);
   if (status) params.append('status', status);
+  if (source) params.append('source', source);
+  if (assignedTeamMemberId) params.append('assigned_team_member_id', assignedTeamMemberId);
 
   const response = await api.get(`/api/leads?${params.toString()}`);
   return response.data;
@@ -221,8 +223,10 @@ export const updateSettings = async (token, settingsData) => {
 };
 
 // Contacts
-export const getContactsList = async (token) => {
-  const response = await api.get(`/api/contacts?token=${token}`);
+export const getContactsList = async (token, { assignedTeamMemberId } = {}) => {
+  const params = new URLSearchParams({ token });
+  if (assignedTeamMemberId) params.append('assigned_team_member_id', assignedTeamMemberId);
+  const response = await api.get(`/api/contacts?${params.toString()}`);
   return response.data;
 };
 

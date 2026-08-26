@@ -327,24 +327,43 @@ async def register(user: UserCreate):
 # ============= LEADS ENDPOINTS =============
 
 @app.get("/api/leads", response_model=list[LeadResponse])
-async def get_leads(token: str = Query(None), status: str = Query(None)):
-    """Get all leads, optionally filtered by status"""
+async def get_leads(
+    token: str = Query(None), status: str = Query(None),
+    source: str = Query(None), assigned_team_member_id: int = Query(None)
+):
+    """Get all leads, optionally filtered by status/source/assigned team member - the latter
+    two power the Reports page's drill-downs (Lead Source ROI -> actual leads, Team
+    Productivity -> a member's actual leads) without needing dedicated reverse-lookup routes."""
     get_current_user(token)
 
     base_query = """
         SELECT leads.*, team_members.name as assigned_team_member_name
         FROM leads
         LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
+        WHERE 1=1
     """
+    conditions = []
+    params = []
+    if status:
+        conditions.append("leads.status = ?")
+        params.append(status)
+    if source:
+        # Mirrors the COALESCE(NULLIF(TRIM(source), ''), 'Not Specified') grouping used by
+        # /api/analytics/lead-sources, so "Not Specified" here matches the same blank/null
+        # leads that report groups under that label instead of matching nothing.
+        if source == "Not Specified":
+            conditions.append("(leads.source IS NULL OR TRIM(leads.source) = '')")
+        else:
+            conditions.append("leads.source = ?")
+            params.append(source)
+    if assigned_team_member_id is not None:
+        conditions.append("leads.assigned_team_member_id = ?")
+        params.append(assigned_team_member_id)
 
     with get_db() as conn:
         cursor = conn.cursor()
-
-        if status:
-            cursor.execute(base_query + " WHERE leads.status = ? ORDER BY leads.created_at DESC", (status,))
-        else:
-            cursor.execute(base_query + " ORDER BY leads.created_at DESC")
-
+        query = base_query + (" AND " + " AND ".join(conditions) if conditions else "") + " ORDER BY leads.created_at DESC"
+        cursor.execute(query, params)
         leads = [dict(row) for row in cursor.fetchall()]
 
     return leads
@@ -1213,22 +1232,25 @@ async def update_settings(settings: SettingsUpdate, token: str = Query(None)):
 # ============= CONTACTS ENDPOINTS =============
 
 @app.get("/api/contacts", response_model=list[ContactResponse])
-async def get_contacts(token: str = Query(None)):
-    """Get all contacts"""
+async def get_contacts(token: str = Query(None), assigned_team_member_id: int = Query(None)):
+    """Get all contacts, optionally filtered by assigned team member - powers the Reports
+    page's Team Productivity drill-down (a member's actual contacts, not just a count)."""
     get_current_user(token)
+
+    base_query = """
+        SELECT contacts.*, team_members.name as assigned_team_member_name,
+               companies.name as company_name
+        FROM contacts
+        LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
+        LEFT JOIN companies ON companies.id = contacts.company_id
+    """
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT contacts.*, team_members.name as assigned_team_member_name,
-                   companies.name as company_name
-            FROM contacts
-            LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
-            LEFT JOIN companies ON companies.id = contacts.company_id
-            ORDER BY contacts.created_at DESC
-            """
-        )
+        if assigned_team_member_id is not None:
+            cursor.execute(base_query + " WHERE contacts.assigned_team_member_id = ? ORDER BY contacts.created_at DESC", (assigned_team_member_id,))
+        else:
+            cursor.execute(base_query + " ORDER BY contacts.created_at DESC")
         contacts = [dict(row) for row in cursor.fetchall()]
 
     return contacts
