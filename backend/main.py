@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
-    LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadResponse,
+    LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     CampaignRecipientAdd, CampaignRecipientResponse, CampaignSendResult,
@@ -156,11 +156,13 @@ def fetch_lead_with_member_name(cursor, lead_id):
         """
         SELECT leads.*, team_members.name as assigned_team_member_name,
                converted_contact.name as converted_contact_name,
-               calls.name as call_name
+               calls.name as call_name,
+               tasks.title as task_name
         FROM leads
         LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
         LEFT JOIN contacts AS converted_contact ON converted_contact.id = leads.converted_contact_id
         LEFT JOIN calls ON calls.id = leads.call_id
+        LEFT JOIN tasks ON tasks.id = leads.task_id
         WHERE leads.id = ?
         """,
         (lead_id,)
@@ -599,6 +601,54 @@ async def get_call_leads(call_id: int, token: str = Query(None)):
         cursor.execute(
             "SELECT id FROM leads WHERE call_id = ? ORDER BY created_at DESC",
             (call_id,)
+        )
+        rows = cursor.fetchall()
+        leads = []
+        for row in rows:
+            lead = fetch_lead_with_member_name(cursor, row['id'])
+            if lead:
+                leads.append(lead)
+
+        return leads
+
+@app.put("/api/leads/{lead_id}/task", response_model=LeadResponse)
+async def link_lead_task(lead_id: int, link: LeadTaskAssign, token: str = Query(None)):
+    """Link (or unlink, if task_id is null) a lead to a Task."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Lead not found")
+
+        if link.task_id is not None:
+            cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (link.task_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Task not found")
+
+        cursor.execute(
+            "UPDATE leads SET task_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.task_id, lead_id)
+        )
+        conn.commit()
+
+        return fetch_lead_with_member_name(cursor, lead_id)
+
+@app.get("/api/tasks/{task_id}/leads", response_model=list[LeadResponse])
+async def get_task_leads(task_id: int, token: str = Query(None)):
+    """Leads directly linked to this Task."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        cursor.execute(
+            "SELECT id FROM leads WHERE task_id = ? ORDER BY created_at DESC",
+            (task_id,)
         )
         rows = cursor.fetchall()
         leads = []
