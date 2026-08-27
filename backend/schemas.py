@@ -125,6 +125,9 @@ class MeetingDealAssign(BaseModel):
 class MeetingCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the meeting from any Call
 
+class MeetingTaskAssign(BaseModel):
+    task_id: Optional[int] = None  # None unlinks the meeting from any Task
+
 class LeadCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the lead from any Call
 
@@ -489,6 +492,8 @@ class MeetingResponse(BaseModel):
     deal_label: Optional[str] = None
     call_id: Optional[int] = None
     call_name: Optional[str] = None
+    task_id: Optional[int] = None
+    task_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
