@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
-    LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadCompanyAssign, LeadResponse,
+    LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadCompanyAssign, LeadQuotationAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealTaskAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     CampaignRecipientAdd, CampaignRecipientResponse, CampaignSendResult,
@@ -162,6 +162,7 @@ def fetch_lead_with_member_name(cursor, lead_id):
                companies.name as company_name,
                calls.name as call_name,
                tasks.title as task_name,
+               quotations.title as quotation_title,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
                deal_leads.name as deal_lead_name
         FROM leads
@@ -170,6 +171,7 @@ def fetch_lead_with_member_name(cursor, lead_id):
         LEFT JOIN companies ON companies.id = leads.company_id
         LEFT JOIN calls ON calls.id = leads.call_id
         LEFT JOIN tasks ON tasks.id = leads.task_id
+        LEFT JOIN quotations ON quotations.id = leads.quotation_id
         LEFT JOIN deals ON deals.id = leads.deal_id
         LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
         WHERE leads.id = ?
@@ -380,6 +382,7 @@ async def get_leads(
                companies.name as company_name,
                calls.name as call_name,
                tasks.title as task_name,
+               quotations.title as quotation_title,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
                deal_leads.name as deal_lead_name
         FROM leads
@@ -388,6 +391,7 @@ async def get_leads(
         LEFT JOIN companies ON companies.id = leads.company_id
         LEFT JOIN calls ON calls.id = leads.call_id
         LEFT JOIN tasks ON tasks.id = leads.task_id
+        LEFT JOIN quotations ON quotations.id = leads.quotation_id
         LEFT JOIN deals ON deals.id = leads.deal_id
         LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
         WHERE 1=1
@@ -790,6 +794,54 @@ async def get_company_leads(company_id: int, token: str = Query(None)):
         cursor.execute(
             "SELECT id FROM leads WHERE company_id = ? ORDER BY created_at DESC",
             (company_id,)
+        )
+        rows = cursor.fetchall()
+        leads = []
+        for row in rows:
+            lead = fetch_lead_with_member_name(cursor, row['id'])
+            if lead:
+                leads.append(lead)
+
+        return leads
+
+@app.put("/api/leads/{lead_id}/quotation", response_model=LeadResponse)
+async def link_lead_quotation(lead_id: int, link: LeadQuotationAssign, token: str = Query(None)):
+    """Link (or unlink, if quotation_id is null) a lead to a Quotation."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Lead not found")
+
+        if link.quotation_id is not None:
+            cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (link.quotation_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Quotation not found")
+
+        cursor.execute(
+            "UPDATE leads SET quotation_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.quotation_id, lead_id)
+        )
+        conn.commit()
+
+        return fetch_lead_with_member_name(cursor, lead_id)
+
+@app.get("/api/quotations/{quotation_id}/leads", response_model=list[LeadResponse])
+async def get_quotation_leads(quotation_id: int, token: str = Query(None)):
+    """Leads linked to this Quotation."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        cursor.execute(
+            "SELECT id FROM leads WHERE quotation_id = ? ORDER BY created_at DESC",
+            (quotation_id,)
         )
         rows = cursor.fetchall()
         leads = []
