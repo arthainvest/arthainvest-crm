@@ -26,7 +26,7 @@ from schemas import (
     ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactResponse, RenewalContact,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
-    TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskResponse,
+    TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskResponse,
     MeetingCreate, MeetingUpdate, MeetingResponse,
     CallCreate, CallAssign, CallContactAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
@@ -217,12 +217,13 @@ def fetch_task_with_member_name(cursor, task_id):
         """
         SELECT tasks.*, team_members.name as assigned_team_member_name,
                leads.name as lead_name, contacts.name as contact_name,
-               calls.name as call_name
+               calls.name as call_name, quotations.title as quotation_title
         FROM tasks
         LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
         LEFT JOIN leads ON leads.id = tasks.lead_id
         LEFT JOIN contacts ON contacts.id = tasks.contact_id
         LEFT JOIN calls ON calls.id = tasks.call_id
+        LEFT JOIN quotations ON quotations.id = tasks.quotation_id
         WHERE tasks.id = ?
         """,
         (task_id,)
@@ -2399,6 +2400,54 @@ async def get_call_tasks(call_id: int, token: str = Query(None)):
         cursor.execute(
             "SELECT id FROM tasks WHERE call_id = ? ORDER BY due_date ASC, created_at DESC",
             (call_id,)
+        )
+        rows = cursor.fetchall()
+        tasks = []
+        for row in rows:
+            task = fetch_task_with_member_name(cursor, row['id'])
+            if task:
+                tasks.append(task)
+
+        return tasks
+
+@app.put("/api/tasks/{task_id}/quotation", response_model=TaskResponse)
+async def link_task_quotation(task_id: int, link: TaskQuotationAssign, token: str = Query(None)):
+    """Link (or unlink, if quotation_id is null) a task to a Quotation."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        if link.quotation_id is not None:
+            cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (link.quotation_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Quotation not found")
+
+        cursor.execute(
+            "UPDATE tasks SET quotation_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.quotation_id, task_id)
+        )
+        conn.commit()
+
+        return fetch_task_with_member_name(cursor, task_id)
+
+@app.get("/api/quotations/{quotation_id}/tasks", response_model=list[TaskResponse])
+async def get_quotation_tasks(quotation_id: int, token: str = Query(None)):
+    """Tasks directly linked to this Quotation."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        cursor.execute(
+            "SELECT id FROM tasks WHERE quotation_id = ? ORDER BY due_date ASC, created_at DESC",
+            (quotation_id,)
         )
         rows = cursor.fetchall()
         tasks = []

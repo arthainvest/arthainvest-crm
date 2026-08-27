@@ -68,6 +68,8 @@ class LeadResponse(BaseModel):
     call_name: Optional[str] = None
     task_id: Optional[int] = None
     task_name: Optional[str] = None
+    deal_id: Optional[int] = None
+    deal_label: Optional[str] = None
 
 # Deal Schemas
 class DealCreate(BaseModel):
@@ -108,6 +110,9 @@ class LeadCallAssign(BaseModel):
 class LeadTaskAssign(BaseModel):
     task_id: Optional[int] = None  # None unlinks the lead from any Task
 
+class LeadDealAssign(BaseModel):
+    deal_id: Optional[int] = None  # None unlinks the lead from any Deal
+
 class DealCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the deal from any Call
 
@@ -116,6 +121,9 @@ class DealTaskAssign(BaseModel):
 
 class TaskCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the task from any Call
+
+class TaskQuotationAssign(BaseModel):
+    quotation_id: Optional[int] = None  # None unlinks the task from any Quotation
 
 class QuotationCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the quotation from any Call
@@ -390,6 +398,8 @@ class TaskResponse(BaseModel):
     contact_name: Optional[str] = None
     call_id: Optional[int] = None
     call_name: Optional[str] = None
+    quotation_id: Optional[int] = None
+    quotation_title: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
