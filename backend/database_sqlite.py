@@ -418,6 +418,7 @@ def init_db():
             "ALTER TABLE tasks ADD COLUMN contact_id INTEGER REFERENCES contacts(id)",
             "ALTER TABLE tasks ADD COLUMN call_id INTEGER REFERENCES calls(id)",
             "ALTER TABLE tasks ADD COLUMN quotation_id INTEGER REFERENCES quotations(id)",
+            "ALTER TABLE tasks ADD COLUMN company_id INTEGER REFERENCES companies(id)",
         ]:
             try:
                 cursor.execute(ddl)

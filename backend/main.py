@@ -26,7 +26,7 @@ from schemas import (
     ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactQuotationAssign, ContactCallAssign, ContactResponse, RenewalContact,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
-    TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskResponse,
+    TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskCompanyAssign, TaskResponse,
     MeetingCreate, MeetingUpdate, MeetingResponse,
     CallCreate, CallAssign, CallContactAssign, CallCompanyAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
@@ -240,13 +240,15 @@ def fetch_task_with_member_name(cursor, task_id):
         """
         SELECT tasks.*, team_members.name as assigned_team_member_name,
                leads.name as lead_name, contacts.name as contact_name,
-               calls.name as call_name, quotations.title as quotation_title
+               calls.name as call_name, quotations.title as quotation_title,
+               companies.name as company_name
         FROM tasks
         LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
         LEFT JOIN leads ON leads.id = tasks.lead_id
         LEFT JOIN contacts ON contacts.id = tasks.contact_id
         LEFT JOIN calls ON calls.id = tasks.call_id
         LEFT JOIN quotations ON quotations.id = tasks.quotation_id
+        LEFT JOIN companies ON companies.id = tasks.company_id
         WHERE tasks.id = ?
         """,
         (task_id,)
@@ -2397,11 +2399,13 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
             cursor.execute(
                 """
                 SELECT tasks.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name
+                       leads.name as lead_name, contacts.name as contact_name,
+                       companies.name as company_name
                 FROM tasks
                 LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = tasks.lead_id
                 LEFT JOIN contacts ON contacts.id = tasks.contact_id
+                LEFT JOIN companies ON companies.id = tasks.company_id
                 WHERE tasks.assigned_team_member_id = ?
                 ORDER BY tasks.due_date DESC, tasks.created_at DESC
                 """,
@@ -2411,11 +2415,13 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
             cursor.execute(
                 """
                 SELECT tasks.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name
+                       leads.name as lead_name, contacts.name as contact_name,
+                       companies.name as company_name
                 FROM tasks
                 LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = tasks.lead_id
                 LEFT JOIN contacts ON contacts.id = tasks.contact_id
+                LEFT JOIN companies ON companies.id = tasks.company_id
                 WHERE tasks.priority = 'High' AND tasks.completed = 0
                 ORDER BY tasks.due_date ASC, tasks.created_at ASC
                 """
@@ -2424,11 +2430,13 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
             cursor.execute(
                 """
                 SELECT tasks.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name
+                       leads.name as lead_name, contacts.name as contact_name,
+                       companies.name as company_name
                 FROM tasks
                 LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = tasks.lead_id
                 LEFT JOIN contacts ON contacts.id = tasks.contact_id
+                LEFT JOIN companies ON companies.id = tasks.company_id
                 WHERE tasks.due_date = COALESCE(?, date('now'))
                 ORDER BY tasks.completed ASC, tasks.created_at ASC
                 """,
@@ -2635,6 +2643,54 @@ async def get_quotation_tasks(quotation_id: int, token: str = Query(None)):
         cursor.execute(
             "SELECT id FROM tasks WHERE quotation_id = ? ORDER BY due_date ASC, created_at DESC",
             (quotation_id,)
+        )
+        rows = cursor.fetchall()
+        tasks = []
+        for row in rows:
+            task = fetch_task_with_member_name(cursor, row['id'])
+            if task:
+                tasks.append(task)
+
+        return tasks
+
+@app.put("/api/tasks/{task_id}/company", response_model=TaskResponse)
+async def link_task_company(task_id: int, link: TaskCompanyAssign, token: str = Query(None)):
+    """Link (or unlink, if company_id is null) a task to a Company."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        if link.company_id is not None:
+            cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "UPDATE tasks SET company_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.company_id, task_id)
+        )
+        conn.commit()
+
+        return fetch_task_with_member_name(cursor, task_id)
+
+@app.get("/api/companies/{company_id}/tasks", response_model=list[TaskResponse])
+async def get_company_tasks(company_id: int, token: str = Query(None)):
+    """Tasks directly linked to this Company."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "SELECT id FROM tasks WHERE company_id = ? ORDER BY due_date ASC, created_at DESC",
+            (company_id,)
         )
         rows = cursor.fetchall()
         tasks = []

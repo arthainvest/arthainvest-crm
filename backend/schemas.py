@@ -111,6 +111,9 @@ class CallCompanyAssign(BaseModel):
 class TaskContactAssign(BaseModel):
     contact_id: Optional[int] = None  # None unlinks the task from any Contact
 
+class TaskCompanyAssign(BaseModel):
+    company_id: Optional[int] = None  # None unlinks the task from any Company
+
 class LeadCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the lead from any Call
 
@@ -423,6 +426,8 @@ class TaskResponse(BaseModel):
     call_name: Optional[str] = None
     quotation_id: Optional[int] = None
     quotation_title: Optional[str] = None
+    company_id: Optional[int] = None
+    company_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
