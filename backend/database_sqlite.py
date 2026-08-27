@@ -496,6 +496,7 @@ def init_db():
         for ddl in [
             "ALTER TABLE calls ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
             "ALTER TABLE calls ADD COLUMN contact_id INTEGER REFERENCES contacts(id)",
+            "ALTER TABLE calls ADD COLUMN company_id INTEGER REFERENCES companies(id)",
         ]:
             try:
                 cursor.execute(ddl)

@@ -28,7 +28,7 @@ from schemas import (
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskResponse,
     MeetingCreate, MeetingUpdate, MeetingResponse,
-    CallCreate, CallAssign, CallContactAssign, CallResponse, EmployeeCallStats,
+    CallCreate, CallAssign, CallContactAssign, CallCompanyAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
     DialRequest, DialResponse, AISummaryResponse,
     DetectDateRequest, DetectDateResponse,
@@ -218,11 +218,13 @@ def fetch_call_with_member_name(cursor, call_id):
     cursor.execute(
         """
         SELECT calls.*, team_members.name as team_member_name,
-               leads.name as lead_name, contacts.name as contact_name
+               leads.name as lead_name, contacts.name as contact_name,
+               companies.name as company_name
         FROM calls
         LEFT JOIN team_members ON team_members.id = calls.team_member_id
         LEFT JOIN leads ON leads.id = calls.lead_id
         LEFT JOIN contacts ON contacts.id = calls.contact_id
+        LEFT JOIN companies ON companies.id = calls.company_id
         WHERE calls.id = ?
         """,
         (call_id,)
@@ -2716,11 +2718,13 @@ async def get_calls(token: str = Query(None), team_member_id: int = Query(None))
         cursor = conn.cursor()
         query = """
             SELECT calls.*, team_members.name as team_member_name,
-                   leads.name as lead_name, contacts.name as contact_name
+                   leads.name as lead_name, contacts.name as contact_name,
+                   companies.name as company_name
             FROM calls
             LEFT JOIN team_members ON team_members.id = calls.team_member_id
             LEFT JOIN leads ON leads.id = calls.lead_id
             LEFT JOIN contacts ON contacts.id = calls.contact_id
+            LEFT JOIN companies ON companies.id = calls.company_id
         """
         params = []
         if team_member_id is not None:
@@ -2832,6 +2836,54 @@ async def get_contact_calls(contact_id: int, token: str = Query(None)):
         cursor.execute(
             "SELECT id FROM calls WHERE contact_id = ? ORDER BY call_date DESC, created_at DESC",
             (contact_id,)
+        )
+        rows = cursor.fetchall()
+        calls = []
+        for row in rows:
+            call = fetch_call_with_member_name(cursor, row['id'])
+            if call:
+                calls.append(call_row_to_dict(call))
+
+    return calls
+
+@app.put("/api/calls/{call_id}/company", response_model=CallResponse)
+async def link_call_company(call_id: int, link: CallCompanyAssign, token: str = Query(None)):
+    """Link (or unlink, if company_id is null) a call to a Company."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        if link.company_id is not None:
+            cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "UPDATE calls SET company_id = ? WHERE id = ?",
+            (link.company_id, call_id)
+        )
+        conn.commit()
+
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+
+@app.get("/api/companies/{company_id}/calls", response_model=list[CallResponse])
+async def get_company_calls(company_id: int, token: str = Query(None)):
+    """Calls directly linked to this Company."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "SELECT id FROM calls WHERE company_id = ? ORDER BY call_date DESC, created_at DESC",
+            (company_id,)
         )
         rows = cursor.fetchall()
         calls = []
