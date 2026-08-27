@@ -43,7 +43,7 @@ from schemas import (
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
     DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
     ActivityItem, CompanyCreate, CompanyUpdate, CompanyResponse,
-    QuotationCreate, QuotationUpdate, QuotationContactAssign, QuotationCompanyAssign, QuotationCallAssign, QuotationResponse
+    QuotationCreate, QuotationUpdate, QuotationContactAssign, QuotationCompanyAssign, QuotationCallAssign, QuotationDealAssign, QuotationResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -3767,6 +3767,30 @@ async def get_call_quotations(call_id: int, token: str = Query(None)):
                 quotations.append(quotation)
 
         return quotations
+
+@app.put("/api/quotations/{quotation_id}/deal", response_model=QuotationResponse)
+async def link_quotation_deal(quotation_id: int, link: QuotationDealAssign, token: str = Query(None)):
+    """Link (or unlink, if deal_id is null) a quotation to a Deal."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        if link.deal_id is not None:
+            cursor.execute("SELECT 1 FROM deals WHERE id = ?", (link.deal_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Deal not found")
+
+        cursor.execute(
+            "UPDATE quotations SET deal_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.deal_id, quotation_id)
+        )
+        conn.commit()
+
+        return fetch_quotation_with_details(cursor, quotation_id)
 
 @app.post("/api/marketing/mailchimp/sync", response_model=MailchimpSyncResponse)
 async def sync_mailchimp(token: str = Query(None)):
