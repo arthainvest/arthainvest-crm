@@ -1,0 +1,295 @@
+.automations-container {
+  padding: 20px;
+}
+
+.automations-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.automations-header h1 {
+  margin: 0 0 4px;
+  color: var(--text-heading);
+}
+
+.automations-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  max-width: 60ch;
+}
+
+.automations-container .btn-secondary.small,
+.automations-container .btn-primary.small {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.no-data {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px;
+  font-size: 14px;
+}
+
+.automations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.automation-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-neutral);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.automation-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.automation-card-header h3 {
+  margin: 0 0 2px;
+  color: var(--text-heading);
+  font-size: 16px;
+}
+
+.automation-trigger {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.automation-status {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.automation-status.active {
+  background: rgba(37, 211, 102, 0.15);
+  color: #128C7E;
+}
+
+.automation-status.paused {
+  background: rgba(153, 153, 153, 0.15);
+  color: var(--text-muted);
+}
+
+.automation-steps-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.automation-step-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-subtle-alt);
+  border: 1px solid var(--border-neutral-alt);
+  border-radius: 8px;
+  padding: 6px 10px;
+  max-width: 220px;
+}
+
+.step-wait {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #667eea;
+}
+
+.step-body {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.automation-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.automation-card-actions .btn-secondary,
+.automation-card-actions .btn-danger {
+  padding: 7px 14px;
+  font-size: 12px;
+}
+
+.automation-enroll-row {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-neutral-alt);
+}
+
+.automation-enroll-row select {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.automation-enroll-row .enroll-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+/* ---------- Automation builder modal ---------- */
+
+.automation-modal {
+  max-width: 620px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.group-picker-row {
+  display: flex;
+  gap: 6px;
+}
+
+.group-picker-row select {
+  flex: 1;
+}
+
+.automation-trigger-hint {
+  font-size: 12px;
+  color: #b3781a;
+  background: rgba(179, 120, 26, 0.1);
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin: -6px 0 16px;
+}
+
+.steps-builder {
+  margin-top: 6px;
+}
+
+.steps-builder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.steps-builder-header label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.step-editor {
+  background: var(--bg-subtle-alt);
+  border: 1px solid var(--border-neutral-alt);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.step-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.step-number {
+  font-size: 12px;
+  font-weight: 700;
+  color: #667eea;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.btn-remove-step {
+  background: none;
+  border: none;
+  color: #e74c3c;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.automation-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ---------- Enrollments modal ---------- */
+
+.enrollments-modal {
+  max-width: 640px;
+}
+
+.enrollments-table-wrap {
+  overflow-x: auto;
+}
+
+.enrollments-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.enrollments-table th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-neutral);
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.enrollments-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-neutral-alt);
+  color: var(--text-primary);
+}
+
+.enrollment-status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.enrollment-status.active {
+  background: rgba(37, 211, 102, 0.15);
+  color: #128C7E;
+}
+
+.enrollment-status.completed {
+  background: rgba(102, 126, 234, 0.15);
+  color: #5568d3;
+}
+
+.enrollment-status.stopped {
+  background: rgba(231, 76, 60, 0.15);
+  color: #c0392b;
+}

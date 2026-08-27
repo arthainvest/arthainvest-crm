@@ -2036,6 +2036,33 @@ async def delete_automation(automation_id: int, token: str = Query(None)):
         conn.commit()
     return {"message": "Automation deleted"}
 
+@app.get("/api/automations/{automation_id}/enrollments")
+async def get_automation_enrollments(automation_id: int, token: str = Query(None)):
+    """Who's currently running through this automation, and where they're up to - the
+    'who's in this drip sequence' view for the Automations screen."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as n FROM automation_steps WHERE automation_id = ?", (automation_id,))
+        total_steps = cursor.fetchone()['n']
+
+        cursor.execute(
+            """SELECT ae.*, wc.wa_number, ct.name as contact_name, ld.name as lead_name
+               FROM automation_enrollments ae
+               JOIN whatsapp_conversation wc ON wc.id = ae.conversation_id
+               LEFT JOIN contacts ct ON ct.id = wc.contact_id
+               LEFT JOIN leads ld ON ld.id = wc.lead_id
+               WHERE ae.automation_id = ?
+               ORDER BY ae.created_at DESC""",
+            (automation_id,)
+        )
+        enrollments = []
+        for row in cursor.fetchall():
+            e = dict(row)
+            e['total_steps'] = total_steps
+            enrollments.append(e)
+    return enrollments
+
 @app.post("/api/automations/{automation_id}/enroll")
 async def enroll_conversation(automation_id: int, payload: AutomationEnrollRequest, token: str = Query(None)):
     """Start a single conversation on this automation now (its first step fires as soon as

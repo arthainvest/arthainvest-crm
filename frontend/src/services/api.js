@@ -318,6 +318,52 @@ export const getQuickReplies = async (token) => {
   return response.data;
 };
 
+// Groups (audience segments used to target automations/broadcasts)
+export const getGroups = async (token) => {
+  const response = await api.get(`/api/groups?token=${token}`);
+  return response.data;
+};
+
+export const createGroup = async (token, groupData) => {
+  const response = await api.post(`/api/groups?token=${token}`, groupData);
+  return response.data;
+};
+
+// Automations (drip sequences)
+export const getAutomations = async (token) => {
+  const response = await api.get(`/api/automations?token=${token}`);
+  return response.data;
+};
+
+export const createAutomation = async (token, automationData) => {
+  const response = await api.post(`/api/automations?token=${token}`, automationData);
+  return response.data;
+};
+
+export const updateAutomation = async (token, id, automationData) => {
+  const response = await api.put(`/api/automations/${id}?token=${token}`, automationData);
+  return response.data;
+};
+
+export const deleteAutomation = async (token, id) => {
+  await api.delete(`/api/automations/${id}?token=${token}`);
+};
+
+export const getAutomationEnrollments = async (token, automationId) => {
+  const response = await api.get(`/api/automations/${automationId}/enrollments?token=${token}`);
+  return response.data;
+};
+
+export const enrollGroupInAutomation = async (token, automationId, groupId) => {
+  const response = await api.post(`/api/automations/${automationId}/enroll-group/${groupId}?token=${token}`);
+  return response.data;
+};
+
+export const stopEnrollment = async (token, enrollmentId) => {
+  const response = await api.post(`/api/automations/enrollments/${enrollmentId}/stop?token=${token}`);
+  return response.data;
+};
+
 // Email service (SMTP)
 export const sendEmailReal = async (token, to, subject, body) => {
   const response = await api.post(`/api/email/send?token=${token}`, { to, subject, body });
