@@ -9,6 +9,7 @@ import Calls from './components/Calls';
 import Marketing from './components/Marketing';
 import WhatsAppInbox from './components/WhatsAppInbox';
 import Automations from './components/Automations';
+import ApiKeys from './components/ApiKeys';
 import Team from './components/Team';
 import Reports from './components/Reports';
 import Integrations from './components/Integrations';
@@ -73,6 +74,7 @@ function App() {
               <Route path="/team" element={<Team />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/integrations" element={<Integrations />} />
+              <Route path="/api-keys" element={<ApiKeys />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>

@@ -369,6 +369,21 @@ export const setCustomFieldValue = async (token, payload) => {
   return response.data;
 };
 
+// Developer API keys (for external systems - ad forms, Google Sheets, etc.)
+export const getApiKeys = async (token) => {
+  const response = await api.get(`/api/api-keys?token=${token}`);
+  return response.data;
+};
+
+export const createApiKey = async (token, name) => {
+  const response = await api.post(`/api/api-keys?token=${token}`, { name });
+  return response.data;
+};
+
+export const revokeApiKey = async (token, id) => {
+  await api.delete(`/api/api-keys/${id}?token=${token}`);
+};
+
 // Groups (audience segments used to target automations/broadcasts)
 export const getGroups = async (token) => {
   const response = await api.get(`/api/groups?token=${token}`);
