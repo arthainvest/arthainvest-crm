@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
-    LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadResponse,
+    LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealTaskAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     CampaignRecipientAdd, CampaignRecipientResponse, CampaignSendResult,
@@ -160,17 +160,30 @@ def fetch_lead_with_member_name(cursor, lead_id):
         SELECT leads.*, team_members.name as assigned_team_member_name,
                converted_contact.name as converted_contact_name,
                calls.name as call_name,
-               tasks.title as task_name
+               tasks.title as task_name,
+               deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+               deal_leads.name as deal_lead_name
         FROM leads
         LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
         LEFT JOIN contacts AS converted_contact ON converted_contact.id = leads.converted_contact_id
         LEFT JOIN calls ON calls.id = leads.call_id
         LEFT JOIN tasks ON tasks.id = leads.task_id
+        LEFT JOIN deals ON deals.id = leads.deal_id
+        LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
         WHERE leads.id = ?
         """,
         (lead_id,)
     )
-    return dict(cursor.fetchone())
+    row = cursor.fetchone()
+    lead = dict(row)
+    if lead.get('deal_id'):
+        lead['deal_label'] = (
+            f"{lead.get('deal_lead_name') or 'Deal'} - {lead.get('deal_loan_product') or ''} "
+            f"(Rs {lead.get('deal_deal_value') or 0:,.0f})"
+        )
+    else:
+        lead['deal_label'] = None
+    return lead
 
 def fetch_contact_with_member_name(cursor, contact_id):
     """Same join-by-id pattern as fetch_deal_with_member_name, for contacts - so admins/team
@@ -655,6 +668,54 @@ async def get_task_leads(task_id: int, token: str = Query(None)):
         cursor.execute(
             "SELECT id FROM leads WHERE task_id = ? ORDER BY created_at DESC",
             (task_id,)
+        )
+        rows = cursor.fetchall()
+        leads = []
+        for row in rows:
+            lead = fetch_lead_with_member_name(cursor, row['id'])
+            if lead:
+                leads.append(lead)
+
+        return leads
+
+@app.put("/api/leads/{lead_id}/deal", response_model=LeadResponse)
+async def link_lead_deal(lead_id: int, link: LeadDealAssign, token: str = Query(None)):
+    """Link (or unlink, if deal_id is null) a lead to a Deal."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Lead not found")
+
+        if link.deal_id is not None:
+            cursor.execute("SELECT 1 FROM deals WHERE id = ?", (link.deal_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Deal not found")
+
+        cursor.execute(
+            "UPDATE leads SET deal_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.deal_id, lead_id)
+        )
+        conn.commit()
+
+        return fetch_lead_with_member_name(cursor, lead_id)
+
+@app.get("/api/deals/{deal_id}/leads", response_model=list[LeadResponse])
+async def get_deal_leads(deal_id: int, token: str = Query(None)):
+    """Leads directly linked to this Deal."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        cursor.execute(
+            "SELECT id FROM leads WHERE deal_id = ? ORDER BY created_at DESC",
+            (deal_id,)
         )
         rows = cursor.fetchall()
         leads = []
