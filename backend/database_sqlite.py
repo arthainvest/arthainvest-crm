@@ -399,6 +399,7 @@ def init_db():
             "ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT 'Normal'",
             "ALTER TABLE tasks ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
             "ALTER TABLE tasks ADD COLUMN contact_id INTEGER REFERENCES contacts(id)",
+            "ALTER TABLE tasks ADD COLUMN call_id INTEGER REFERENCES calls(id)",
         ]:
             try:
                 cursor.execute(ddl)

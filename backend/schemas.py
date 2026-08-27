@@ -114,6 +114,12 @@ class DealCallAssign(BaseModel):
 class DealTaskAssign(BaseModel):
     task_id: Optional[int] = None  # None unlinks the deal from any Task
 
+class TaskCallAssign(BaseModel):
+    call_id: Optional[int] = None  # None unlinks the task from any Call
+
+class ContactCompanyAssign(BaseModel):
+    company_id: Optional[int] = None  # None unlinks the contact from any Company
+
 class DealProcessStatusUpdate(BaseModel):
     process_status: str  # Login, Sanction, Hold, Disbursed
 
@@ -376,6 +382,8 @@ class TaskResponse(BaseModel):
     lead_name: Optional[str] = None
     contact_id: Optional[int] = None
     contact_name: Optional[str] = None
+    call_id: Optional[int] = None
+    call_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

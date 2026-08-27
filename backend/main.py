@@ -26,7 +26,7 @@ from schemas import (
     ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactResponse, RenewalContact,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
-    TaskCreate, TaskUpdate, TaskContactAssign, TaskResponse,
+    TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskResponse,
     MeetingCreate, MeetingUpdate, MeetingResponse,
     CallCreate, CallAssign, CallContactAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
@@ -216,11 +216,13 @@ def fetch_task_with_member_name(cursor, task_id):
     cursor.execute(
         """
         SELECT tasks.*, team_members.name as assigned_team_member_name,
-               leads.name as lead_name, contacts.name as contact_name
+               leads.name as lead_name, contacts.name as contact_name,
+               calls.name as call_name
         FROM tasks
         LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
         LEFT JOIN leads ON leads.id = tasks.lead_id
         LEFT JOIN contacts ON contacts.id = tasks.contact_id
+        LEFT JOIN calls ON calls.id = tasks.call_id
         WHERE tasks.id = ?
         """,
         (task_id,)
@@ -2358,6 +2360,54 @@ async def get_contact_tasks(contact_id: int, token: str = Query(None)):
                 tasks.append(task)
 
     return tasks
+
+@app.put("/api/tasks/{task_id}/call", response_model=TaskResponse)
+async def link_task_call(task_id: int, link: TaskCallAssign, token: str = Query(None)):
+    """Link (or unlink, if call_id is null) a task to a Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        if link.call_id is not None:
+            cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "UPDATE tasks SET call_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.call_id, task_id)
+        )
+        conn.commit()
+
+        return fetch_task_with_member_name(cursor, task_id)
+
+@app.get("/api/calls/{call_id}/tasks", response_model=list[TaskResponse])
+async def get_call_tasks(call_id: int, token: str = Query(None)):
+    """Tasks directly linked to this Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "SELECT id FROM tasks WHERE call_id = ? ORDER BY due_date ASC, created_at DESC",
+            (call_id,)
+        )
+        rows = cursor.fetchall()
+        tasks = []
+        for row in rows:
+            task = fetch_task_with_member_name(cursor, row['id'])
+            if task:
+                tasks.append(task)
+
+        return tasks
 
 @app.get("/api/meetings", response_model=list[MeetingResponse])
 async def get_meetings(token: str = Query(None), date: str = Query(None), assigned_team_member_id: int = Query(None)):
