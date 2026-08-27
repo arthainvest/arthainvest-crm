@@ -27,7 +27,7 @@ from schemas import (
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskCompanyAssign, TaskResponse,
-    MeetingCreate, MeetingUpdate, MeetingResponse,
+    MeetingCreate, MeetingUpdate, MeetingCompanyAssign, MeetingResponse,
     CallCreate, CallAssign, CallContactAssign, CallCompanyAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
     DialRequest, DialResponse, AISummaryResponse,
@@ -264,11 +264,13 @@ def fetch_meeting_with_names(cursor, meeting_id):
     cursor.execute(
         """
         SELECT meetings.*, team_members.name as assigned_team_member_name,
-               leads.name as lead_name, contacts.name as contact_name
+               leads.name as lead_name, contacts.name as contact_name,
+               companies.name as company_name
         FROM meetings
         LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
         LEFT JOIN leads ON leads.id = meetings.lead_id
         LEFT JOIN contacts ON contacts.id = meetings.contact_id
+        LEFT JOIN companies ON companies.id = meetings.company_id
         WHERE meetings.id = ?
         """,
         (meeting_id,)
@@ -2769,11 +2771,13 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
             cursor.execute(
                 """
                 SELECT meetings.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name
+                       leads.name as lead_name, contacts.name as contact_name,
+                       companies.name as company_name
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
                 LEFT JOIN contacts ON contacts.id = meetings.contact_id
+                LEFT JOIN companies ON companies.id = meetings.company_id
                 WHERE meetings.assigned_team_member_id = ?
                 ORDER BY meetings.meeting_date DESC, meetings.meeting_time ASC
                 """,
@@ -2783,11 +2787,13 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
             cursor.execute(
                 """
                 SELECT meetings.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name
+                       leads.name as lead_name, contacts.name as contact_name,
+                       companies.name as company_name
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
                 LEFT JOIN contacts ON contacts.id = meetings.contact_id
+                LEFT JOIN companies ON companies.id = meetings.company_id
                 WHERE meetings.meeting_date = COALESCE(?, date('now'))
                 ORDER BY meetings.meeting_time ASC, meetings.created_at ASC
                 """,
@@ -2863,6 +2869,54 @@ async def delete_meeting(meeting_id: int, token: str = Query(None)):
             raise HTTPException(status_code=404, detail="Meeting not found")
 
     return {"message": "Meeting deleted"}
+
+@app.put("/api/meetings/{meeting_id}/company", response_model=MeetingResponse)
+async def link_meeting_company(meeting_id: int, link: MeetingCompanyAssign, token: str = Query(None)):
+    """Link (or unlink, if company_id is null) a meeting to a Company."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Meeting not found")
+
+        if link.company_id is not None:
+            cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "UPDATE meetings SET company_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.company_id, meeting_id)
+        )
+        conn.commit()
+
+        return fetch_meeting_with_names(cursor, meeting_id)
+
+@app.get("/api/companies/{company_id}/meetings", response_model=list[MeetingResponse])
+async def get_company_meetings(company_id: int, token: str = Query(None)):
+    """Meetings directly linked to this Company."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor.execute(
+            "SELECT id FROM meetings WHERE company_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
+            (company_id,)
+        )
+        rows = cursor.fetchall()
+        meetings = []
+        for row in rows:
+            meeting = fetch_meeting_with_names(cursor, row['id'])
+            if meeting:
+                meetings.append(meeting)
+
+        return meetings
 
 # ============= CALLS ENDPOINTS =============
 
