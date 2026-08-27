@@ -27,7 +27,7 @@ from schemas import (
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskCompanyAssign, TaskResponse,
-    MeetingCreate, MeetingUpdate, MeetingCompanyAssign, MeetingDealAssign, MeetingResponse,
+    MeetingCreate, MeetingUpdate, MeetingCompanyAssign, MeetingDealAssign, MeetingCallAssign, MeetingResponse,
     CallCreate, CallAssign, CallContactAssign, CallCompanyAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
     DialRequest, DialResponse, AISummaryResponse,
@@ -268,7 +268,8 @@ def fetch_meeting_with_names(cursor, meeting_id):
                leads.name as lead_name, contacts.name as contact_name,
                companies.name as company_name,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
-               deal_leads.name as deal_lead_name
+               deal_leads.name as deal_lead_name,
+               calls.name as call_name
         FROM meetings
         LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
         LEFT JOIN leads ON leads.id = meetings.lead_id
@@ -276,6 +277,7 @@ def fetch_meeting_with_names(cursor, meeting_id):
         LEFT JOIN companies ON companies.id = meetings.company_id
         LEFT JOIN deals ON deals.id = meetings.deal_id
         LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
+        LEFT JOIN calls ON calls.id = meetings.call_id
         WHERE meetings.id = ?
         """,
         (meeting_id,)
@@ -2788,7 +2790,8 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                        leads.name as lead_name, contacts.name as contact_name,
                        companies.name as company_name,
                        deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
-                       deal_leads.name as deal_lead_name
+                       deal_leads.name as deal_lead_name,
+                       calls.name as call_name
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
@@ -2796,6 +2799,7 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                 LEFT JOIN companies ON companies.id = meetings.company_id
                 LEFT JOIN deals ON deals.id = meetings.deal_id
                 LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
+                LEFT JOIN calls ON calls.id = meetings.call_id
                 WHERE meetings.assigned_team_member_id = ?
                 ORDER BY meetings.meeting_date DESC, meetings.meeting_time ASC
                 """,
@@ -2808,7 +2812,8 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                        leads.name as lead_name, contacts.name as contact_name,
                        companies.name as company_name,
                        deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
-                       deal_leads.name as deal_lead_name
+                       deal_leads.name as deal_lead_name,
+                       calls.name as call_name
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
@@ -2816,6 +2821,7 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                 LEFT JOIN companies ON companies.id = meetings.company_id
                 LEFT JOIN deals ON deals.id = meetings.deal_id
                 LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
+                LEFT JOIN calls ON calls.id = meetings.call_id
                 WHERE meetings.meeting_date = COALESCE(?, date('now'))
                 ORDER BY meetings.meeting_time ASC, meetings.created_at ASC
                 """,
@@ -2986,6 +2992,54 @@ async def get_deal_meetings(deal_id: int, token: str = Query(None)):
         cursor.execute(
             "SELECT id FROM meetings WHERE deal_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
             (deal_id,)
+        )
+        rows = cursor.fetchall()
+        meetings = []
+        for row in rows:
+            meeting = fetch_meeting_with_names(cursor, row['id'])
+            if meeting:
+                meetings.append(meeting)
+
+        return meetings
+
+@app.put("/api/meetings/{meeting_id}/call", response_model=MeetingResponse)
+async def link_meeting_call(meeting_id: int, link: MeetingCallAssign, token: str = Query(None)):
+    """Link (or unlink, if call_id is null) a meeting to a Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Meeting not found")
+
+        if link.call_id is not None:
+            cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "UPDATE meetings SET call_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.call_id, meeting_id)
+        )
+        conn.commit()
+
+        return fetch_meeting_with_names(cursor, meeting_id)
+
+@app.get("/api/calls/{call_id}/meetings", response_model=list[MeetingResponse])
+async def get_call_meetings(call_id: int, token: str = Query(None)):
+    """Meetings linked to this Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "SELECT id FROM meetings WHERE call_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
+            (call_id,)
         )
         rows = cursor.fetchall()
         meetings = []
