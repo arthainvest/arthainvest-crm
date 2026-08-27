@@ -117,6 +117,9 @@ class DealTaskAssign(BaseModel):
 class TaskCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the task from any Call
 
+class QuotationCallAssign(BaseModel):
+    call_id: Optional[int] = None  # None unlinks the quotation from any Call
+
 class ContactCompanyAssign(BaseModel):
     company_id: Optional[int] = None  # None unlinks the contact from any Company
 
@@ -750,6 +753,8 @@ class QuotationResponse(BaseModel):
     company_name: Optional[str] = None
     assigned_team_member_id: Optional[int] = None
     assigned_team_member_name: Optional[str] = None
+    call_id: Optional[int] = None
+    call_name: Optional[str] = None
     title: str
     status: str
     valid_until: Optional[str] = None

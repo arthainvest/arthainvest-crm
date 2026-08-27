@@ -43,7 +43,7 @@ from schemas import (
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
     DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
     ActivityItem, CompanyCreate, CompanyUpdate, CompanyResponse,
-    QuotationCreate, QuotationUpdate, QuotationContactAssign, QuotationCompanyAssign, QuotationResponse
+    QuotationCreate, QuotationUpdate, QuotationContactAssign, QuotationCompanyAssign, QuotationCallAssign, QuotationResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -3433,7 +3433,8 @@ def fetch_quotation_with_details(cursor, quotation_id):
                COALESCE(quotations.company_id, deals.company_id) as company_id,
                COALESCE(direct_companies.name, deals_companies.name) as company_name,
                deals.assigned_team_member_id as assigned_team_member_id,
-               team_members.name as assigned_team_member_name
+               team_members.name as assigned_team_member_name,
+               calls.name as call_name
         FROM quotations
         LEFT JOIN leads ON leads.id = quotations.lead_id
         LEFT JOIN contacts ON contacts.id = quotations.contact_id
@@ -3442,6 +3443,7 @@ def fetch_quotation_with_details(cursor, quotation_id):
         LEFT JOIN companies AS direct_companies ON direct_companies.id = quotations.company_id
         LEFT JOIN companies AS deals_companies ON deals_companies.id = deals.company_id
         LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
+        LEFT JOIN calls ON calls.id = quotations.call_id
         WHERE quotations.id = ?
         """,
         (quotation_id,)
@@ -3717,6 +3719,54 @@ async def get_company_quotations(company_id: int, token: str = Query(None)):
                 quotations.append(quotation)
 
     return quotations
+
+@app.put("/api/quotations/{quotation_id}/call", response_model=QuotationResponse)
+async def link_quotation_call(quotation_id: int, link: QuotationCallAssign, token: str = Query(None)):
+    """Link (or unlink, if call_id is null) a quotation to a Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        if link.call_id is not None:
+            cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "UPDATE quotations SET call_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.call_id, quotation_id)
+        )
+        conn.commit()
+
+        return fetch_quotation_with_details(cursor, quotation_id)
+
+@app.get("/api/calls/{call_id}/quotations", response_model=list[QuotationResponse])
+async def get_call_quotations(call_id: int, token: str = Query(None)):
+    """Quotations directly linked to this Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "SELECT id FROM quotations WHERE call_id = ? ORDER BY created_at DESC",
+            (call_id,)
+        )
+        rows = cursor.fetchall()
+        quotations = []
+        for row in rows:
+            quotation = fetch_quotation_with_details(cursor, row['id'])
+            if quotation:
+                quotations.append(quotation)
+
+        return quotations
 
 @app.post("/api/marketing/mailchimp/sync", response_model=MailchimpSyncResponse)
 async def sync_mailchimp(token: str = Query(None)):
