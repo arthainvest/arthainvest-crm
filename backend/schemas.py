@@ -74,6 +74,8 @@ class LeadResponse(BaseModel):
     company_name: Optional[str] = None
     quotation_id: Optional[int] = None
     quotation_title: Optional[str] = None
+    contact_id: Optional[int] = None  # a related Contact this lead is linked to - distinct
+    contact_name: Optional[str] = None  # from converted_contact_id, the conversion result
 
 # Deal Schemas
 class DealCreate(BaseModel):
@@ -128,6 +130,11 @@ class LeadCompanyAssign(BaseModel):
 
 class LeadQuotationAssign(BaseModel):
     quotation_id: Optional[int] = None  # None unlinks the lead from any Quotation
+
+class LeadContactAssign(BaseModel):
+    contact_id: Optional[int] = None  # None unlinks the lead from any Contact - distinct
+    # from the one-time "Convert Lead to Contact" flow (leads.converted_contact_id): this is
+    # an ordinary reference to an existing Contact (e.g. a referral), not a conversion result.
 
 class DealCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the deal from any Call

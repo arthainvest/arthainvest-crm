@@ -182,6 +182,13 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # A related Contact this lead is linked to (e.g. a referral) - distinct from
+        # converted_contact_id above, which is only ever set by the one-time conversion flow.
+        try:
+            cursor.execute("ALTER TABLE leads ADD COLUMN contact_id INTEGER REFERENCES contacts(id)")
+        except sqlite3.OperationalError:
+            pass
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS deals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
