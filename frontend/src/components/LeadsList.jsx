@@ -6,6 +6,8 @@ import {
   sendWhatsApp, sendEmailReal, sendSms
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
+import EntityTags from './EntityTags';
+import EntityCustomFields from './EntityCustomFields';
 import '../styles/LeadsList.css';
 
 const STATUS_OPTIONS = ['New', 'Contacted', 'Interested', 'Document Pending', 'In Process', 'Qualified', 'Not Interested', 'CIBIL Issue', 'Lost to Competition'];
@@ -636,14 +638,20 @@ export default function LeadsList() {
                 </div>
 
                 {isExpanded && (
-                  <div className="lead-row-details">
-                    <p><strong>Company:</strong> {lead.company || '-'}</p>
-                    <p><strong>Email:</strong> {lead.email || '-'}</p>
-                    <p><strong>Phone:</strong> {lead.phone || '-'}</p>
-                    <p><strong>Product:</strong> {lead.product ? productLabel(lead.product) : '-'}</p>
-                    <p><strong>Source:</strong> {lead.source || '-'}</p>
-                    <p><strong>Score:</strong> {lead.ai_score != null ? lead.ai_score : '-'}%</p>
-                  </div>
+                  <>
+                    <div className="lead-row-details">
+                      <p><strong>Company:</strong> {lead.company || '-'}</p>
+                      <p><strong>Email:</strong> {lead.email || '-'}</p>
+                      <p><strong>Phone:</strong> {lead.phone || '-'}</p>
+                      <p><strong>Product:</strong> {lead.product ? productLabel(lead.product) : '-'}</p>
+                      <p><strong>Source:</strong> {lead.source || '-'}</p>
+                      <p><strong>Score:</strong> {lead.ai_score != null ? lead.ai_score : '-'}%</p>
+                    </div>
+                    <div className="entity-row-extra">
+                      <EntityTags token={token} entityType="lead" entityId={lead.id} />
+                      <EntityCustomFields token={token} entityType="lead" entityId={lead.id} />
+                    </div>
+                  </>
                 )}
               </div>
             );

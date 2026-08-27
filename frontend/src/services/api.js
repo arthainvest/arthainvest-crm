@@ -318,6 +318,57 @@ export const getQuickReplies = async (token) => {
   return response.data;
 };
 
+// Tags (free-form labels on contacts/leads)
+export const getTags = async (token) => {
+  const response = await api.get(`/api/tags?token=${token}`);
+  return response.data;
+};
+
+export const createTag = async (token, tagData) => {
+  const response = await api.post(`/api/tags?token=${token}`, tagData);
+  return response.data;
+};
+
+export const getTagsForEntity = async (token, entityType, entityId) => {
+  const response = await api.get(`/api/tags/for/${entityType}/${entityId}?token=${token}`);
+  return response.data;
+};
+
+export const assignTag = async (token, entityType, entityId, tagId) => {
+  const response = await api.post(`/api/tags/assign?token=${token}`, { entity_type: entityType, entity_id: entityId, tag_id: tagId });
+  return response.data;
+};
+
+export const unassignTag = async (token, entityType, entityId, tagId) => {
+  const response = await api.post(`/api/tags/unassign?token=${token}`, { entity_type: entityType, entity_id: entityId, tag_id: tagId });
+  return response.data;
+};
+
+// Custom fields (per-contact/lead key-value data, e.g. SIP Amount)
+export const getCustomFields = async (token) => {
+  const response = await api.get(`/api/custom-fields?token=${token}`);
+  return response.data;
+};
+
+export const createCustomField = async (token, fieldData) => {
+  const response = await api.post(`/api/custom-fields?token=${token}`, fieldData);
+  return response.data;
+};
+
+export const deleteCustomField = async (token, fieldId) => {
+  await api.delete(`/api/custom-fields/${fieldId}?token=${token}`);
+};
+
+export const getCustomFieldValuesForEntity = async (token, entityType, entityId) => {
+  const response = await api.get(`/api/custom-fields/for/${entityType}/${entityId}?token=${token}`);
+  return response.data;
+};
+
+export const setCustomFieldValue = async (token, payload) => {
+  const response = await api.put(`/api/custom-fields/value?token=${token}`, payload);
+  return response.data;
+};
+
 // Groups (audience segments used to target automations/broadcasts)
 export const getGroups = async (token) => {
   const response = await api.get(`/api/groups?token=${token}`);

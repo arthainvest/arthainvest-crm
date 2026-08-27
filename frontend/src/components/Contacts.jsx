@@ -5,6 +5,8 @@ import {
   uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup,
   sendWhatsApp, sendEmailReal, sendSms
 } from '../services/api';
+import EntityTags from './EntityTags';
+import EntityCustomFields from './EntityCustomFields';
 import '../styles/Contacts.css';
 
 const WhatsAppIcon = () => (
@@ -558,12 +560,18 @@ export default function Contacts() {
               </div>
 
               {isExpanded && (
-                <div className="contact-row-details">
-                  <p><strong>Company:</strong> {contact.company || '-'}</p>
-                  <p><strong>Email:</strong> {contact.email || '-'}</p>
-                  <p><strong>Phone:</strong> {contact.phone || '-'}</p>
-                  <p><strong>City/Area:</strong> 📍 {contact.city || '-'}</p>
-                </div>
+                <>
+                  <div className="contact-row-details">
+                    <p><strong>Company:</strong> {contact.company || '-'}</p>
+                    <p><strong>Email:</strong> {contact.email || '-'}</p>
+                    <p><strong>Phone:</strong> {contact.phone || '-'}</p>
+                    <p><strong>City/Area:</strong> 📍 {contact.city || '-'}</p>
+                  </div>
+                  <div className="entity-row-extra">
+                    <EntityTags token={token} entityType="contact" entityId={contact.id} />
+                    <EntityCustomFields token={token} entityType="contact" entityId={contact.id} />
+                  </div>
+                </>
               )}
             </div>
           );

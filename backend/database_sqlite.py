@@ -6,9 +6,21 @@ DB_PATH = "arthainvest_crm.db"
 
 @contextmanager
 def get_db():
-    """Get SQLite database connection"""
-    conn = sqlite3.connect(DB_PATH)
+    """Get SQLite database connection.
+
+    WAL journal mode + a busy_timeout are required now that more than one connection can be
+    open at once: the automation scheduler (main.py) runs in the background on its own
+    connection, independent of whichever request/response connection is handling a user's
+    click at that moment. SQLite's default rollback-journal mode locks the *entire file* for
+    the duration of a write, so two connections writing around the same time reliably hit
+    "database is locked" - WAL lets readers and a single writer proceed concurrently instead,
+    and the busy_timeout makes a genuine write/write collision wait and retry rather than
+    failing immediately.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
     try:
         yield conn
     finally:
