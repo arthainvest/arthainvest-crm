@@ -76,3 +76,19 @@ def test_task_unknown_404s(auth_client):
 def test_quotation_unknown_404s(auth_client):
     resp = auth_client.get("/api/quotations/9999/tasks")
     assert resp.status_code == 404
+
+
+def test_task_list_resolves_quotation_title(auth_client):
+    task = auth_client.post("/api/tasks", json={
+        "title": "List Test Task", "due_date": "2026-08-26", "priority": "High"
+    }).json()
+    contact = auth_client.get("/api/contacts").json()[0]
+    quotation = auth_client.post("/api/quotations", json={
+        "contact_id": contact["id"], "title": "List Test Quotation", "amount": 50000, "status": "Draft"
+    }).json()
+    auth_client.put(f"/api/tasks/{task['id']}/quotation", json={"quotation_id": quotation["id"]})
+
+    tasks = auth_client.get("/api/tasks?date=2026-08-26").json()
+    listed = next(t for t in tasks if t["id"] == task["id"])
+    assert listed["quotation_id"] == quotation["id"]
+    assert listed["quotation_title"] == quotation["title"]
