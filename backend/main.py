@@ -27,7 +27,7 @@ from schemas import (
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskCompanyAssign, TaskResponse,
-    MeetingCreate, MeetingUpdate, MeetingCompanyAssign, MeetingResponse,
+    MeetingCreate, MeetingUpdate, MeetingCompanyAssign, MeetingDealAssign, MeetingResponse,
     CallCreate, CallAssign, CallContactAssign, CallCompanyAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
     DialRequest, DialResponse, AISummaryResponse,
@@ -260,22 +260,36 @@ def fetch_task_with_member_name(cursor, task_id):
 def fetch_meeting_with_names(cursor, meeting_id):
     """Same join-by-id pattern as fetch_deal_with_member_name, for meetings - also resolves
     the linked lead/contact name, if any, so the Today page doesn't need a second round-trip
-    per meeting just to show who it's with."""
+    per meeting just to show who it's with. deal_label is built the same way as
+    fetch_lead_with_member_name's, since a Deal has no name of its own."""
     cursor.execute(
         """
         SELECT meetings.*, team_members.name as assigned_team_member_name,
                leads.name as lead_name, contacts.name as contact_name,
-               companies.name as company_name
+               companies.name as company_name,
+               deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+               deal_leads.name as deal_lead_name
         FROM meetings
         LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
         LEFT JOIN leads ON leads.id = meetings.lead_id
         LEFT JOIN contacts ON contacts.id = meetings.contact_id
         LEFT JOIN companies ON companies.id = meetings.company_id
+        LEFT JOIN deals ON deals.id = meetings.deal_id
+        LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
         WHERE meetings.id = ?
         """,
         (meeting_id,)
     )
-    return dict(cursor.fetchone())
+    row = cursor.fetchone()
+    meeting = dict(row)
+    if meeting.get('deal_id'):
+        meeting['deal_label'] = (
+            f"{meeting.get('deal_lead_name') or 'Deal'} - {meeting.get('deal_loan_product') or ''} "
+            f"(Rs {meeting.get('deal_deal_value') or 0:,.0f})"
+        )
+    else:
+        meeting['deal_label'] = None
+    return meeting
 
 def campaign_row_to_dict(row):
     """Attach computed engagement/progress to a raw campaign row"""
@@ -2772,12 +2786,16 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                 """
                 SELECT meetings.*, team_members.name as assigned_team_member_name,
                        leads.name as lead_name, contacts.name as contact_name,
-                       companies.name as company_name
+                       companies.name as company_name,
+                       deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+                       deal_leads.name as deal_lead_name
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
                 LEFT JOIN contacts ON contacts.id = meetings.contact_id
                 LEFT JOIN companies ON companies.id = meetings.company_id
+                LEFT JOIN deals ON deals.id = meetings.deal_id
+                LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
                 WHERE meetings.assigned_team_member_id = ?
                 ORDER BY meetings.meeting_date DESC, meetings.meeting_time ASC
                 """,
@@ -2788,18 +2806,30 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                 """
                 SELECT meetings.*, team_members.name as assigned_team_member_name,
                        leads.name as lead_name, contacts.name as contact_name,
-                       companies.name as company_name
+                       companies.name as company_name,
+                       deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+                       deal_leads.name as deal_lead_name
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
                 LEFT JOIN contacts ON contacts.id = meetings.contact_id
                 LEFT JOIN companies ON companies.id = meetings.company_id
+                LEFT JOIN deals ON deals.id = meetings.deal_id
+                LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
                 WHERE meetings.meeting_date = COALESCE(?, date('now'))
                 ORDER BY meetings.meeting_time ASC, meetings.created_at ASC
                 """,
                 (date,)
             )
         meetings = [dict(row) for row in cursor.fetchall()]
+        for meeting in meetings:
+            if meeting.get('deal_id'):
+                meeting['deal_label'] = (
+                    f"{meeting.get('deal_lead_name') or 'Deal'} - {meeting.get('deal_loan_product') or ''} "
+                    f"(Rs {meeting.get('deal_deal_value') or 0:,.0f})"
+                )
+            else:
+                meeting['deal_label'] = None
 
     return meetings
 
@@ -2908,6 +2938,54 @@ async def get_company_meetings(company_id: int, token: str = Query(None)):
         cursor.execute(
             "SELECT id FROM meetings WHERE company_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
             (company_id,)
+        )
+        rows = cursor.fetchall()
+        meetings = []
+        for row in rows:
+            meeting = fetch_meeting_with_names(cursor, row['id'])
+            if meeting:
+                meetings.append(meeting)
+
+        return meetings
+
+@app.put("/api/meetings/{meeting_id}/deal", response_model=MeetingResponse)
+async def link_meeting_deal(meeting_id: int, link: MeetingDealAssign, token: str = Query(None)):
+    """Link (or unlink, if deal_id is null) a meeting to a Deal."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Meeting not found")
+
+        if link.deal_id is not None:
+            cursor.execute("SELECT 1 FROM deals WHERE id = ?", (link.deal_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Deal not found")
+
+        cursor.execute(
+            "UPDATE meetings SET deal_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.deal_id, meeting_id)
+        )
+        conn.commit()
+
+        return fetch_meeting_with_names(cursor, meeting_id)
+
+@app.get("/api/deals/{deal_id}/meetings", response_model=list[MeetingResponse])
+async def get_deal_meetings(deal_id: int, token: str = Query(None)):
+    """Meetings linked to this Deal."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        cursor.execute(
+            "SELECT id FROM meetings WHERE deal_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
+            (deal_id,)
         )
         rows = cursor.fetchall()
         meetings = []
