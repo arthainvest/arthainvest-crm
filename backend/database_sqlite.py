@@ -344,6 +344,7 @@ def init_db():
             # Set when this contact was created via "Convert to Contact" on a lead - lets the
             # Contact page show where they came from, the reverse of leads.converted_contact_id.
             "ALTER TABLE contacts ADD COLUMN converted_from_lead_id INTEGER REFERENCES leads(id)",
+            "ALTER TABLE contacts ADD COLUMN quotation_id INTEGER REFERENCES quotations(id)",
         ]:
             try:
                 cursor.execute(ddl)

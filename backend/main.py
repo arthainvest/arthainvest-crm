@@ -23,7 +23,7 @@ from schemas import (
     CampaignRecipientAdd, CampaignRecipientResponse, CampaignSendResult,
     IntegrationToggle, IntegrationResponse,
     SettingsUpdate, SettingsResponse,
-    ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactResponse, RenewalContact,
+    ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactQuotationAssign, ContactResponse, RenewalContact,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskResponse,
@@ -194,11 +194,13 @@ def fetch_contact_with_member_name(cursor, contact_id):
         """
         SELECT contacts.*, team_members.name as assigned_team_member_name,
                companies.name as company_name,
-               converted_from_lead.name as converted_from_lead_name
+               converted_from_lead.name as converted_from_lead_name,
+               quotations.title as quotation_title
         FROM contacts
         LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
         LEFT JOIN companies ON companies.id = contacts.company_id
         LEFT JOIN leads AS converted_from_lead ON converted_from_lead.id = contacts.converted_from_lead_id
+        LEFT JOIN quotations ON quotations.id = contacts.quotation_id
         WHERE contacts.id = ?
         """,
         (contact_id,)
@@ -3351,6 +3353,54 @@ async def get_company_contacts(company_id: int, token: str = Query(None)):
         rows = [dict(r) for r in cursor.fetchall()]
 
     return rows
+
+@app.put("/api/contacts/{contact_id}/quotation", response_model=ContactResponse)
+async def link_contact_quotation(contact_id: int, link: ContactQuotationAssign, token: str = Query(None)):
+    """Link (or unlink, if quotation_id is null) a contact to a Quotation."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        if link.quotation_id is not None:
+            cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (link.quotation_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Quotation not found")
+
+        cursor.execute(
+            "UPDATE contacts SET quotation_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.quotation_id, contact_id)
+        )
+        conn.commit()
+
+        return fetch_contact_with_member_name(cursor, contact_id)
+
+@app.get("/api/quotations/{quotation_id}/contacts", response_model=list[ContactResponse])
+async def get_quotation_contacts(quotation_id: int, token: str = Query(None)):
+    """Contacts directly linked to this Quotation."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        cursor.execute(
+            "SELECT id FROM contacts WHERE quotation_id = ? ORDER BY name ASC",
+            (quotation_id,)
+        )
+        rows = cursor.fetchall()
+        contacts = []
+        for row in rows:
+            contact = fetch_contact_with_member_name(cursor, row['id'])
+            if contact:
+                contacts.append(contact)
+
+        return contacts
 
 @app.get("/api/companies/{company_id}/deals", response_model=list[DealResponse])
 async def get_company_deals(company_id: int, token: str = Query(None)):
