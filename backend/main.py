@@ -27,7 +27,7 @@ from schemas import (
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskCompanyAssign, TaskResponse,
-    MeetingCreate, MeetingUpdate, MeetingCompanyAssign, MeetingDealAssign, MeetingCallAssign, MeetingTaskAssign, MeetingResponse,
+    MeetingCreate, MeetingUpdate, MeetingCompanyAssign, MeetingDealAssign, MeetingCallAssign, MeetingTaskAssign, MeetingQuotationAssign, MeetingResponse,
     CallCreate, CallAssign, CallContactAssign, CallCompanyAssign, CallResponse, EmployeeCallStats,
     CommunicationLogResponse,
     DialRequest, DialResponse, AISummaryResponse,
@@ -270,7 +270,8 @@ def fetch_meeting_with_names(cursor, meeting_id):
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
                deal_leads.name as deal_lead_name,
                calls.name as call_name,
-               tasks.title as task_name
+               tasks.title as task_name,
+               quotations.title as quotation_title
         FROM meetings
         LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
         LEFT JOIN leads ON leads.id = meetings.lead_id
@@ -280,6 +281,7 @@ def fetch_meeting_with_names(cursor, meeting_id):
         LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
         LEFT JOIN calls ON calls.id = meetings.call_id
         LEFT JOIN tasks ON tasks.id = meetings.task_id
+        LEFT JOIN quotations ON quotations.id = meetings.quotation_id
         WHERE meetings.id = ?
         """,
         (meeting_id,)
@@ -2794,7 +2796,8 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                        deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
                        deal_leads.name as deal_lead_name,
                        calls.name as call_name,
-                       tasks.title as task_name
+                       tasks.title as task_name,
+                       quotations.title as quotation_title
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
@@ -2804,6 +2807,7 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                 LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
                 LEFT JOIN calls ON calls.id = meetings.call_id
                 LEFT JOIN tasks ON tasks.id = meetings.task_id
+                LEFT JOIN quotations ON quotations.id = meetings.quotation_id
                 WHERE meetings.assigned_team_member_id = ?
                 ORDER BY meetings.meeting_date DESC, meetings.meeting_time ASC
                 """,
@@ -2818,7 +2822,8 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                        deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
                        deal_leads.name as deal_lead_name,
                        calls.name as call_name,
-                       tasks.title as task_name
+                       tasks.title as task_name,
+                       quotations.title as quotation_title
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
@@ -2828,6 +2833,7 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                 LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
                 LEFT JOIN calls ON calls.id = meetings.call_id
                 LEFT JOIN tasks ON tasks.id = meetings.task_id
+                LEFT JOIN quotations ON quotations.id = meetings.quotation_id
                 WHERE meetings.meeting_date = COALESCE(?, date('now'))
                 ORDER BY meetings.meeting_time ASC, meetings.created_at ASC
                 """,
@@ -3094,6 +3100,54 @@ async def get_task_meetings(task_id: int, token: str = Query(None)):
         cursor.execute(
             "SELECT id FROM meetings WHERE task_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
             (task_id,)
+        )
+        rows = cursor.fetchall()
+        meetings = []
+        for row in rows:
+            meeting = fetch_meeting_with_names(cursor, row['id'])
+            if meeting:
+                meetings.append(meeting)
+
+        return meetings
+
+@app.put("/api/meetings/{meeting_id}/quotation", response_model=MeetingResponse)
+async def link_meeting_quotation(meeting_id: int, link: MeetingQuotationAssign, token: str = Query(None)):
+    """Link (or unlink, if quotation_id is null) a meeting to a Quotation."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Meeting not found")
+
+        if link.quotation_id is not None:
+            cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (link.quotation_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Quotation not found")
+
+        cursor.execute(
+            "UPDATE meetings SET quotation_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.quotation_id, meeting_id)
+        )
+        conn.commit()
+
+        return fetch_meeting_with_names(cursor, meeting_id)
+
+@app.get("/api/quotations/{quotation_id}/meetings", response_model=list[MeetingResponse])
+async def get_quotation_meetings(quotation_id: int, token: str = Query(None)):
+    """Meetings linked to this Quotation."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Quotation not found")
+
+        cursor.execute(
+            "SELECT id FROM meetings WHERE quotation_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
+            (quotation_id,)
         )
         rows = cursor.fetchall()
         meetings = []

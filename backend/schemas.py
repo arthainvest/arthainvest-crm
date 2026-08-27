@@ -128,6 +128,9 @@ class MeetingCallAssign(BaseModel):
 class MeetingTaskAssign(BaseModel):
     task_id: Optional[int] = None  # None unlinks the meeting from any Task
 
+class MeetingQuotationAssign(BaseModel):
+    quotation_id: Optional[int] = None  # None unlinks the meeting from any Quotation
+
 class LeadCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the lead from any Call
 
@@ -494,6 +497,8 @@ class MeetingResponse(BaseModel):
     call_name: Optional[str] = None
     task_id: Optional[int] = None
     task_name: Optional[str] = None
+    quotation_id: Optional[int] = None
+    quotation_title: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

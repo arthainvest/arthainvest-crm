@@ -474,6 +474,11 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        try:
+            cursor.execute("ALTER TABLE meetings ADD COLUMN quotation_id INTEGER REFERENCES quotations(id)")
+        except sqlite3.OperationalError:
+            pass
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS communication_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
