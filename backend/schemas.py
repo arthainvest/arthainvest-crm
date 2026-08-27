@@ -293,6 +293,9 @@ class ContactCompanyAssign(BaseModel):
 class ContactQuotationAssign(BaseModel):
     quotation_id: Optional[int] = None  # None unlinks the contact from any Quotation
 
+class ContactCallAssign(BaseModel):
+    call_id: Optional[int] = None  # None unlinks the contact from any Call
+
 class ContactResponse(BaseModel):
     id: int
     name: str
@@ -315,6 +318,8 @@ class ContactResponse(BaseModel):
     converted_from_lead_name: Optional[str] = None
     quotation_id: Optional[int] = None
     quotation_title: Optional[str] = None
+    call_id: Optional[int] = None
+    call_name: Optional[str] = None
 
 # Renewal Reminders (Dashboard "Upcoming Renewals" widget)
 class RenewalContact(BaseModel):
