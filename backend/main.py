@@ -18,7 +18,7 @@ from database_sqlite import get_db, init_db
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
     LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadResponse,
-    DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealProcessStatusUpdate, DealResponse,
+    DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     CampaignRecipientAdd, CampaignRecipientResponse, CampaignSendResult,
     IntegrationToggle, IntegrationResponse,
@@ -137,11 +137,13 @@ def fetch_deal_with_member_name(cursor, deal_id):
         """
         SELECT deals.*, team_members.name as assigned_team_member_name,
                companies.name as company_name, contacts.name as contact_name,
+               calls.name as call_name,
                (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
         FROM deals
         LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
         LEFT JOIN companies ON companies.id = deals.company_id
         LEFT JOIN contacts ON contacts.id = deals.contact_id
+        LEFT JOIN calls ON calls.id = deals.call_id
         WHERE deals.id = ?
         """,
         (deal_id,)
@@ -886,6 +888,54 @@ async def delete_deal(deal_id: int, token: str = Query(None)):
         conn.commit()
 
     return {"message": "Deal deleted"}
+
+@app.put("/api/deals/{deal_id}/call", response_model=DealResponse)
+async def link_deal_call(deal_id: int, link: DealCallAssign, token: str = Query(None)):
+    """Link (or unlink, if call_id is null) a deal to a Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        if link.call_id is not None:
+            cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "UPDATE deals SET call_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (link.call_id, deal_id)
+        )
+        conn.commit()
+
+        return fetch_deal_with_member_name(cursor, deal_id)
+
+@app.get("/api/calls/{call_id}/deals", response_model=list[DealResponse])
+async def get_call_deals(call_id: int, token: str = Query(None)):
+    """Deals directly linked to this Call."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            "SELECT id FROM deals WHERE call_id = ? ORDER BY updated_at DESC",
+            (call_id,)
+        )
+        rows = cursor.fetchall()
+        deals = []
+        for row in rows:
+            deal = fetch_deal_with_member_name(cursor, row['id'])
+            if deal:
+                deals.append(deal)
+
+        return deals
 
 # ============= ANALYTICS ENDPOINTS =============
 
