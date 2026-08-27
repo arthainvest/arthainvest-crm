@@ -273,6 +273,51 @@ export const sendWhatsApp = async (token, to, message) => {
   return response.data;
 };
 
+// WhatsApp conversations / inbox
+export const getWhatsAppConversations = async (token, { status, mineOnly } = {}) => {
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (mineOnly) params.append('mine_only', 'true');
+  const response = await api.get(`/api/whatsapp/conversations?token=${token}&${params.toString()}`);
+  return response.data;
+};
+
+export const getWhatsAppMessages = async (token, conversationId) => {
+  const response = await api.get(`/api/whatsapp/conversations/${conversationId}/messages?token=${token}`);
+  return response.data;
+};
+
+export const replyWhatsAppConversation = async (token, conversationId, payload) => {
+  const response = await api.post(`/api/whatsapp/conversations/${conversationId}/reply?token=${token}`, payload);
+  return response.data;
+};
+
+export const assignWhatsAppConversation = async (token, conversationId, userId) => {
+  const response = await api.put(`/api/whatsapp/conversations/${conversationId}/assign?token=${token}`, { user_id: userId });
+  return response.data;
+};
+
+export const updateWhatsAppConversationStatus = async (token, conversationId, status) => {
+  const response = await api.put(`/api/whatsapp/conversations/${conversationId}/status?token=${token}`, { status });
+  return response.data;
+};
+
+export const optOutWhatsAppConversation = async (token, conversationId) => {
+  const response = await api.post(`/api/whatsapp/conversations/${conversationId}/opt-out?token=${token}`);
+  return response.data;
+};
+
+export const getWhatsAppTemplates = async (token) => {
+  const response = await api.get(`/api/whatsapp/templates?token=${token}`);
+  return response.data;
+};
+
+// Quick replies (canned responses used from the conversation composer)
+export const getQuickReplies = async (token) => {
+  const response = await api.get(`/api/quick-replies?token=${token}`);
+  return response.data;
+};
+
 // Email service (SMTP)
 export const sendEmailReal = async (token, to, subject, body) => {
   const response = await api.post(`/api/email/send?token=${token}`, { to, subject, body });

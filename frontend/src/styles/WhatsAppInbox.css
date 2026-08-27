@@ -1,0 +1,467 @@
+.wa-inbox {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: calc(100vh - 20px);
+  background: var(--bg-surface);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-neutral);
+}
+
+/* ---------- Sidebar ---------- */
+
+.wa-sidebar {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-neutral);
+  background: var(--bg-subtle-alt);
+  min-width: 0;
+}
+
+.wa-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 16px 8px;
+}
+
+.wa-sidebar-header h1 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--text-heading);
+}
+
+.wa-new-btn {
+  flex: none;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.wa-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px 12px 8px;
+}
+
+.wa-tab {
+  flex: 1;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wa-tab.active {
+  background: #25D366;
+  color: white;
+}
+
+.wa-search {
+  padding: 0 12px 10px;
+}
+
+.wa-search input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.wa-conversation-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.wa-conversation-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  margin-bottom: 2px;
+  position: relative;
+}
+
+.wa-conversation-item:hover {
+  background: var(--bg-subtle);
+}
+
+.wa-conversation-item.active {
+  background: var(--border-subtle);
+}
+
+.wa-conversation-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex: none;
+}
+
+.wa-conversation-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.wa-conversation-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wa-conversation-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-heading);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-conversation-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: none;
+}
+
+.wa-conversation-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.wa-preview-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-badge.opted-out {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.wa-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+.wa-status-dot.closed { background: var(--text-muted); }
+.wa-status-dot.handed_off { background: #f39c12; }
+
+/* ---------- Thread ---------- */
+
+.wa-thread {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-page);
+}
+
+.wa-thread-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.wa-thread-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-neutral);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.wa-back-btn {
+  display: none;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--text-primary);
+  padding: 4px 8px 4px 0;
+}
+
+.wa-thread-heading h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-heading);
+}
+
+.wa-thread-number {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wa-thread-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wa-thread-controls select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.wa-optout-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  flex: none;
+}
+
+.wa-optout-banner {
+  background: rgba(192, 57, 43, 0.1);
+  color: #c0392b;
+  font-size: 13px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border-neutral);
+}
+
+.wa-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wa-bubble-row {
+  display: flex;
+}
+
+.wa-bubble-row.out { justify-content: flex-end; }
+.wa-bubble-row.in { justify-content: flex-start; }
+
+.wa-bubble {
+  max-width: 60%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+}
+
+.wa-bubble.out {
+  background: #dcf8c6;
+  color: #1a1a1a;
+  border-bottom-right-radius: 2px;
+}
+
+[data-theme="dark"] .wa-bubble.out {
+  background: #005c4b;
+  color: #e9edef;
+}
+
+.wa-bubble.in {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-bottom-left-radius: 2px;
+}
+
+.wa-bubble.failed {
+  border: 1px solid #c0392b;
+}
+
+.wa-bubble-template-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.wa-bubble-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wa-bubble-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.wa-tick.read { color: #34b7f1; opacity: 1; }
+.wa-tick.failed { color: #c0392b; opacity: 1; }
+
+.wa-bubble-error {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #c0392b;
+}
+
+.no-data {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 24px;
+  font-size: 13px;
+}
+
+/* ---------- Composer ---------- */
+
+.wa-composer {
+  border-top: 1px solid var(--border-neutral);
+  background: var(--bg-surface);
+  padding: 10px 16px 12px;
+}
+
+.wa-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.wa-composer-action {
+  flex: none;
+  padding: 8px 10px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.wa-composer textarea {
+  flex: 1;
+  resize: none;
+  padding: 10px 12px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 18px;
+  font-family: inherit;
+  font-size: 14px;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  max-height: 120px;
+}
+
+.wa-composer textarea:disabled {
+  opacity: 0.6;
+}
+
+.wa-send-btn {
+  flex: none;
+  padding: 10px 18px;
+  border-radius: 18px;
+}
+
+.wa-composer-hint {
+  margin: 6px 4px 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.wa-quick-reply-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 8px;
+  padding: 6px;
+  background: var(--bg-subtle-alt);
+}
+
+.wa-quick-reply-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.wa-quick-reply-item:hover {
+  background: var(--bg-surface);
+}
+
+.wa-quick-reply-item strong {
+  font-size: 12px;
+  color: #128C7E;
+}
+
+.wa-quick-reply-item span {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.wa-templates-warning {
+  font-size: 13px;
+  color: #b3781a;
+  background: rgba(179, 120, 26, 0.1);
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 800px) {
+  .wa-inbox {
+    grid-template-columns: 1fr;
+  }
+  .wa-thread {
+    display: none;
+  }
+  .wa-inbox.has-selected .wa-sidebar {
+    display: none;
+  }
+  .wa-inbox.has-selected .wa-thread {
+    display: flex;
+  }
+  .wa-back-btn {
+    display: inline-block;
+  }
+}

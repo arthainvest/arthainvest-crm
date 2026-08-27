@@ -7,6 +7,7 @@ import LeadsList from './components/LeadsList';
 import Pipeline from './components/Pipeline';
 import Calls from './components/Calls';
 import Marketing from './components/Marketing';
+import WhatsAppInbox from './components/WhatsAppInbox';
 import Team from './components/Team';
 import Reports from './components/Reports';
 import Integrations from './components/Integrations';
@@ -66,6 +67,7 @@ function App() {
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/calls" element={<Calls />} />
               <Route path="/marketing" element={<Marketing />} />
+              <Route path="/whatsapp" element={<WhatsAppInbox />} />
               <Route path="/team" element={<Team />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/integrations" element={<Integrations />} />
