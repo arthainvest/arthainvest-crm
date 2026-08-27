@@ -374,10 +374,20 @@ async def get_leads(
 
     base_query = """
         SELECT leads.*, team_members.name as assigned_team_member_name,
-               converted_contact.name as converted_contact_name
+               converted_contact.name as converted_contact_name,
+               companies.name as company_name,
+               calls.name as call_name,
+               tasks.title as task_name,
+               deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+               deal_leads.name as deal_lead_name
         FROM leads
         LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
         LEFT JOIN contacts AS converted_contact ON converted_contact.id = leads.converted_contact_id
+        LEFT JOIN companies ON companies.id = leads.company_id
+        LEFT JOIN calls ON calls.id = leads.call_id
+        LEFT JOIN tasks ON tasks.id = leads.task_id
+        LEFT JOIN deals ON deals.id = leads.deal_id
+        LEFT JOIN leads AS deal_leads ON deal_leads.id = deals.lead_id
         WHERE 1=1
     """
     conditions = []
@@ -403,6 +413,14 @@ async def get_leads(
         query = base_query + (" AND " + " AND ".join(conditions) if conditions else "") + " ORDER BY leads.created_at DESC"
         cursor.execute(query, params)
         leads = [dict(row) for row in cursor.fetchall()]
+        for lead in leads:
+            if lead.get('deal_id'):
+                lead['deal_label'] = (
+                    f"{lead.get('deal_lead_name') or 'Deal'} - {lead.get('deal_loan_product') or ''} "
+                    f"(Rs {lead.get('deal_deal_value') or 0:,.0f})"
+                )
+            else:
+                lead['deal_label'] = None
 
     return leads
 
