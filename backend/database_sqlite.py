@@ -172,6 +172,11 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        try:
+            cursor.execute("ALTER TABLE leads ADD COLUMN company_id INTEGER REFERENCES companies(id)")
+        except sqlite3.OperationalError:
+            pass
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS deals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

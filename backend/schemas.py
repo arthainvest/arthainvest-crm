@@ -70,6 +70,8 @@ class LeadResponse(BaseModel):
     task_name: Optional[str] = None
     deal_id: Optional[int] = None
     deal_label: Optional[str] = None
+    company_id: Optional[int] = None
+    company_name: Optional[str] = None
 
 # Deal Schemas
 class DealCreate(BaseModel):
@@ -112,6 +114,9 @@ class LeadTaskAssign(BaseModel):
 
 class LeadDealAssign(BaseModel):
     deal_id: Optional[int] = None  # None unlinks the lead from any Deal
+
+class LeadCompanyAssign(BaseModel):
+    company_id: Optional[int] = None  # None unlinks the lead from any Company
 
 class DealCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the deal from any Call
