@@ -282,6 +282,197 @@ def init_db():
             )
         """)
 
+        # One row per WhatsApp thread with a phone number - linked to a contact/lead when a
+        # matching phone number is found, otherwise left unlinked until one is (e.g. a first
+        # inbound message from a brand-new number auto-creates a lead - see webhook handling
+        # in main.py). opted_out_at/opt_out_reason record a customer replying STOP; checked
+        # before every outbound send so we never message someone who opted out.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS whatsapp_conversation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER,
+                lead_id INTEGER,
+                wa_number TEXT NOT NULL,
+                status TEXT DEFAULT 'open',
+                opted_out_at TIMESTAMP,
+                opt_out_reason TEXT,
+                last_message_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (lead_id) REFERENCES leads(id)
+            )
+        """)
+
+        # wa_message_id is Meta's own message id, used to match an incoming delivery/read
+        # status update (from the webhook) back to the row we created when we sent it.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS whatsapp_message (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                direction TEXT NOT NULL,
+                wa_message_id TEXT,
+                message_type TEXT DEFAULT 'text',
+                template_name TEXT,
+                body TEXT,
+                media_url TEXT,
+                status TEXT DEFAULT 'sent',
+                error_message TEXT,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES whatsapp_conversation(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_whatsapp_conversation_wa_number ON whatsapp_conversation(wa_number)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_whatsapp_message_wa_message_id ON whatsapp_message(wa_message_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_whatsapp_message_conversation ON whatsapp_message(conversation_id)")
+
+        # Tags and groups both use one shared join table (entity_type/entity_id) so the same
+        # tag/group can be attached to a contact or a lead without two near-identical schemas.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                color TEXT DEFAULT '#9c6b2e',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS entity_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (tag_id) REFERENCES tags(id),
+                UNIQUE(entity_type, entity_id, tag_id)
+            )
+        """)
+
+        # Groups are audience segments (e.g. "Diwali campaign", "SIP clients") that a broadcast
+        # or automation can target - separate from tags, which are free-form labels.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS entity_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                group_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES groups(id),
+                UNIQUE(entity_type, entity_id, group_id)
+            )
+        """)
+
+        # Custom field definitions (e.g. "SIP Amount", "Policy Number") plus the actual values
+        # stored per contact/lead - same entity_type/entity_id pattern as tags/groups above.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS custom_fields (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                field_type TEXT DEFAULT 'text',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS custom_field_values (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                custom_field_id INTEGER NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                value TEXT,
+                FOREIGN KEY (custom_field_id) REFERENCES custom_fields(id),
+                UNIQUE(custom_field_id, entity_type, entity_id)
+            )
+        """)
+
+        # Canned responses an agent can fire off in one click from a conversation.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quick_replies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                shortcut TEXT UNIQUE NOT NULL,
+                message TEXT NOT NULL,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        # A simple linear drip/automation flow: automations is the flow itself, automation_steps
+        # are its ordered messages (each fires wait_minutes after the previous one), and
+        # automation_enrollments tracks each conversation's live progress through it. This is a
+        # sequential flow engine, not a visual branching flow-builder - see the handover note on
+        # WhatsApp Flows/forms for why that's a separate, larger piece of work.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS automations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                trigger_type TEXT NOT NULL DEFAULT 'manual',
+                group_id INTEGER,
+                status TEXT DEFAULT 'active',
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES groups(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS automation_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                automation_id INTEGER NOT NULL,
+                step_order INTEGER NOT NULL,
+                wait_minutes INTEGER DEFAULT 0,
+                message_type TEXT DEFAULT 'text',
+                template_name TEXT,
+                body TEXT,
+                FOREIGN KEY (automation_id) REFERENCES automations(id)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS automation_enrollments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                automation_id INTEGER NOT NULL,
+                conversation_id INTEGER NOT NULL,
+                current_step INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'active',
+                next_run_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (automation_id) REFERENCES automations(id),
+                FOREIGN KEY (conversation_id) REFERENCES whatsapp_conversation(id),
+                UNIQUE(automation_id, conversation_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_automation_enrollments_next_run ON automation_enrollments(next_run_at, status)")
+
+        # Developer API keys for external systems (a Meta click-to-WhatsApp ad tool, a Google
+        # Sheet, a landing-page form) to push data in without a human login/JWT. Only the hash
+        # is stored - the raw key is shown once, at creation time, the same way GitHub/Stripe
+        # keys work.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                key_prefix TEXT NOT NULL,
+                key_hash TEXT NOT NULL,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMP,
+                revoked_at TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
         # Same retrofit pattern as deals.loan_product - only matters for a database that
         # already existed before these columns were added.
         try:
@@ -290,6 +481,27 @@ def init_db():
             pass
         try:
             cursor.execute("ALTER TABLE user_settings ADD COLUMN default_report_period TEXT DEFAULT 'This Month'")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE contacts ADD COLUMN marketing_opt_in INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE leads ADD COLUMN marketing_opt_in INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # Which team member (agent) currently owns this conversation - "agent visibility
+            # scopes" below filters the conversation list to this for non-admin roles.
+            cursor.execute("ALTER TABLE whatsapp_conversation ADD COLUMN assigned_user_id INTEGER REFERENCES users(id)")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # Meta attaches a `referral` block to the first inbound message of a click-to-WhatsApp
+            # ad conversation (source URL, headline, ad/media id) - stored as raw JSON so we know
+            # which ad brought this lead in, without needing a separate ads-tracking table.
+            cursor.execute("ALTER TABLE whatsapp_message ADD COLUMN referral_json TEXT")
         except sqlite3.OperationalError:
             pass
 

@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
 import sqlite3
 from typing import List
@@ -8,6 +9,11 @@ import os
 import uuid
 import smtplib
 import hashlib
+import hmac
+import json
+import secrets
+import asyncio
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
@@ -24,7 +30,15 @@ from schemas import (
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     CallCreate, CallResponse,
     DialRequest, DialResponse, AISummaryResponse,
-    WhatsAppSendRequest, WhatsAppSendResponse,
+    WhatsAppSendRequest, WhatsAppSendResponse, WhatsAppReplyRequest,
+    WhatsAppTemplatesResponse, WhatsAppConversationResponse, WhatsAppMessageResponse,
+    ConversationAssign, ConversationStatusUpdate,
+    TagCreate, TagResponse, EntityTagRequest,
+    GroupCreate, GroupResponse, EntityGroupRequest,
+    CustomFieldCreate, CustomFieldResponse, CustomFieldValueSet,
+    QuickReplyCreate, QuickReplyUpdate, QuickReplyResponse,
+    AutomationCreate, AutomationUpdate, AutomationResponse, AutomationEnrollRequest,
+    ApiKeyCreate, ApiKeyResponse, ApiKeyCreateResponse,
     EmailSendRequest, EmailSendResponse,
     SmsSendRequest, SmsSendResponse,
     MailchimpSyncResponse,
@@ -34,10 +48,13 @@ from auth import hash_password, verify_password, create_access_token, decode_tok
 
 load_dotenv()
 
+_automation_scheduler_task = None
+
 # Lifespan event
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    global _automation_scheduler_task
     try:
         init_db()
         print("[OK] SQLite database ready!")
@@ -50,8 +67,15 @@ async def lifespan(app: FastAPI):
             os.remove(os.path.join(UPLOADS_DIR, f))
     except Exception as e:
         print(f"[WARN] Could not clear uploads directory: {e}")
+    # In-process drip/automation runner. There's no Celery/Redis in this app yet, so this is a
+    # lightweight stand-in: a loop that wakes up once a minute and fires any automation step
+    # whose next_run_at has arrived. Fine at this scale; a real task queue is worth adding
+    # before automation volume gets large or the app runs multiple backend instances.
+    _automation_scheduler_task = asyncio.create_task(_run_automation_scheduler())
     yield
     # Shutdown
+    if _automation_scheduler_task:
+        _automation_scheduler_task.cancel()
     print("[OK] Server shutting down")
 
 # Create FastAPI app
@@ -112,6 +136,120 @@ def call_row_to_dict(row):
     c = dict(row)
     c['duration'] = format_duration(c.get('duration_seconds'))
     return c
+
+# ============= WHATSAPP HELPERS =============
+
+def normalize_phone(phone):
+    """Digits-only phone number, e.g. '+91 98765-43210' -> '919876543210'."""
+    return ''.join(ch for ch in (phone or '') if ch.isdigit())
+
+def _phone_suffix_match(a, b, length=10):
+    """Compare the last `length` digits so a stored '+91-9876543210' matches WhatsApp's
+    '919876543210' (country code included) without needing exact formatting to line up."""
+    return bool(a) and bool(b) and len(a) >= length and len(b) >= length and a[-length:] == b[-length:]
+
+def _find_or_link_conversation(cursor, wa_number_digits):
+    """Find the conversation for this WhatsApp number, or create one - linking it to a
+    matching contact/lead by phone number when one exists. Returns a dict, never None."""
+    cursor.execute("SELECT * FROM whatsapp_conversation WHERE wa_number = ?", (wa_number_digits,))
+    convo = cursor.fetchone()
+    if convo:
+        return dict(convo)
+
+    contact_id = None
+    lead_id = None
+    cursor.execute("SELECT id, phone FROM contacts WHERE phone IS NOT NULL AND phone != ''")
+    for row in cursor.fetchall():
+        if _phone_suffix_match(normalize_phone(row['phone']), wa_number_digits):
+            contact_id = row['id']
+            break
+    if not contact_id:
+        cursor.execute("SELECT id, phone FROM leads WHERE phone IS NOT NULL AND phone != ''")
+        for row in cursor.fetchall():
+            if _phone_suffix_match(normalize_phone(row['phone']), wa_number_digits):
+                lead_id = row['id']
+                break
+
+    cursor.execute(
+        """INSERT INTO whatsapp_conversation (contact_id, lead_id, wa_number, status, last_message_at)
+           VALUES (?, ?, ?, 'open', CURRENT_TIMESTAMP)""",
+        (contact_id, lead_id, wa_number_digits)
+    )
+    cursor.execute("SELECT * FROM whatsapp_conversation WHERE id = ?", (cursor.lastrowid,))
+    return dict(cursor.fetchone())
+
+def _send_whatsapp_api_message(to_digits, message=None, template_name=None, template_language="en_US", template_params=None):
+    """Raw call to the Meta Cloud API. Returns (ok, wa_message_id_or_None, error_text_or_None).
+    Caller is responsible for checking WHATSAPP_TOKEN/WHATSAPP_PHONE_ID are set first."""
+    import requests
+    wa_token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_ID")
+
+    if template_name:
+        components = []
+        if template_params:
+            components.append({
+                "type": "body",
+                "parameters": [{"type": "text", "text": p} for p in template_params]
+            })
+        body = {
+            "messaging_product": "whatsapp",
+            "to": to_digits,
+            "type": "template",
+            "template": {"name": template_name, "language": {"code": template_language}, "components": components}
+        }
+    else:
+        body = {
+            "messaging_product": "whatsapp",
+            "to": to_digits,
+            "type": "text",
+            "text": {"body": message}
+        }
+
+    try:
+        resp = requests.post(
+            f"https://graph.facebook.com/v19.0/{phone_id}/messages",
+            headers={"Authorization": f"Bearer {wa_token}"},
+            json=body,
+            timeout=10
+        )
+        if resp.status_code >= 400:
+            return False, None, resp.text[:500]
+        data = resp.json()
+        wa_message_id = (data.get("messages") or [{}])[0].get("id")
+        return True, wa_message_id, None
+    except Exception as e:
+        return False, None, str(e)[:500]
+
+def _log_whatsapp_message(cursor, conversation_id, direction, status, message_type='text',
+                           template_name=None, body=None, wa_message_id=None, error_message=None,
+                           created_by=None, media_url=None, referral_json=None):
+    cursor.execute(
+        """INSERT INTO whatsapp_message
+           (conversation_id, direction, wa_message_id, message_type, template_name, body,
+            media_url, status, error_message, created_by, referral_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (conversation_id, direction, wa_message_id, message_type, template_name, body,
+         media_url, status, error_message, created_by, referral_json)
+    )
+    cursor.execute("UPDATE whatsapp_conversation SET last_message_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (conversation_id,))
+    return cursor.lastrowid
+
+def require_api_key(x_api_key: str = Header(None)):
+    """Auth for machine-to-machine endpoints (ad forms, Google Sheets, etc.) that can't carry
+    a user's JWT. Looks up the key by its stored hash - the raw key is never persisted."""
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Missing X-API-Key header")
+    key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL", (key_hash,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid or revoked API key")
+        cursor.execute("UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?", (row['id'],))
+        conn.commit()
+    return dict(row)
 
 # ============= HEALTH CHECK =============
 
@@ -277,6 +415,9 @@ async def update_lead(lead_id: int, lead: LeadUpdate, token: str = Query(None)):
     if lead.lead_tier is not None:
         updates.append("lead_tier = ?")
         values.append(lead.lead_tier)
+    if lead.marketing_opt_in is not None:
+        updates.append("marketing_opt_in = ?")
+        values.append(int(lead.marketing_opt_in))
 
     updates.append("updated_at = CURRENT_TIMESTAMP")
     values.append(lead_id)
@@ -726,6 +867,9 @@ async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Q
         if value is not None:
             updates.append(f"{field} = ?")
             values.append(value)
+    if contact.marketing_opt_in is not None:
+        updates.append("marketing_opt_in = ?")
+        values.append(int(contact.marketing_opt_in))
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -1215,9 +1359,12 @@ async def send_sms(sms: SmsSendRequest, token: str = Query(None)):
 
 @app.post("/api/whatsapp/send", response_model=WhatsAppSendResponse)
 async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
-    """Send a real WhatsApp message via the Meta Cloud API. Returns configured=False when
-    WHATSAPP_TOKEN/WHATSAPP_PHONE_ID aren't set, so the frontend can fall back to a wa.me link."""
-    get_current_user(token)
+    """Send a real WhatsApp message via the Meta Cloud API - freeform text (only deliverable
+    inside Meta's 24h customer-service window) or an approved template (deliverable any time,
+    required for anything marketing-like). Returns configured=False when WHATSAPP_TOKEN/
+    WHATSAPP_PHONE_ID aren't set, so the frontend can fall back to a wa.me link. Every attempt
+    is logged to whatsapp_message, win or lose, so Conversations/Reports have a real history."""
+    current_user = get_current_user(token)
 
     wa_token = os.getenv("WHATSAPP_TOKEN")
     phone_id = os.getenv("WHATSAPP_PHONE_ID")
@@ -1225,25 +1372,867 @@ async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
     if not (wa_token and phone_id):
         return WhatsAppSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
 
+    if not payload.message and not payload.template_name:
+        raise HTTPException(status_code=400, detail="Provide either 'message' (freeform text) or 'template_name'.")
+
+    to_digits = normalize_phone(payload.to)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        convo = _find_or_link_conversation(cursor, to_digits)
+        if payload.contact_id and not convo['contact_id']:
+            cursor.execute("UPDATE whatsapp_conversation SET contact_id = ? WHERE id = ?", (payload.contact_id, convo['id']))
+        if payload.lead_id and not convo['lead_id']:
+            cursor.execute("UPDATE whatsapp_conversation SET lead_id = ? WHERE id = ?", (payload.lead_id, convo['id']))
+        conn.commit()
+
+        if convo['opted_out_at']:
+            return WhatsAppSendResponse(
+                configured=True,
+                message="This contact opted out of WhatsApp messages and cannot be messaged.",
+                conversation_id=convo['id']
+            )
+
+        ok, wa_message_id, error = _send_whatsapp_api_message(
+            to_digits, message=payload.message, template_name=payload.template_name,
+            template_language=payload.template_language, template_params=payload.template_params
+        )
+        _log_whatsapp_message(
+            cursor, convo['id'], direction='out', status='sent' if ok else 'failed',
+            message_type='template' if payload.template_name else 'text',
+            template_name=payload.template_name, body=payload.message,
+            wa_message_id=wa_message_id, error_message=error, created_by=current_user['user_id']
+        )
+        conn.commit()
+
+    if ok:
+        return WhatsAppSendResponse(configured=True, message=f"WhatsApp message sent to {payload.to}.", conversation_id=convo['id'])
+    return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {error}", conversation_id=convo['id'])
+
+@app.get("/api/whatsapp/templates", response_model=WhatsAppTemplatesResponse)
+async def get_whatsapp_templates(token: str = Query(None)):
+    """List message templates approved (or pending/rejected) on the connected WhatsApp
+    Business Account. Requires WHATSAPP_BUSINESS_ACCOUNT_ID (the WABA id, not the phone id)
+    alongside WHATSAPP_TOKEN."""
+    get_current_user(token)
+
+    wa_token = os.getenv("WHATSAPP_TOKEN")
+    waba_id = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID")
+    if not (wa_token and waba_id):
+        return WhatsAppTemplatesResponse(configured=False, message="WHATSAPP_BUSINESS_ACCOUNT_ID is not configured on this server.", templates=[])
+
     try:
         import requests
-        to_digits = ''.join(ch for ch in payload.to if ch.isdigit())
-        resp = requests.post(
-            f"https://graph.facebook.com/v19.0/{phone_id}/messages",
+        resp = requests.get(
+            f"https://graph.facebook.com/v19.0/{waba_id}/message_templates",
             headers={"Authorization": f"Bearer {wa_token}"},
-            json={
-                "messaging_product": "whatsapp",
-                "to": to_digits,
-                "type": "text",
-                "text": {"body": payload.message}
-            },
+            params={"limit": 100},
             timeout=10
         )
         if resp.status_code >= 400:
-            return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {resp.text[:200]}")
-        return WhatsAppSendResponse(configured=True, message=f"WhatsApp message sent to {payload.to}.")
+            return WhatsAppTemplatesResponse(configured=True, message=f"Could not fetch templates: {resp.text[:200]}", templates=[])
+        data = resp.json()
+        templates = [
+            {"name": t.get("name"), "status": t.get("status"), "category": t.get("category"), "language": t.get("language")}
+            for t in data.get("data", [])
+        ]
+        return WhatsAppTemplatesResponse(configured=True, message=f"Found {len(templates)} template(s).", templates=templates)
     except Exception as e:
-        return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {str(e)}")
+        return WhatsAppTemplatesResponse(configured=True, message=f"Failed to fetch templates: {str(e)}", templates=[])
+
+@app.get("/api/whatsapp/conversations", response_model=list[WhatsAppConversationResponse])
+async def get_whatsapp_conversations(token: str = Query(None), status: str = Query(None), mine_only: bool = Query(False)):
+    """List WhatsApp conversations, newest activity first. mine_only restricts the list to
+    conversations assigned to the calling user - the 'agent visibility scope' equivalent."""
+    current_user = get_current_user(token)
+
+    query = """
+        SELECT c.*, ct.name as contact_name, ld.name as lead_name,
+               (SELECT body FROM whatsapp_message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
+               (SELECT message_type FROM whatsapp_message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_type
+        FROM whatsapp_conversation c
+        LEFT JOIN contacts ct ON ct.id = c.contact_id
+        LEFT JOIN leads ld ON ld.id = c.lead_id
+        WHERE 1=1
+    """
+    params = []
+    if status:
+        query += " AND c.status = ?"
+        params.append(status)
+    if mine_only:
+        query += " AND c.assigned_user_id = ?"
+        params.append(current_user['user_id'])
+    query += " ORDER BY c.last_message_at DESC"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        conversations = [dict(row) for row in cursor.fetchall()]
+
+    return conversations
+
+@app.get("/api/whatsapp/conversations/{conversation_id}/messages", response_model=list[WhatsAppMessageResponse])
+async def get_whatsapp_messages(conversation_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM whatsapp_message WHERE conversation_id = ? ORDER BY created_at ASC", (conversation_id,))
+        messages = [dict(row) for row in cursor.fetchall()]
+    return messages
+
+@app.post("/api/whatsapp/conversations/{conversation_id}/reply", response_model=WhatsAppSendResponse)
+async def reply_whatsapp_conversation(conversation_id: int, payload: WhatsAppReplyRequest, token: str = Query(None)):
+    """Send a message inside an existing conversation, without needing the customer's raw
+    phone number again - used by the agent inbox / conversation thread view."""
+    current_user = get_current_user(token)
+
+    wa_token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_ID")
+    if not (wa_token and phone_id):
+        return WhatsAppSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
+    if not payload.message and not payload.template_name:
+        raise HTTPException(status_code=400, detail="Provide either 'message' or 'template_name'.")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM whatsapp_conversation WHERE id = ?", (conversation_id,))
+        convo = cursor.fetchone()
+        if not convo:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        convo = dict(convo)
+
+        if convo['opted_out_at']:
+            return WhatsAppSendResponse(configured=True, message="This contact opted out and cannot be messaged.", conversation_id=convo['id'])
+
+        ok, wa_message_id, error = _send_whatsapp_api_message(
+            convo['wa_number'], message=payload.message, template_name=payload.template_name,
+            template_language=payload.template_language, template_params=payload.template_params
+        )
+        _log_whatsapp_message(
+            cursor, convo['id'], direction='out', status='sent' if ok else 'failed',
+            message_type='template' if payload.template_name else 'text',
+            template_name=payload.template_name, body=payload.message,
+            wa_message_id=wa_message_id, error_message=error, created_by=current_user['user_id']
+        )
+        conn.commit()
+
+    if ok:
+        return WhatsAppSendResponse(configured=True, message="Message sent.", conversation_id=conversation_id)
+    return WhatsAppSendResponse(configured=True, message=f"Send failed: {error}", conversation_id=conversation_id)
+
+@app.put("/api/whatsapp/conversations/{conversation_id}/assign")
+async def assign_whatsapp_conversation(conversation_id: int, payload: ConversationAssign, token: str = Query(None)):
+    """Hand a conversation to a specific team member, or unassign it (user_id=null) -
+    the 'human handover' step after an automated flow decides a person should take over."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE whatsapp_conversation SET assigned_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (payload.user_id, conversation_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"message": "Conversation assignment updated"}
+
+@app.put("/api/whatsapp/conversations/{conversation_id}/status")
+async def update_whatsapp_conversation_status(conversation_id: int, payload: ConversationStatusUpdate, token: str = Query(None)):
+    get_current_user(token)
+    if payload.status not in ('open', 'closed', 'handed_off'):
+        raise HTTPException(status_code=400, detail="status must be one of: open, closed, handed_off")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE whatsapp_conversation SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (payload.status, conversation_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"message": "Conversation status updated"}
+
+@app.post("/api/whatsapp/conversations/{conversation_id}/opt-out")
+async def opt_out_whatsapp_conversation(conversation_id: int, token: str = Query(None)):
+    """Manually mark a conversation opted-out (e.g. a customer asked verbally, not over
+    WhatsApp) - the same stop condition the webhook applies automatically for a 'STOP' reply."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE whatsapp_conversation SET opted_out_at = CURRENT_TIMESTAMP, opt_out_reason = 'Marked opted-out manually', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (conversation_id,)
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"message": "Conversation marked opted-out"}
+
+# ============= WHATSAPP WEBHOOKS (Meta Cloud API) =============
+
+@app.get("/api/webhooks/whatsapp")
+async def verify_whatsapp_webhook(request: Request):
+    """Meta calls this once, with a GET, when you register the webhook URL in the Meta App
+    dashboard - it must be answered with the raw hub.challenge value to complete setup."""
+    params = request.query_params
+    mode = params.get("hub.mode")
+    verify_token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge", "")
+    expected_token = os.getenv("WHATSAPP_VERIFY_TOKEN")
+
+    if mode == "subscribe" and expected_token and verify_token == expected_token:
+        return PlainTextResponse(challenge)
+    raise HTTPException(status_code=403, detail="Webhook verification failed")
+
+@app.post("/api/webhooks/whatsapp")
+async def receive_whatsapp_webhook(request: Request):
+    """Receives inbound messages and delivery/read status updates from Meta. This endpoint has
+    no user login - Meta can't carry our JWT - so it's protected instead by verifying Meta's
+    HMAC signature (WHATSAPP_APP_SECRET). Always returns 200 quickly: Meta retries aggressively
+    (and can eventually disable the webhook) if it doesn't get a fast 2xx, so processing errors
+    are logged server-side rather than surfaced as an HTTP error."""
+    raw_body = await request.body()
+
+    app_secret = os.getenv("WHATSAPP_APP_SECRET")
+    if app_secret:
+        signature = request.headers.get("x-hub-signature-256", "")
+        expected = "sha256=" + hmac.new(app_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    try:
+        payload = json.loads(raw_body or b"{}")
+        _process_whatsapp_webhook_payload(payload)
+    except Exception as e:
+        print(f"[WARN] WhatsApp webhook processing failed: {e}")
+
+    return {"status": "received"}
+
+_STATUS_RANK = {'sent': 1, 'delivered': 2, 'read': 3, 'failed': 4}
+_OPT_OUT_KEYWORDS = {'stop', 'unsubscribe', 'opt out', 'optout'}
+
+def _process_whatsapp_webhook_payload(payload):
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            messages = value.get("messages", [])
+            statuses = value.get("statuses", [])
+
+            if messages:
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    for msg in messages:
+                        wa_number = normalize_phone(msg.get("from", ""))
+                        if not wa_number:
+                            continue
+                        msg_type = msg.get("type", "text")
+                        body = None
+                        media_url = None
+                        if msg_type == "text":
+                            body = msg.get("text", {}).get("body")
+                        elif msg_type == "button":
+                            body = msg.get("button", {}).get("text")
+                        elif msg_type == "interactive":
+                            interactive = msg.get("interactive", {})
+                            reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
+                            body = reply.get("title")
+                        elif msg_type in ("image", "document", "audio", "video", "sticker"):
+                            # Meta gives a media id here, not a URL - a follow-up GET to
+                            # /{media-id} (then downloading the returned url) is needed to
+                            # actually fetch the file. Stored as-is so nothing is lost.
+                            media_url = (msg.get(msg_type) or {}).get("id")
+
+                        referral = msg.get("referral")  # present on the first message of a click-to-WhatsApp ad
+                        referral_json = json.dumps(referral) if referral else None
+
+                        convo = _find_or_link_conversation(cursor, wa_number)
+                        if not convo['contact_id'] and not convo['lead_id']:
+                            source = 'WhatsApp Ad' if referral else 'WhatsApp'
+                            cursor.execute(
+                                "INSERT INTO leads (name, phone, status, source) VALUES (?, ?, 'New', ?)",
+                                (f"WhatsApp {wa_number[-4:]}", wa_number, source)
+                            )
+                            lead_id = cursor.lastrowid
+                            cursor.execute("UPDATE whatsapp_conversation SET lead_id = ? WHERE id = ?", (lead_id, convo['id']))
+                            convo['lead_id'] = lead_id
+
+                        _log_whatsapp_message(
+                            cursor, convo['id'], direction='in', status='received',
+                            message_type=msg_type, body=body, media_url=media_url,
+                            wa_message_id=msg.get("id"), referral_json=referral_json
+                        )
+
+                        if body and body.strip().lower() in _OPT_OUT_KEYWORDS:
+                            cursor.execute(
+                                "UPDATE whatsapp_conversation SET opted_out_at = CURRENT_TIMESTAMP, opt_out_reason = 'Customer replied STOP' WHERE id = ?",
+                                (convo['id'],)
+                            )
+                    conn.commit()
+
+            if statuses:
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    for st in statuses:
+                        wa_message_id = st.get("id")
+                        new_status = st.get("status")
+                        if not (wa_message_id and new_status):
+                            continue
+                        cursor.execute("SELECT id, status FROM whatsapp_message WHERE wa_message_id = ?", (wa_message_id,))
+                        row = cursor.fetchone()
+                        if not row:
+                            continue
+                        current_rank = _STATUS_RANK.get(row['status'], 0)
+                        new_rank = _STATUS_RANK.get(new_status, 0)
+                        if new_status == 'failed' or new_rank >= current_rank:
+                            error_text = None
+                            if new_status == 'failed':
+                                errors = st.get("errors") or []
+                                if errors:
+                                    error_text = errors[0].get("title")
+                            cursor.execute(
+                                "UPDATE whatsapp_message SET status = ?, error_message = COALESCE(?, error_message) WHERE id = ?",
+                                (new_status, error_text, row['id'])
+                            )
+                    conn.commit()
+
+# ============= TAGS & GROUPS =============
+
+@app.get("/api/tags", response_model=list[TagResponse])
+async def get_tags(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tags ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/tags", response_model=TagResponse)
+async def create_tag(tag: TagCreate, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO tags (name, color) VALUES (?, ?)", (tag.name, tag.color))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="A tag with this name already exists")
+        cursor.execute("SELECT * FROM tags WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.delete("/api/tags/{tag_id}")
+async def delete_tag(tag_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM entity_tags WHERE tag_id = ?", (tag_id,))
+        cursor.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
+        conn.commit()
+    return {"message": "Tag deleted"}
+
+@app.post("/api/tags/assign")
+async def assign_tag(payload: EntityTagRequest, token: str = Query(None)):
+    get_current_user(token)
+    if payload.entity_type not in ('contact', 'lead'):
+        raise HTTPException(status_code=400, detail="entity_type must be 'contact' or 'lead'")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO entity_tags (entity_type, entity_id, tag_id) VALUES (?, ?, ?)",
+                (payload.entity_type, payload.entity_id, payload.tag_id)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            pass  # already tagged - not an error
+    return {"message": "Tag assigned"}
+
+@app.post("/api/tags/unassign")
+async def unassign_tag(payload: EntityTagRequest, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM entity_tags WHERE entity_type = ? AND entity_id = ? AND tag_id = ?",
+            (payload.entity_type, payload.entity_id, payload.tag_id)
+        )
+        conn.commit()
+    return {"message": "Tag unassigned"}
+
+@app.get("/api/tags/for/{entity_type}/{entity_id}", response_model=list[TagResponse])
+async def get_tags_for_entity(entity_type: str, entity_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT t.* FROM tags t JOIN entity_tags et ON et.tag_id = t.id
+               WHERE et.entity_type = ? AND et.entity_id = ? ORDER BY t.name""",
+            (entity_type, entity_id)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.get("/api/groups", response_model=list[GroupResponse])
+async def get_groups(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM groups ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/groups", response_model=GroupResponse)
+async def create_group(group: GroupCreate, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO groups (name, description) VALUES (?, ?)", (group.name, group.description))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="A group with this name already exists")
+        cursor.execute("SELECT * FROM groups WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.delete("/api/groups/{group_id}")
+async def delete_group(group_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM entity_groups WHERE group_id = ?", (group_id,))
+        cursor.execute("DELETE FROM groups WHERE id = ?", (group_id,))
+        conn.commit()
+    return {"message": "Group deleted"}
+
+@app.post("/api/groups/assign")
+async def assign_group(payload: EntityGroupRequest, token: str = Query(None)):
+    get_current_user(token)
+    if payload.entity_type not in ('contact', 'lead'):
+        raise HTTPException(status_code=400, detail="entity_type must be 'contact' or 'lead'")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO entity_groups (entity_type, entity_id, group_id) VALUES (?, ?, ?)",
+                (payload.entity_type, payload.entity_id, payload.group_id)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            pass
+    return {"message": "Added to group"}
+
+@app.post("/api/groups/unassign")
+async def unassign_group(payload: EntityGroupRequest, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM entity_groups WHERE entity_type = ? AND entity_id = ? AND group_id = ?",
+            (payload.entity_type, payload.entity_id, payload.group_id)
+        )
+        conn.commit()
+    return {"message": "Removed from group"}
+
+def _group_member_conversations(cursor, group_id):
+    """Every open WhatsApp conversation belonging to a contact/lead in this group - the
+    audience a broadcast campaign or automation targets."""
+    cursor.execute(
+        """SELECT wc.* FROM whatsapp_conversation wc
+           JOIN entity_groups eg
+             ON (eg.entity_type = 'contact' AND eg.entity_id = wc.contact_id)
+             OR (eg.entity_type = 'lead' AND eg.entity_id = wc.lead_id)
+           WHERE eg.group_id = ? AND wc.opted_out_at IS NULL""",
+        (group_id,)
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+# ============= CUSTOM FIELDS =============
+
+@app.get("/api/custom-fields", response_model=list[CustomFieldResponse])
+async def get_custom_fields(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM custom_fields ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/custom-fields", response_model=CustomFieldResponse)
+async def create_custom_field(field: CustomFieldCreate, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO custom_fields (name, field_type) VALUES (?, ?)", (field.name, field.field_type))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="A custom field with this name already exists")
+        cursor.execute("SELECT * FROM custom_fields WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.delete("/api/custom-fields/{field_id}")
+async def delete_custom_field(field_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM custom_field_values WHERE custom_field_id = ?", (field_id,))
+        cursor.execute("DELETE FROM custom_fields WHERE id = ?", (field_id,))
+        conn.commit()
+    return {"message": "Custom field deleted"}
+
+@app.put("/api/custom-fields/value")
+async def set_custom_field_value(payload: CustomFieldValueSet, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO custom_field_values (custom_field_id, entity_type, entity_id, value)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(custom_field_id, entity_type, entity_id) DO UPDATE SET value = excluded.value""",
+            (payload.custom_field_id, payload.entity_type, payload.entity_id, payload.value)
+        )
+        conn.commit()
+    return {"message": "Custom field value saved"}
+
+@app.get("/api/custom-fields/for/{entity_type}/{entity_id}")
+async def get_custom_field_values(entity_type: str, entity_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT cf.id, cf.name, cf.field_type, cfv.value
+               FROM custom_fields cf
+               LEFT JOIN custom_field_values cfv
+                 ON cfv.custom_field_id = cf.id AND cfv.entity_type = ? AND cfv.entity_id = ?
+               ORDER BY cf.name""",
+            (entity_type, entity_id)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+# ============= QUICK REPLIES =============
+
+@app.get("/api/quick-replies", response_model=list[QuickReplyResponse])
+async def get_quick_replies(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM quick_replies ORDER BY shortcut")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/quick-replies", response_model=QuickReplyResponse)
+async def create_quick_reply(reply: QuickReplyCreate, token: str = Query(None)):
+    current_user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO quick_replies (shortcut, message, created_by) VALUES (?, ?, ?)",
+                (reply.shortcut, reply.message, current_user['user_id'])
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="A quick reply with this shortcut already exists")
+        cursor.execute("SELECT * FROM quick_replies WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.put("/api/quick-replies/{reply_id}", response_model=QuickReplyResponse)
+async def update_quick_reply(reply_id: int, reply: QuickReplyUpdate, token: str = Query(None)):
+    get_current_user(token)
+    updates, values = [], []
+    if reply.shortcut is not None:
+        updates.append("shortcut = ?"); values.append(reply.shortcut)
+    if reply.message is not None:
+        updates.append("message = ?"); values.append(reply.message)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    values.append(reply_id)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE quick_replies SET {', '.join(updates)} WHERE id = ?", values)
+        conn.commit()
+        cursor.execute("SELECT * FROM quick_replies WHERE id = ?", (reply_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Quick reply not found")
+        return dict(row)
+
+@app.delete("/api/quick-replies/{reply_id}")
+async def delete_quick_reply(reply_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM quick_replies WHERE id = ?", (reply_id,))
+        conn.commit()
+    return {"message": "Quick reply deleted"}
+
+# ============= AUTOMATIONS (drip sequences / simple flows) =============
+
+def _automation_row_to_response(cursor, row):
+    a = dict(row)
+    cursor.execute("SELECT * FROM automation_steps WHERE automation_id = ? ORDER BY step_order", (a['id'],))
+    a['steps'] = [dict(s) for s in cursor.fetchall()]
+    return a
+
+@app.get("/api/automations", response_model=list[AutomationResponse])
+async def get_automations(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM automations ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        return [_automation_row_to_response(cursor, r) for r in rows]
+
+@app.post("/api/automations", response_model=AutomationResponse)
+async def create_automation(automation: AutomationCreate, token: str = Query(None)):
+    current_user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO automations (name, trigger_type, group_id, created_by) VALUES (?, ?, ?, ?)",
+            (automation.name, automation.trigger_type, automation.group_id, current_user['user_id'])
+        )
+        automation_id = cursor.lastrowid
+        for i, step in enumerate(automation.steps):
+            cursor.execute(
+                """INSERT INTO automation_steps (automation_id, step_order, wait_minutes, message_type, template_name, body)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (automation_id, i, step.wait_minutes, step.message_type, step.template_name, step.body)
+            )
+        conn.commit()
+        cursor.execute("SELECT * FROM automations WHERE id = ?", (automation_id,))
+        return _automation_row_to_response(cursor, cursor.fetchone())
+
+@app.put("/api/automations/{automation_id}", response_model=AutomationResponse)
+async def update_automation(automation_id: int, automation: AutomationUpdate, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM automations WHERE id = ?", (automation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Automation not found")
+
+        updates, values = [], []
+        if automation.name is not None:
+            updates.append("name = ?"); values.append(automation.name)
+        if automation.status is not None:
+            if automation.status not in ('active', 'paused'):
+                raise HTTPException(status_code=400, detail="status must be 'active' or 'paused'")
+            updates.append("status = ?"); values.append(automation.status)
+        if updates:
+            updates.append("updated_at = CURRENT_TIMESTAMP")
+            values.append(automation_id)
+            cursor.execute(f"UPDATE automations SET {', '.join(updates)} WHERE id = ?", values)
+
+        if automation.steps is not None:
+            cursor.execute("DELETE FROM automation_steps WHERE automation_id = ?", (automation_id,))
+            for i, step in enumerate(automation.steps):
+                cursor.execute(
+                    """INSERT INTO automation_steps (automation_id, step_order, wait_minutes, message_type, template_name, body)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (automation_id, i, step.wait_minutes, step.message_type, step.template_name, step.body)
+                )
+
+        conn.commit()
+        cursor.execute("SELECT * FROM automations WHERE id = ?", (automation_id,))
+        return _automation_row_to_response(cursor, cursor.fetchone())
+
+@app.delete("/api/automations/{automation_id}")
+async def delete_automation(automation_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM automation_enrollments WHERE automation_id = ?", (automation_id,))
+        cursor.execute("DELETE FROM automation_steps WHERE automation_id = ?", (automation_id,))
+        cursor.execute("DELETE FROM automations WHERE id = ?", (automation_id,))
+        conn.commit()
+    return {"message": "Automation deleted"}
+
+@app.post("/api/automations/{automation_id}/enroll")
+async def enroll_conversation(automation_id: int, payload: AutomationEnrollRequest, token: str = Query(None)):
+    """Start a single conversation on this automation now (its first step fires as soon as
+    the scheduler's next tick runs, honoring that step's wait_minutes)."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT wait_minutes FROM automation_steps WHERE automation_id = ? ORDER BY step_order LIMIT 1", (automation_id,))
+        first_step = cursor.fetchone()
+        if not first_step:
+            raise HTTPException(status_code=400, detail="This automation has no steps yet")
+        next_run_at = (datetime.utcnow() + timedelta(minutes=first_step['wait_minutes'])).isoformat()
+        try:
+            cursor.execute(
+                """INSERT INTO automation_enrollments (automation_id, conversation_id, current_step, status, next_run_at)
+                   VALUES (?, ?, 0, 'active', ?)""",
+                (automation_id, payload.conversation_id, next_run_at)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="This conversation is already enrolled in this automation")
+    return {"message": "Enrolled"}
+
+@app.post("/api/automations/{automation_id}/enroll-group/{group_id}")
+async def enroll_group(automation_id: int, group_id: int, token: str = Query(None)):
+    """Enroll every opted-in conversation in a group at once - the broadcast/drip-campaign
+    entry point (e.g. 'start the Diwali sequence for the SIP Clients group')."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT wait_minutes FROM automation_steps WHERE automation_id = ? ORDER BY step_order LIMIT 1", (automation_id,))
+        first_step = cursor.fetchone()
+        if not first_step:
+            raise HTTPException(status_code=400, detail="This automation has no steps yet")
+        next_run_at = (datetime.utcnow() + timedelta(minutes=first_step['wait_minutes'])).isoformat()
+
+        conversations = _group_member_conversations(cursor, group_id)
+        enrolled = 0
+        for convo in conversations:
+            try:
+                cursor.execute(
+                    """INSERT INTO automation_enrollments (automation_id, conversation_id, current_step, status, next_run_at)
+                       VALUES (?, ?, 0, 'active', ?)""",
+                    (automation_id, convo['id'], next_run_at)
+                )
+                enrolled += 1
+            except sqlite3.IntegrityError:
+                continue  # already enrolled
+        conn.commit()
+    return {"message": f"Enrolled {enrolled} conversation(s)"}
+
+@app.post("/api/automations/enrollments/{enrollment_id}/stop")
+async def stop_enrollment(enrollment_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE automation_enrollments SET status = 'stopped', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (enrollment_id,))
+        conn.commit()
+    return {"message": "Enrollment stopped"}
+
+async def _run_automation_scheduler():
+    """The drip-sequence engine: once a minute, find every active enrollment whose next step
+    is due, send it, and schedule the one after (or mark the enrollment completed). A reply
+    from the customer or a STOP is not auto-detected here as a pause signal - conversation
+    status/opt-out already blocks the send itself, which is the safety net that matters."""
+    while True:
+        try:
+            _tick_automation_scheduler()
+        except Exception as e:
+            print(f"[WARN] Automation scheduler tick failed: {e}")
+        await asyncio.sleep(60)
+
+def _tick_automation_scheduler():
+    now_iso = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM automation_enrollments WHERE status = 'active' AND next_run_at <= ?",
+            (now_iso,)
+        )
+        due = [dict(row) for row in cursor.fetchall()]
+
+        for enrollment in due:
+            cursor.execute("SELECT * FROM whatsapp_conversation WHERE id = ?", (enrollment['conversation_id'],))
+            convo = cursor.fetchone()
+            cursor.execute(
+                "SELECT * FROM automation_steps WHERE automation_id = ? AND step_order = ?",
+                (enrollment['automation_id'], enrollment['current_step'])
+            )
+            step = cursor.fetchone()
+
+            if not convo or not step:
+                cursor.execute("UPDATE automation_enrollments SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (enrollment['id'],))
+                continue
+
+            convo = dict(convo)
+            step = dict(step)
+
+            if convo['opted_out_at']:
+                cursor.execute("UPDATE automation_enrollments SET status = 'stopped', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (enrollment['id'],))
+                continue
+
+            wa_token = os.getenv("WHATSAPP_TOKEN")
+            phone_id = os.getenv("WHATSAPP_PHONE_ID")
+            if wa_token and phone_id:
+                ok, wa_message_id, error = _send_whatsapp_api_message(
+                    convo['wa_number'],
+                    message=step['body'] if step['message_type'] == 'text' else None,
+                    template_name=step['template_name'] if step['message_type'] == 'template' else None
+                )
+                _log_whatsapp_message(
+                    cursor, convo['id'], direction='out', status='sent' if ok else 'failed',
+                    message_type=step['message_type'], template_name=step['template_name'],
+                    body=step['body']
+                )
+            # else: WhatsApp isn't configured yet - skip the send but still advance the
+            # enrollment, so a step doesn't retry forever once credentials are added later
+            # with a very different current time.
+
+            cursor.execute(
+                "SELECT * FROM automation_steps WHERE automation_id = ? AND step_order = ?",
+                (enrollment['automation_id'], enrollment['current_step'] + 1)
+            )
+            next_step = cursor.fetchone()
+            if next_step:
+                next_step = dict(next_step)
+                next_run_at = (datetime.utcnow() + timedelta(minutes=next_step['wait_minutes'])).isoformat()
+                cursor.execute(
+                    "UPDATE automation_enrollments SET current_step = ?, next_run_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (enrollment['current_step'] + 1, next_run_at, enrollment['id'])
+                )
+            else:
+                cursor.execute(
+                    "UPDATE automation_enrollments SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (enrollment['id'],)
+                )
+
+        conn.commit()
+
+# ============= DEVELOPER API KEYS =============
+
+@app.get("/api/api-keys", response_model=list[ApiKeyResponse])
+async def get_api_keys(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM api_keys ORDER BY created_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/api-keys", response_model=ApiKeyCreateResponse)
+async def create_api_key(payload: ApiKeyCreate, token: str = Query(None)):
+    """Creates a new developer API key for an external system (a click-to-WhatsApp ad tool, a
+    Google Sheet, a landing-page form) to call POST /api/public/leads. The raw key is returned
+    exactly once, here - only its hash is stored, so save it now, it can't be shown again."""
+    current_user = get_current_user(token)
+    raw_key = f"ai_{secrets.token_urlsafe(32)}"
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    key_prefix = raw_key[:10]
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO api_keys (name, key_prefix, key_hash, created_by) VALUES (?, ?, ?, ?)",
+            (payload.name, key_prefix, key_hash, current_user['user_id'])
+        )
+        conn.commit()
+        key_id = cursor.lastrowid
+
+    return ApiKeyCreateResponse(id=key_id, name=payload.name, api_key=raw_key)
+
+@app.delete("/api/api-keys/{key_id}")
+async def revoke_api_key(key_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?", (key_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="API key not found")
+    return {"message": "API key revoked"}
+
+@app.post("/api/public/leads")
+async def create_lead_via_api_key(lead: LeadCreate, x_api_key: str = Header(None)):
+    """Public (no user login) endpoint for external systems - a WhatsApp click-to-ad landing
+    tool, a Google Sheet, a web form - to create a lead, authenticated with an API key instead
+    of a JWT. Source defaults to whatever the caller sends (e.g. 'Facebook Ad', 'Website Form')."""
+    require_api_key(x_api_key)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO leads (name, company, email, phone, product, source, status)
+               VALUES (?, ?, ?, ?, ?, ?, 'New')""",
+            (lead.name, lead.company, lead.email, lead.phone, lead.product, lead.source or 'API')
+        )
+        conn.commit()
+        cursor.execute("SELECT * FROM leads WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
 
 @app.post("/api/email/send", response_model=EmailSendResponse)
 async def send_email_real(payload: EmailSendRequest, token: str = Query(None)):
