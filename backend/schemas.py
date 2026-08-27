@@ -111,6 +111,9 @@ class LeadTaskAssign(BaseModel):
 class DealCallAssign(BaseModel):
     call_id: Optional[int] = None  # None unlinks the deal from any Call
 
+class DealTaskAssign(BaseModel):
+    task_id: Optional[int] = None  # None unlinks the deal from any Task
+
 class DealProcessStatusUpdate(BaseModel):
     process_status: str  # Login, Sanction, Hold, Disbursed
 
@@ -133,6 +136,8 @@ class DealResponse(BaseModel):
     contact_name: Optional[str] = None
     call_id: Optional[int] = None
     call_name: Optional[str] = None
+    task_id: Optional[int] = None
+    task_name: Optional[str] = None
 
 # Campaign Schemas
 class CampaignCreate(BaseModel):
