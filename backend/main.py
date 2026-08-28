@@ -48,6 +48,9 @@ from schemas import (
     SmsSendRequest, SmsSendResponse,
     MailchimpSyncResponse,
     LinkedInConnectResponse, LinkedInPostRequest, LinkedInPostResponse,
+    GoogleConnectResponse, GoogleStatusResponse,
+    GoogleSheetsExportRequest, GoogleSheetsExportResponse,
+    GoogleSheetsImportRequest, GoogleSheetsImportResponse,
     TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow,
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
     DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
@@ -5827,6 +5830,299 @@ async def linkedin_post(payload: LinkedInPostRequest, token: str = Query(None)):
         return LinkedInPostResponse(configured=True, message="Posted to LinkedIn.", post_urn=post_urn)
     except Exception as e:
         return LinkedInPostResponse(configured=True, message=f"LinkedIn post failed: {str(e)}")
+
+# ============= GOOGLE SHEETS SYNC =============
+#
+# Same OAuth 2.0 shape as LinkedIn above (authorization code grant, `state` carries our own
+# auth token through the redirect), with one real difference: Google access tokens expire in
+# ~1 hour, so a usable integration needs the refresh token Google only hands back when you
+# pass access_type=offline and force prompt=consent (otherwise a user who connected once
+# never gets a refresh_token on a later reconnect). That's why this gets its own
+# google_oauth_tokens table instead of living on user_settings like LinkedIn's tokens do -
+# _get_valid_google_access_token below refreshes on demand using it, transparently to callers.
+
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+
+# Field order/mapping deliberately matches the existing CSV export/import in Contacts.jsx /
+# LeadsList.jsx exactly - the brief was explicit not to re-derive this from scratch, and
+# keeping them identical means a sheet exported from the CRM re-imports cleanly, and a CSV
+# template downloaded from the CRM already has the right headers for a Sheet too.
+_CONTACT_EXPORT_HEADERS = ['Name', 'Company', 'Email', 'Phone', 'City/Area', 'Score', 'Amount', 'Bank', 'Status', 'Renewal Date', 'Employee']
+_LEAD_EXPORT_HEADERS = ['Name', 'Company', 'Email', 'Phone', 'Status', 'Score', 'Employee']
+
+@app.get("/api/integrations/google/connect", response_model=GoogleConnectResponse)
+async def google_connect(token: str = Query(None)):
+    """Build the Google OAuth authorization URL for the frontend to open."""
+    get_current_user(token)
+
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI")
+    if not (client_id and redirect_uri):
+        return GoogleConnectResponse(configured=False, message="Google Sheets is not configured on this server.")
+
+    from urllib.parse import urlencode
+    params = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "state": token,
+        "scope": f"{GOOGLE_SHEETS_SCOPE} openid email",
+        "access_type": "offline",
+        "prompt": "consent",  # forces a refresh_token every time, not just on first-ever connect
+    }
+    return GoogleConnectResponse(
+        configured=True,
+        message="Redirect the user to auth_url to connect their Google account.",
+        auth_url=f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+    )
+
+@app.get("/api/integrations/google/callback")
+async def google_callback(code: str = Query(None), state: str = Query(None), error: str = Query(None)):
+    """Google redirects here after the user approves (or denies) access. Exchanges the code
+    for tokens, fetches the connected email (for display only), stores both tokens, then
+    bounces the browser back to the Integrations tab."""
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+    if error or not code:
+        return RedirectResponse(f"{frontend_url}/integrations?google=error")
+
+    current_user = get_current_user(state)
+
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI")
+
+    try:
+        import requests
+        token_resp = requests.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+            timeout=10
+        )
+        token_resp.raise_for_status()
+        token_data = token_resp.json()
+        access_token = token_data["access_token"]
+        refresh_token = token_data.get("refresh_token")
+        expires_in = token_data.get("expires_in", 3600)
+
+        if not refresh_token:
+            # Genuinely possible even with prompt=consent if the user has a stale grant Google
+            # considers already-consented in some edge cases - without a refresh_token this
+            # integration can't outlive the ~1h access token, so treat it as a hard failure
+            # rather than silently storing something that'll stop working within the hour.
+            return RedirectResponse(f"{frontend_url}/integrations?google=error")
+
+        userinfo_resp = requests.get(GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
+        userinfo_resp.raise_for_status()
+        google_email = userinfo_resp.json().get("email")
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO google_oauth_tokens (user_id, google_email, access_token, refresh_token, token_expires_at, scope)
+                   VALUES (?, ?, ?, ?, datetime('now', ? || ' seconds'), ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       google_email = excluded.google_email,
+                       access_token = excluded.access_token,
+                       refresh_token = excluded.refresh_token,
+                       token_expires_at = excluded.token_expires_at,
+                       scope = excluded.scope,
+                       updated_at = CURRENT_TIMESTAMP""",
+                (current_user['user_id'], google_email, access_token, refresh_token, str(expires_in), GOOGLE_SHEETS_SCOPE)
+            )
+            conn.commit()
+
+        return RedirectResponse(f"{frontend_url}/integrations?google=connected")
+    except Exception as e:
+        print(f"[ERROR] Google OAuth callback failed: {e}")
+        return RedirectResponse(f"{frontend_url}/integrations?google=error")
+
+@app.get("/api/integrations/google/status", response_model=GoogleStatusResponse)
+async def google_status(token: str = Query(None)):
+    current_user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT google_email FROM google_oauth_tokens WHERE user_id = ?", (current_user['user_id'],))
+        row = cursor.fetchone()
+        if not row:
+            return GoogleStatusResponse(connected=False)
+        return GoogleStatusResponse(connected=True, google_email=row['google_email'])
+
+@app.post("/api/integrations/google/disconnect")
+async def google_disconnect(token: str = Query(None)):
+    current_user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM google_oauth_tokens WHERE user_id = ?", (current_user['user_id'],))
+        conn.commit()
+    return {"message": "Google account disconnected"}
+
+def _get_valid_google_access_token(cursor, user_id):
+    """Returns a usable access token for this user, refreshing it first if it's expired (or
+    about to expire in the next minute). Returns None if the user never connected Google at
+    all - callers treat that the same as configured=False."""
+    cursor.execute("SELECT * FROM google_oauth_tokens WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    row = dict(row)
+
+    cursor.execute("SELECT (julianday(?) - julianday('now', '+1 minute')) > 0 as still_valid", (row['token_expires_at'],))
+    still_valid = cursor.fetchone()['still_valid']
+    if still_valid:
+        return row['access_token']
+
+    import requests
+    resp = requests.post(
+        GOOGLE_TOKEN_URL,
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": row['refresh_token'],
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+        },
+        timeout=10
+    )
+    if resp.status_code >= 400:
+        return None
+    data = resp.json()
+    new_access_token = data["access_token"]
+    expires_in = data.get("expires_in", 3600)
+    cursor.execute(
+        "UPDATE google_oauth_tokens SET access_token = ?, token_expires_at = datetime('now', ? || ' seconds'), updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        (new_access_token, str(expires_in), user_id)
+    )
+    return new_access_token
+
+@app.post("/api/integrations/google-sheets/export", response_model=GoogleSheetsExportResponse)
+async def google_sheets_export(payload: GoogleSheetsExportRequest, token: str = Query(None)):
+    """Writes every contact or lead to the given sheet, overwriting whatever's currently
+    there (values.update with a fixed range starting at A1) - same header row and column
+    order as the CSV export, deliberately, so the two stay interchangeable."""
+    current_user = get_current_user(token)
+    if payload.entity not in ('contacts', 'leads'):
+        raise HTTPException(status_code=400, detail="entity must be 'contacts' or 'leads'")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        access_token = _get_valid_google_access_token(cursor, current_user['user_id'])
+        conn.commit()  # persists a refreshed access token, if _get_valid_google_access_token refreshed one
+        if not access_token:
+            return GoogleSheetsExportResponse(configured=False, message="Google Sheets is not connected. Connect it first from Integrations.")
+
+        if payload.entity == 'contacts':
+            headers = _CONTACT_EXPORT_HEADERS
+            cursor.execute("""
+                SELECT contacts.*, companies.name as company_name, team_members.name as assigned_team_member_name
+                FROM contacts
+                LEFT JOIN companies ON companies.id = contacts.company_id
+                LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
+            """)
+            rows = [
+                [r['name'], r['company_name'] or r['company'] or '', r['email'] or '', r['phone'] or '',
+                 r['city'] or '', r['score'] if r['score'] is not None else '', r['amount'] if r['amount'] is not None else '',
+                 r['bank'] or '', r['status'] or '', r['renewal_date'] or '', r['assigned_team_member_name'] or '']
+                for r in cursor.fetchall()
+            ]
+        else:
+            headers = _LEAD_EXPORT_HEADERS
+            cursor.execute("""
+                SELECT leads.*, team_members.name as assigned_team_member_name
+                FROM leads
+                LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
+            """)
+            rows = [
+                [r['name'], r['company'] or '', r['email'] or '', r['phone'] or '',
+                 r['status'] or '', r['ai_score'] if r['ai_score'] is not None else '', r['assigned_team_member_name'] or '']
+                for r in cursor.fetchall()
+            ]
+
+    import requests
+    end_col = chr(ord('A') + len(headers) - 1)
+    range_a1 = f"{payload.sheet_name}!A1:{end_col}{len(rows) + 1}"
+    resp = requests.put(
+        f"https://sheets.googleapis.com/v4/spreadsheets/{payload.spreadsheet_id}/values/{range_a1}",
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={"valueInputOption": "RAW"},
+        json={"values": [headers] + rows},
+        timeout=20
+    )
+    if resp.status_code >= 400:
+        return GoogleSheetsExportResponse(configured=True, message=f"Export failed: {resp.text[:300]}")
+    return GoogleSheetsExportResponse(configured=True, message=f"Exported {len(rows)} {payload.entity} to the sheet.", rows_written=len(rows))
+
+@app.post("/api/integrations/google-sheets/import", response_model=GoogleSheetsImportResponse)
+async def google_sheets_import(payload: GoogleSheetsImportRequest, token: str = Query(None)):
+    """Reads rows from the given sheet and creates a Lead from each one - the Sheets
+    counterpart to the existing POST /api/public/leads webhook, for a source that's a
+    spreadsheet someone's editing by hand rather than a form with a webhook. Header row must
+    use the same field names as the CSV import template (Name/Company/Email/Phone/Product/
+    Source/Employee) - matched case-insensitively, same as the CSV import."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        access_token = _get_valid_google_access_token(cursor, current_user['user_id'])
+        conn.commit()
+        if not access_token:
+            return GoogleSheetsImportResponse(configured=False, message="Google Sheets is not connected. Connect it first from Integrations.")
+
+    import requests
+    resp = requests.get(
+        f"https://sheets.googleapis.com/v4/spreadsheets/{payload.spreadsheet_id}/values/{payload.sheet_name}",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=20
+    )
+    if resp.status_code >= 400:
+        return GoogleSheetsImportResponse(configured=True, message=f"Could not read the sheet: {resp.text[:300]}")
+
+    values = resp.json().get("values", [])
+    if len(values) < 2:
+        return GoogleSheetsImportResponse(configured=True, message="Sheet has no data rows to import.")
+
+    header_row = [h.strip().lower() for h in values[0]]
+    created, failed = 0, 0
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM team_members")
+        team_by_name = {r['name'].lower(): r['id'] for r in cursor.fetchall()}
+
+        for raw_row in values[1:]:
+            row = dict(zip(header_row, raw_row))
+            name = row.get('name', '').strip()
+            if not name:
+                failed += 1
+                continue
+            try:
+                cursor.execute(
+                    "INSERT INTO leads (name, company, email, phone, product, source, status, assigned_team_member_id) VALUES (?, ?, ?, ?, ?, ?, 'New', ?)",
+                    (
+                        name, row.get('company', ''), row.get('email', ''), row.get('phone', ''),
+                        row.get('product', ''), row.get('source', '') or 'Google Sheets',
+                        team_by_name.get((row.get('employee') or row.get('assigned to') or '').strip().lower())
+                    )
+                )
+                created += 1
+            except Exception as e:
+                print(f"[WARN] Google Sheets import row failed: {e}")
+                failed += 1
+        conn.commit()
+
+    return GoogleSheetsImportResponse(
+        configured=True,
+        message=f"Imported {created} lead(s){f', {failed} row(s) failed' if failed else ''} from the sheet.",
+        created=created, failed=failed
+    )
 
 # ============= AI CONTENT STUDIO (MARKETING TAB) =============
 #

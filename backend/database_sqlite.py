@@ -877,6 +877,25 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_whatsapp_flow_session_token ON whatsapp_flow_session(flow_token)")
 
+        # One row per CRM user who has connected a Google account (Sheets export/import).
+        # refresh_token lives here, never sent to the frontend - access_token is short-lived
+        # and refreshed on demand using it, same separation LinkedIn's OAuth doesn't need
+        # (LinkedIn's own tokens are long-lived, Google's access tokens expire in ~1 hour).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS google_oauth_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL UNIQUE,
+                google_email TEXT,
+                access_token TEXT,
+                refresh_token TEXT NOT NULL,
+                token_expires_at TIMESTAMP,
+                scope TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
         conn.commit()
 
         # Runs on every startup regardless of seed state (unlike the demo-data block below),

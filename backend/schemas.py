@@ -768,6 +768,36 @@ class LinkedInPostResponse(BaseModel):
     message: str
     post_urn: Optional[str] = None
 
+# Google Sheets sync (export contacts/leads out, or bulk-import leads in)
+class GoogleConnectResponse(BaseModel):
+    configured: bool
+    message: str
+    auth_url: Optional[str] = None
+
+class GoogleStatusResponse(BaseModel):
+    connected: bool
+    google_email: Optional[str] = None
+
+class GoogleSheetsExportRequest(BaseModel):
+    spreadsheet_id: str  # the id from the sheet's URL (.../spreadsheets/d/<THIS>/edit)
+    sheet_name: str = "Sheet1"
+    entity: str  # "contacts" or "leads"
+
+class GoogleSheetsExportResponse(BaseModel):
+    configured: bool
+    message: str
+    rows_written: int = 0
+
+class GoogleSheetsImportRequest(BaseModel):
+    spreadsheet_id: str
+    sheet_name: str = "Sheet1"
+
+class GoogleSheetsImportResponse(BaseModel):
+    configured: bool
+    message: str
+    created: int = 0
+    failed: int = 0
+
 # Priti - AI Voice Caller (Vapi)
 class VoiceCallTriggerRequest(BaseModel):
     lead_id: Optional[int] = None
