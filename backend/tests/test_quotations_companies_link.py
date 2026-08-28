@@ -77,6 +77,51 @@ def test_company_shows_quotations_when_linked(auth_client):
     assert linked_quotation["company_id"] == company["id"]
     assert linked_quotation["company_name"] == company["name"]
 
+    company_quots_after = auth_client.get(f"/api/companies/{company['id']}/quotations").json()
+    assert len(company_quots_after) == initial_count + 1
+    assert any(q["id"] == quotation["id"] for q in company_quots_after)
+
+
+def test_company_quotation_count_includes_directly_linked_quotation_with_no_deal(auth_client):
+    """CompanyResponse.quotation_count (shown on the Companies list/detail pages) is a
+    separate COUNT(*) subquery from the reverse-lookup endpoint - it had the same
+    deals-only blind spot and needs its own coverage."""
+    company = auth_client.post("/api/companies", json={
+        "name": "Count Test Company", "industry": "Legal", "employee_count": 5, "rating": 4.0
+    }).json()
+    assert company["quotation_count"] == 0
+
+    lead = auth_client.get("/api/leads").json()[0]
+    quotation = auth_client.post("/api/quotations", json={
+        "lead_id": lead["id"], "title": "Count Test Quote",
+        "items": [{"description": "Fee", "amount": 200}]
+    }).json()
+    auth_client.put(f"/api/quotations/{quotation['id']}/company", json={"company_id": company["id"]})
+
+    listed = auth_client.get("/api/companies").json()
+    found = next(c for c in listed if c["id"] == company["id"])
+    assert found["quotation_count"] == 1
+
+
+def test_company_quotations_finds_directly_linked_quotation_with_no_deal(auth_client):
+    """A quotation can be linked straight to a Company (quotations.company_id) without going
+    through a Deal at all - the reverse lookup must find it via that direct link, not only
+    through deals.company_id."""
+    company = auth_client.post("/api/companies", json={
+        "name": "Direct Link Company", "industry": "Legal", "employee_count": 10, "rating": 4.0
+    }).json()
+    lead = auth_client.get("/api/leads").json()[0]
+    quotation = auth_client.post("/api/quotations", json={
+        "lead_id": lead["id"], "title": "No Deal Quote",
+        "items": [{"description": "Fee", "amount": 300}]
+    }).json()
+    assert quotation.get("deal_id") is None
+
+    auth_client.put(f"/api/quotations/{quotation['id']}/company", json={"company_id": company["id"]})
+
+    company_quots = auth_client.get(f"/api/companies/{company['id']}/quotations").json()
+    assert any(q["id"] == quotation["id"] for q in company_quots)
+
 
 def test_quotation_unknown_404s(auth_client):
     resp = auth_client.put("/api/quotations/9999/company", json={"company_id": 1})

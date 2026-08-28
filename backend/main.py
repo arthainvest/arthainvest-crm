@@ -3888,8 +3888,8 @@ _COMPANY_WITH_CONTACT_COUNT_SQL = """
     SELECT companies.*,
            (SELECT COUNT(*) FROM contacts WHERE contacts.company_id = companies.id) as contact_count,
            (SELECT COUNT(*) FROM deals WHERE deals.company_id = companies.id) as deal_count,
-           (SELECT COUNT(*) FROM quotations JOIN deals ON deals.id = quotations.deal_id
-            WHERE deals.company_id = companies.id) as quotation_count
+           (SELECT COUNT(*) FROM quotations LEFT JOIN deals ON deals.id = quotations.deal_id
+            WHERE quotations.company_id = companies.id OR deals.company_id = companies.id) as quotation_count
     FROM companies
 """
 
@@ -4072,10 +4072,12 @@ async def get_contact_deals(contact_id: int, token: str = Query(None)):
 
 @app.get("/api/companies/{company_id}/quotations", response_model=list[QuotationResponse])
 async def get_company_quotations(company_id: int, token: str = Query(None)):
-    """Quotations linked to this Company - reached only indirectly, through the deals linked
-    to it (quotations.deal_id -> deals.company_id), since quotations have no company_id of
-    their own. Shown on the Companies page alongside linked contacts/deals, completing the
-    same reverse-lookup that Quotations.jsx already resolves forward."""
+    """Quotations linked to this Company - either directly (quotations.company_id, set via
+    PUT /api/quotations/{id}/company) or indirectly through a linked Deal
+    (quotations.deal_id -> deals.company_id). Shown on the Companies page alongside linked
+    contacts/deals, completing the same reverse-lookup that Quotations.jsx already resolves
+    forward. A quotation matching both paths (its own company_id AND its deal's company_id
+    point here) is only counted once."""
     get_current_user(token)
 
     with get_db() as conn:
@@ -4086,12 +4088,12 @@ async def get_company_quotations(company_id: int, token: str = Query(None)):
 
         cursor.execute(
             """
-            SELECT quotations.id FROM quotations
-            JOIN deals ON deals.id = quotations.deal_id
-            WHERE deals.company_id = ?
+            SELECT DISTINCT quotations.id, quotations.created_at FROM quotations
+            LEFT JOIN deals ON deals.id = quotations.deal_id
+            WHERE quotations.company_id = ? OR deals.company_id = ?
             ORDER BY quotations.created_at DESC
             """,
-            (company_id,)
+            (company_id, company_id)
         )
         ids = [r['id'] for r in cursor.fetchall()]
         quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
@@ -4199,7 +4201,7 @@ def fetch_quotation_with_details(cursor, quotation_id):
         SELECT quotations.*, leads.name as lead_name, contacts.name as contact_name,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
                deal_leads.name as deal_lead_name,
-               COALESCE(quotations.company_id, deals.company_id) as company_id,
+               COALESCE(quotations.company_id, deals.company_id) as resolved_company_id,
                COALESCE(direct_companies.name, deals_companies.name) as company_name,
                deals.assigned_team_member_id as assigned_team_member_id,
                team_members.name as assigned_team_member_name,
@@ -4221,6 +4223,12 @@ def fetch_quotation_with_details(cursor, quotation_id):
     if not row:
         return None
     quotation = dict(row)
+    # quotations.* already includes a raw (often-null) company_id column, which would
+    # otherwise collide with and shadow the COALESCE'd value above - dict(row) keeps the
+    # FIRST of two same-named columns, silently discarding the resolved one. Selected under
+    # a distinct alias and remapped here so the resolved value (direct link, or the linked
+    # Deal's Company as a fallback) is what actually reaches the response.
+    quotation['company_id'] = quotation.pop('resolved_company_id')
     if quotation.get('deal_id'):
         quotation['deal_label'] = (
             f"{quotation.get('deal_lead_name') or 'Deal'} - {quotation.get('deal_loan_product') or ''} "
@@ -4464,30 +4472,6 @@ async def link_quotation_company(quotation_id: int, link: QuotationCompanyAssign
         conn.commit()
 
         return fetch_quotation_with_details(cursor, quotation_id)
-
-@app.get("/api/companies/{company_id}/quotations", response_model=list[QuotationResponse])
-async def get_company_quotations(company_id: int, token: str = Query(None)):
-    """Quotations directly linked to this Company."""
-    get_current_user(token)
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Company not found")
-
-        cursor.execute(
-            "SELECT id FROM quotations WHERE company_id = ? ORDER BY created_at DESC",
-            (company_id,)
-        )
-        rows = cursor.fetchall()
-        quotations = []
-        for row in rows:
-            quotation = fetch_quotation_with_details(cursor, row['id'])
-            if quotation:
-                quotations.append(quotation)
-
-    return quotations
 
 @app.put("/api/quotations/{quotation_id}/call", response_model=QuotationResponse)
 async def link_quotation_call(quotation_id: int, link: QuotationCallAssign, token: str = Query(None)):
