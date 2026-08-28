@@ -60,13 +60,6 @@ async def lifespan(app: FastAPI):
         print("[OK] SQLite database ready!")
     except Exception as e:
         print(f"[ERROR] Database error: {e}")
-    try:
-        # The DB is fully reset on every startup, so clear stale recordings that
-        # no note in the fresh DB references, keeping the two in sync.
-        for f in os.listdir(UPLOADS_DIR):
-            os.remove(os.path.join(UPLOADS_DIR, f))
-    except Exception as e:
-        print(f"[WARN] Could not clear uploads directory: {e}")
     # In-process drip/automation runner. There's no Celery/Redis in this app yet, so this is a
     # lightweight stand-in: a loop that wakes up once a minute and fires any automation step
     # whose next_run_at has arrived. Fine at this scale; a real task queue is worth adding
@@ -100,10 +93,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve uploaded voice-note audio files
-UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "uploads", "notes")
+# Serve uploaded voice-note audio files - lives under DATA_DIR (see database_sqlite.py) so it
+# survives a redeploy alongside the database, on hosts where DATA_DIR points at a mounted disk.
+UPLOADS_ROOT = os.path.join(os.getenv("DATA_DIR", os.path.dirname(__file__)), "uploads")
+UPLOADS_DIR = os.path.join(UPLOADS_ROOT, "notes")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "uploads")), name="uploads")
+app.mount("/uploads", StaticFiles(directory=UPLOADS_ROOT), name="uploads")
 
 # ============= HELPER FUNCTIONS =============
 

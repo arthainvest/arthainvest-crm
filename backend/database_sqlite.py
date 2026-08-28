@@ -2,7 +2,13 @@ import sqlite3
 from contextlib import contextmanager
 import os
 
-DB_PATH = "arthainvest_crm.db"
+# DATA_DIR lets the database (and, in main.py, the uploads folder) live on a mounted
+# persistent disk in production - most hosts (Render, Fly.io, etc.) wipe the plain working
+# directory on every redeploy, which would otherwise silently delete the entire CRM database.
+# Defaults to "." so local development is unaffected.
+DATA_DIR = os.getenv("DATA_DIR", ".")
+os.makedirs(DATA_DIR, exist_ok=True)
+DB_PATH = os.path.join(DATA_DIR, "arthainvest_crm.db")
 
 @contextmanager
 def get_db():
