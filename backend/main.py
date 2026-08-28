@@ -8,12 +8,17 @@ from typing import List, Optional
 import os
 import json
 import uuid
+import base64
+import secrets
 import smtplib
 import hashlib
 import hmac
 from datetime import datetime
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from database_sqlite import get_db, init_db
 from schemas import (
@@ -38,6 +43,7 @@ from schemas import (
     WhatsAppSendRequest, WhatsAppSendResponse, WhatsAppReplyRequest,
     WhatsAppTemplatesResponse, WhatsAppConversationResponse, WhatsAppMessageResponse,
     ConversationAssign, ConversationStatusUpdate,
+    FlowCreate, FlowUpdate, FlowResponse, FlowSendRequest, FlowSendResponse, FlowSessionResponse,
     EmailSendRequest, EmailSendResponse,
     SmsSendRequest, SmsSendResponse,
     MailchimpSyncResponse,
@@ -420,6 +426,145 @@ def _log_whatsapp_message(cursor, conversation_id, direction, status, message_ty
     )
     cursor.execute("UPDATE whatsapp_conversation SET last_message_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (conversation_id,))
     return cursor.lastrowid
+
+# ============= WHATSAPP FLOWS HELPERS (encryption per Meta's Flows data endpoint spec) =============
+# Spec verified against Meta's official docs (developers.facebook.com/docs/whatsapp/flows/
+# guides/implementingyourflowendpoint) rather than assumed - this is a security-sensitive,
+# exact-protocol-matters area:
+#   - AES key: RSA/ECB/OAEPWithSHA-256AndMGF1Padding (RSA-OAEP, SHA-256 hash, SHA-256 MGF1)
+#   - Flow data: AES-GCM, 128-bit auth tag appended to the END of the ciphertext
+#   - Response: encrypt with the SAME AES key but the request's IV with every bit flipped
+#     (XOR each byte with 0xFF), empty AAD, tag appended, base64-encoded, returned as raw
+#     text/plain (not JSON)
+#   - A request that fails to decrypt must get HTTP 421, so Meta knows to re-fetch the
+#     current public key rather than retry the same broken request forever
+
+class FlowDecryptionError(Exception):
+    """Raised when a Flow data-exchange request can't be decrypted - the endpoint must
+    answer these with HTTP 421 specifically (not 400/401), per Meta's spec, so their
+    platform knows to re-check the public key registered for this Flow rather than retry."""
+    pass
+
+def _load_flow_private_key():
+    """Loads the RSA private key used to decrypt Flow data-exchange requests. Supports either
+    a file path (WHATSAPP_FLOW_PRIVATE_KEY_PATH - simplest to hand a non-technical user: point
+    it at a .pem file) or the PEM content inline (WHATSAPP_FLOW_PRIVATE_KEY, with literal \\n
+    sequences standing in for real newlines, since most .env formats can't hold a raw multi-line
+    value). Returns None if neither is configured."""
+    key_path = os.getenv("WHATSAPP_FLOW_PRIVATE_KEY_PATH")
+    pem_data = None
+    if key_path and os.path.exists(key_path):
+        with open(key_path, "rb") as f:
+            pem_data = f.read()
+    else:
+        inline_pem = os.getenv("WHATSAPP_FLOW_PRIVATE_KEY")
+        if inline_pem:
+            pem_data = inline_pem.replace("\\n", "\n").encode()
+
+    if not pem_data:
+        return None
+
+    password = os.getenv("WHATSAPP_FLOW_PRIVATE_KEY_PASSWORD")
+    return serialization.load_pem_private_key(
+        pem_data, password=password.encode() if password else None
+    )
+
+def _decrypt_flow_request(encrypted_flow_data_b64, encrypted_aes_key_b64, initial_vector_b64):
+    """Returns (decrypted_payload_dict, aes_key_bytes, iv_bytes). Raises FlowDecryptionError
+    on any failure - wrong key, corrupted payload, bad auth tag, anything - the caller must
+    not distinguish these (all get HTTP 421 per spec, without leaking which step failed)."""
+    private_key = _load_flow_private_key()
+    if not private_key:
+        raise FlowDecryptionError("No Flow private key configured")
+
+    try:
+        encrypted_aes_key = base64.b64decode(encrypted_aes_key_b64)
+        iv = base64.b64decode(initial_vector_b64)
+        encrypted_flow_data = base64.b64decode(encrypted_flow_data_b64)
+
+        aes_key = private_key.decrypt(
+            encrypted_aes_key,
+            rsa_padding.OAEP(
+                mgf=rsa_padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+
+        # AESGCM.decrypt expects ciphertext with the 16-byte tag already appended at the end -
+        # exactly the shape Meta sends, so encrypted_flow_data is passed through as-is.
+        plaintext = AESGCM(aes_key).decrypt(iv, encrypted_flow_data, None)
+        return json.loads(plaintext), aes_key, iv
+    except FlowDecryptionError:
+        raise
+    except Exception as e:
+        raise FlowDecryptionError(str(e))
+
+def _encrypt_flow_response(response_dict, aes_key, request_iv):
+    """Encrypts an endpoint response per spec: flip every bit of the request's IV, AES-GCM
+    encrypt with the same key and empty AAD (tag auto-appended by AESGCM.encrypt), base64
+    the result. Returned as a plain string - the caller wraps it as a text/plain response,
+    never as JSON."""
+    flipped_iv = bytes(b ^ 0xFF for b in request_iv)
+    plaintext = json.dumps(response_dict).encode()
+    ciphertext = AESGCM(aes_key).encrypt(flipped_iv, plaintext, None)
+    return base64.b64encode(ciphertext).decode()
+
+def _send_whatsapp_flow_message(to_digits, flow_meta_id, flow_token, body_text,
+                                 header_text=None, footer_text=None, cta_text="Start",
+                                 screen=None, initial_data=None):
+    """Sends a Flow as a WhatsApp interactive message - tapping the CTA button opens the Flow
+    natively inside WhatsApp. Same (ok, wa_message_id, error) return shape as
+    _send_whatsapp_api_message, so callers can log it the same way."""
+    import requests
+    wa_token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_ID")
+
+    interactive = {
+        "type": "flow",
+        "body": {"text": body_text},
+        "action": {
+            "name": "flow",
+            "parameters": {
+                "flow_message_version": "3",
+                "flow_token": flow_token,
+                "flow_id": flow_meta_id,
+                "flow_cta": cta_text[:20],
+                "flow_action": "navigate",
+                "flow_action_payload": {
+                    "screen": screen,
+                    "data": initial_data or {}
+                }
+            }
+        }
+    }
+    if header_text:
+        interactive["header"] = {"type": "text", "text": header_text}
+    if footer_text:
+        interactive["footer"] = {"text": footer_text}
+
+    body = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_digits,
+        "type": "interactive",
+        "interactive": interactive
+    }
+
+    try:
+        resp = requests.post(
+            f"https://graph.facebook.com/v19.0/{phone_id}/messages",
+            headers={"Authorization": f"Bearer {wa_token}"},
+            json=body,
+            timeout=10
+        )
+        if resp.status_code >= 400:
+            return False, None, resp.text[:500]
+        data = resp.json()
+        wa_message_id = (data.get("messages") or [{}])[0].get("id")
+        return True, wa_message_id, None
+    except Exception as e:
+        return False, None, str(e)[:500]
 
 # ============= HEALTH CHECK =============
 
@@ -3922,6 +4067,259 @@ def _process_whatsapp_webhook_payload(payload):
                                 (new_status, error_text, row['id'])
                             )
                     conn.commit()
+
+# ============= WHATSAPP FLOWS =============
+
+@app.post("/api/flows", response_model=FlowResponse)
+async def create_flow(flow: FlowCreate, token: str = Query(None)):
+    """Register a Flow that already exists in Meta Business Manager (WhatsApp Manager >
+    Flows) - this doesn't create anything on Meta's side, it just records the Flow ID here
+    so it can be triggered from the CRM."""
+    current_user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO flows (meta_flow_id, name, status, terminal_screen, created_by) VALUES (?, ?, ?, ?, ?)",
+            (flow.meta_flow_id, flow.name, flow.status, flow.terminal_screen, current_user['user_id'])
+        )
+        conn.commit()
+        cursor.execute("SELECT * FROM flows WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.get("/api/flows", response_model=list[FlowResponse])
+async def get_flows(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM flows ORDER BY created_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.put("/api/flows/{flow_id}", response_model=FlowResponse)
+async def update_flow(flow_id: int, flow: FlowUpdate, token: str = Query(None)):
+    """Mainly for setting terminal_screen once you know your Flow's real final screen name
+    (defaults to Meta's "SUCCESS" convention, which many Flows use, but yours may not)."""
+    get_current_user(token)
+    updates, values = [], []
+    for field in ['name', 'status', 'terminal_screen']:
+        value = getattr(flow, field)
+        if value is not None:
+            updates.append(f"{field} = ?")
+            values.append(value)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    values.append(flow_id)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE flows SET {', '.join(updates)} WHERE id = ?", values)
+        conn.commit()
+        cursor.execute("SELECT * FROM flows WHERE id = ?", (flow_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Flow not found")
+        return dict(row)
+
+@app.delete("/api/flows/{flow_id}")
+async def delete_flow(flow_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM flows WHERE id = ?", (flow_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Flow not found")
+    return {"message": "Flow deleted"}
+
+@app.post("/api/flows/{flow_id}/send", response_model=FlowSendResponse)
+async def send_flow(flow_id: int, payload: FlowSendRequest, token: str = Query(None)):
+    """Sends a Flow's CTA button as a WhatsApp message. Requires WHATSAPP_TOKEN/
+    WHATSAPP_PHONE_ID like any other WhatsApp send (configured=False otherwise) - does NOT
+    require the Flow encryption keypair, since that's only needed for the data-exchange
+    webhook Meta calls back, not for triggering the send."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM flows WHERE id = ?", (flow_id,))
+        flow = cursor.fetchone()
+        if not flow:
+            raise HTTPException(status_code=404, detail="Flow not found")
+        flow = dict(flow)
+
+        wa_token = os.getenv("WHATSAPP_TOKEN")
+        phone_id = os.getenv("WHATSAPP_PHONE_ID")
+        if not (wa_token and phone_id):
+            return FlowSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
+
+        to_digits = normalize_phone(payload.to)
+        convo = _find_or_link_conversation(cursor, to_digits)
+        if payload.contact_id and not convo['contact_id']:
+            cursor.execute("UPDATE whatsapp_conversation SET contact_id = ? WHERE id = ?", (payload.contact_id, convo['id']))
+        if payload.lead_id and not convo['lead_id']:
+            cursor.execute("UPDATE whatsapp_conversation SET lead_id = ? WHERE id = ?", (payload.lead_id, convo['id']))
+        conn.commit()
+
+        if convo['opted_out_at']:
+            return FlowSendResponse(configured=True, message="This contact opted out of WhatsApp messages and cannot be messaged.", conversation_id=convo['id'])
+
+        flow_token = secrets.token_urlsafe(24)
+        cursor.execute(
+            "INSERT INTO whatsapp_flow_session (flow_token, flow_id, conversation_id, current_screen) VALUES (?, ?, ?, ?)",
+            (flow_token, flow_id, convo['id'], payload.screen)
+        )
+
+        ok, wa_message_id, error = _send_whatsapp_flow_message(
+            to_digits, flow['meta_flow_id'], flow_token, payload.body_text,
+            header_text=payload.header_text, footer_text=payload.footer_text,
+            cta_text=payload.cta_text, screen=payload.screen, initial_data=payload.initial_data
+        )
+        _log_whatsapp_message(
+            cursor, convo['id'], direction='out', status='sent' if ok else 'failed',
+            message_type='flow', template_name=flow['name'], body=payload.body_text,
+            wa_message_id=wa_message_id, error_message=error, created_by=current_user['user_id']
+        )
+        conn.commit()
+
+    if ok:
+        return FlowSendResponse(configured=True, message=f"Flow sent to {payload.to}.", flow_token=flow_token, conversation_id=convo['id'])
+    return FlowSendResponse(configured=True, message=f"Flow send failed: {error}", flow_token=flow_token, conversation_id=convo['id'])
+
+@app.get("/api/flows/{flow_id}/sessions", response_model=list[FlowSessionResponse])
+async def get_flow_sessions(flow_id: int, token: str = Query(None)):
+    """Every time this Flow has been sent and where each recipient currently is in it -
+    useful for seeing completion/drop-off before there's a dedicated UI for this."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Flow not found")
+        cursor.execute("SELECT * FROM whatsapp_flow_session WHERE flow_id = ? ORDER BY created_at DESC", (flow_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/webhooks/whatsapp-flow")
+async def receive_whatsapp_flow_webhook(request: Request):
+    """The Flow data-exchange endpoint - Meta calls this every time the customer moves between
+    screens inside the Flow. No user login (same reasoning as the message webhook); every
+    response must be encrypted the same way the request was, and a decryption failure must
+    answer HTTP 421 specifically so Meta knows to re-fetch this endpoint's public key rather
+    than retry the same broken request forever."""
+    raw_body = await request.body()
+
+    try:
+        body = json.loads(raw_body or b"{}")
+        decrypted, aes_key, iv = _decrypt_flow_request(
+            body.get("encrypted_flow_data"), body.get("encrypted_aes_key"), body.get("initial_vector")
+        )
+    except FlowDecryptionError as e:
+        print(f"[WARN] WhatsApp Flow decryption failed: {e}")
+        raise HTTPException(status_code=421, detail="Decryption failed")
+    except Exception as e:
+        print(f"[WARN] WhatsApp Flow request parsing failed: {e}")
+        raise HTTPException(status_code=421, detail="Decryption failed")
+
+    action = decrypted.get("action")
+    flow_token = decrypted.get("flow_token")
+
+    # Meta's own health check - no business logic, just confirm the endpoint is reachable
+    # and can round-trip the encryption correctly.
+    if action == "ping":
+        return PlainTextResponse(_encrypt_flow_response({"data": {"status": "active"}}, aes_key, iv))
+
+    if action == "INIT":
+        response = {"screen": decrypted.get("screen") or "WELCOME", "data": {}}
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM whatsapp_flow_session WHERE flow_token = ?", (flow_token,))
+            session = cursor.fetchone()
+            if session:
+                cursor.execute(
+                    "UPDATE whatsapp_flow_session SET current_screen = ? WHERE flow_token = ?",
+                    (response["screen"], flow_token)
+                )
+                conn.commit()
+        return PlainTextResponse(_encrypt_flow_response(response, aes_key, iv))
+
+    if action == "data_exchange":
+        screen = decrypted.get("screen")
+        data = decrypted.get("data") or {}
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM whatsapp_flow_session WHERE flow_token = ?", (flow_token,))
+            session = cursor.fetchone()
+            session = dict(session) if session else None
+
+            flow = None
+            if session:
+                cursor.execute("SELECT * FROM flows WHERE id = ?", (session['flow_id'],))
+                flow_row = cursor.fetchone()
+                flow = dict(flow_row) if flow_row else None
+
+            is_terminal = bool(flow) and screen == flow['terminal_screen']
+
+            if session:
+                merged = {}
+                if session.get('submission_json'):
+                    try:
+                        merged = json.loads(session['submission_json'])
+                    except (TypeError, ValueError):
+                        merged = {}
+                merged.update(data)
+                cursor.execute(
+                    "UPDATE whatsapp_flow_session SET current_screen = ?, submission_json = ?, status = ?, completed_at = ? WHERE flow_token = ?",
+                    (screen, json.dumps(merged), 'completed' if is_terminal else 'in_progress',
+                     datetime.utcnow().isoformat() if is_terminal else None, flow_token)
+                )
+
+                # Map the completed submission onto the existing lead/contact/custom-field
+                # model, per the brief - no new storage shape. Each answered field becomes
+                # (or updates) a named custom field on whichever lead/contact this
+                # conversation belongs to, the same custom_fields a human fills in by hand.
+                if is_terminal and session.get('conversation_id'):
+                    cursor.execute("SELECT * FROM whatsapp_conversation WHERE id = ?", (session['conversation_id'],))
+                    convo = cursor.fetchone()
+                    convo = dict(convo) if convo else None
+                    entity_type = None
+                    entity_id = None
+                    if convo:
+                        if convo.get('contact_id'):
+                            entity_type, entity_id = 'contact', convo['contact_id']
+                        elif convo.get('lead_id'):
+                            entity_type, entity_id = 'lead', convo['lead_id']
+
+                    if entity_type:
+                        for field_name, field_value in merged.items():
+                            cursor.execute("SELECT id FROM custom_fields WHERE name = ?", (field_name,))
+                            field_row = cursor.fetchone()
+                            if field_row:
+                                field_id = field_row['id']
+                            else:
+                                cursor.execute("INSERT INTO custom_fields (name, field_type) VALUES (?, 'text')", (field_name,))
+                                field_id = cursor.lastrowid
+                            cursor.execute(
+                                """INSERT INTO custom_field_values (custom_field_id, entity_type, entity_id, value)
+                                   VALUES (?, ?, ?, ?)
+                                   ON CONFLICT(custom_field_id, entity_type, entity_id) DO UPDATE SET value = excluded.value""",
+                                (field_id, entity_type, entity_id, str(field_value))
+                            )
+            conn.commit()
+
+        if is_terminal:
+            # Meta's documented convention for ending a Flow: a "SUCCESS" screen response
+            # wrapped in extension_message_response, which closes the Flow back to the chat.
+            response = {"screen": "SUCCESS", "data": {"extension_message_response": {"params": {"flow_token": flow_token}}}}
+        else:
+            # We don't know this Flow's real screen graph yet (it's authored in Meta's Flow
+            # Builder, not here) - echo the same screen back with the data unchanged as a safe
+            # no-op, rather than guessing at business logic for a screen we can't identify.
+            response = {"screen": screen or "WELCOME", "data": data}
+        return PlainTextResponse(_encrypt_flow_response(response, aes_key, iv))
+
+    if action == "BACK":
+        screen = decrypted.get("screen") or "WELCOME"
+        return PlainTextResponse(_encrypt_flow_response({"screen": screen, "data": decrypted.get("data") or {}}, aes_key, iv))
+
+    return PlainTextResponse(_encrypt_flow_response({"data": {"acknowledged": True}}, aes_key, iv))
 
 @app.post("/api/email/send", response_model=EmailSendResponse)
 async def send_email_real(payload: EmailSendRequest, token: str = Query(None)):

@@ -677,6 +677,54 @@ class ConversationAssign(BaseModel):
 class ConversationStatusUpdate(BaseModel):
     status: str  # open, closed, handed_off
 
+# WhatsApp Flows (Meta's native in-chat forms - loan applications, KYC checklists, bookings)
+class FlowCreate(BaseModel):
+    meta_flow_id: str
+    name: str
+    status: str = "draft"  # draft, published - mirrors the Flow's real status in Meta Business Manager
+    terminal_screen: str = "SUCCESS"
+
+class FlowUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+    terminal_screen: Optional[str] = None
+
+class FlowResponse(BaseModel):
+    id: int
+    meta_flow_id: str
+    name: str
+    status: str
+    terminal_screen: str
+    created_at: datetime
+
+class FlowSendRequest(BaseModel):
+    to: str
+    header_text: Optional[str] = None
+    body_text: str
+    footer_text: Optional[str] = None
+    cta_text: str = "Start"
+    screen: Optional[str] = None  # the Flow's first screen id - required by Meta
+    initial_data: Optional[dict] = None  # pre-fills fields on that first screen
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
+
+class FlowSendResponse(BaseModel):
+    configured: bool
+    message: str
+    flow_token: Optional[str] = None
+    conversation_id: Optional[int] = None
+
+class FlowSessionResponse(BaseModel):
+    id: int
+    flow_token: str
+    flow_id: int
+    conversation_id: Optional[int]
+    current_screen: Optional[str]
+    status: str
+    submission_json: Optional[str]
+    created_at: datetime
+    completed_at: Optional[datetime]
+
 # Email Service (SMTP)
 class EmailSendRequest(BaseModel):
     to: str

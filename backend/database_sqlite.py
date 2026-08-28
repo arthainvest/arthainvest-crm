@@ -837,6 +837,46 @@ def init_db():
             )
         """)
 
+        # WhatsApp Flows (Meta's native in-chat forms) - a Flow is built and published in Meta
+        # Business Manager first; this just records the resulting meta_flow_id so we can trigger
+        # sending it. terminal_screen names the screen whose data_exchange response should be
+        # treated as the finished submission - defaults to Meta's own "SUCCESS" convention, but
+        # is editable per-Flow once the real screen names are known (we don't control the Flow's
+        # actual screen graph, that's authored in Meta's Flow Builder).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS flows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                meta_flow_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                status TEXT DEFAULT 'draft',
+                terminal_screen TEXT DEFAULT 'SUCCESS',
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        # One row per flow_token we hand out when triggering a Flow send - the data endpoint
+        # (Meta calls it directly, with no way to carry our own auth) looks a session up by
+        # flow_token to resolve back to the conversation/contact/lead it belongs to, and
+        # accumulates the in-progress answers until the terminal screen completes it.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS whatsapp_flow_session (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                flow_token TEXT UNIQUE NOT NULL,
+                flow_id INTEGER NOT NULL,
+                conversation_id INTEGER,
+                current_screen TEXT,
+                status TEXT DEFAULT 'in_progress',
+                submission_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
+                FOREIGN KEY (flow_id) REFERENCES flows(id),
+                FOREIGN KEY (conversation_id) REFERENCES whatsapp_conversation(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_whatsapp_flow_session_token ON whatsapp_flow_session(flow_token)")
+
         conn.commit()
 
         # Runs on every startup regardless of seed state (unlike the demo-data block below),
