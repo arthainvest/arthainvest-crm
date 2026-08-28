@@ -1,0 +1,4 @@
+# Add extra tickers here, one per line, in yfinance format:
+#   Indian stocks:  SYMBOL.NS   (e.g. ZOMATO.NS)
+#   US stocks:      SYMBOL      (e.g. UBER)
+# Lines starting with # are ignored.
