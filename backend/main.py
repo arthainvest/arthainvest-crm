@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, PlainTextResponse
 from contextlib import asynccontextmanager
 import sqlite3
 from typing import List, Optional
@@ -10,6 +10,7 @@ import json
 import uuid
 import smtplib
 import hashlib
+import hmac
 from datetime import datetime
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
@@ -34,7 +35,9 @@ from schemas import (
     DetectDateRequest, DetectDateResponse,
     GenerateContentRequest, GenerateContentResponse,
     ChatMessage, ChatRequest, ChatResponse,
-    WhatsAppSendRequest, WhatsAppSendResponse,
+    WhatsAppSendRequest, WhatsAppSendResponse, WhatsAppReplyRequest,
+    WhatsAppTemplatesResponse, WhatsAppConversationResponse, WhatsAppMessageResponse,
+    ConversationAssign, ConversationStatusUpdate,
     EmailSendRequest, EmailSendResponse,
     SmsSendRequest, SmsSendResponse,
     MailchimpSyncResponse,
@@ -319,6 +322,104 @@ def call_row_to_dict(row):
     c = dict(row)
     c['duration'] = format_duration(c.get('duration_seconds'))
     return c
+
+# ============= WHATSAPP HELPERS =============
+
+def normalize_phone(phone):
+    """Digits-only phone number, e.g. '+91 98765-43210' -> '919876543210'."""
+    return ''.join(ch for ch in (phone or '') if ch.isdigit())
+
+def _phone_suffix_match(a, b, length=10):
+    """Compare the last `length` digits so a stored '+91-9876543210' matches WhatsApp's
+    '919876543210' (country code included) without needing exact formatting to line up."""
+    return bool(a) and bool(b) and len(a) >= length and len(b) >= length and a[-length:] == b[-length:]
+
+def _find_or_link_conversation(cursor, wa_number_digits):
+    """Find the conversation for this WhatsApp number, or create one - linking it to a
+    matching contact/lead by phone number when one exists. Returns a dict, never None."""
+    cursor.execute("SELECT * FROM whatsapp_conversation WHERE wa_number = ?", (wa_number_digits,))
+    convo = cursor.fetchone()
+    if convo:
+        return dict(convo)
+
+    contact_id = None
+    lead_id = None
+    cursor.execute("SELECT id, phone FROM contacts WHERE phone IS NOT NULL AND phone != ''")
+    for row in cursor.fetchall():
+        if _phone_suffix_match(normalize_phone(row['phone']), wa_number_digits):
+            contact_id = row['id']
+            break
+    if not contact_id:
+        cursor.execute("SELECT id, phone FROM leads WHERE phone IS NOT NULL AND phone != ''")
+        for row in cursor.fetchall():
+            if _phone_suffix_match(normalize_phone(row['phone']), wa_number_digits):
+                lead_id = row['id']
+                break
+
+    cursor.execute(
+        """INSERT INTO whatsapp_conversation (contact_id, lead_id, wa_number, status, last_message_at)
+           VALUES (?, ?, ?, 'open', CURRENT_TIMESTAMP)""",
+        (contact_id, lead_id, wa_number_digits)
+    )
+    cursor.execute("SELECT * FROM whatsapp_conversation WHERE id = ?", (cursor.lastrowid,))
+    return dict(cursor.fetchone())
+
+def _send_whatsapp_api_message(to_digits, message=None, template_name=None, template_language="en_US", template_params=None):
+    """Raw call to the Meta Cloud API. Returns (ok, wa_message_id_or_None, error_text_or_None).
+    Caller is responsible for checking WHATSAPP_TOKEN/WHATSAPP_PHONE_ID are set first."""
+    import requests
+    wa_token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_ID")
+
+    if template_name:
+        components = []
+        if template_params:
+            components.append({
+                "type": "body",
+                "parameters": [{"type": "text", "text": p} for p in template_params]
+            })
+        body = {
+            "messaging_product": "whatsapp",
+            "to": to_digits,
+            "type": "template",
+            "template": {"name": template_name, "language": {"code": template_language}, "components": components}
+        }
+    else:
+        body = {
+            "messaging_product": "whatsapp",
+            "to": to_digits,
+            "type": "text",
+            "text": {"body": message}
+        }
+
+    try:
+        resp = requests.post(
+            f"https://graph.facebook.com/v19.0/{phone_id}/messages",
+            headers={"Authorization": f"Bearer {wa_token}"},
+            json=body,
+            timeout=10
+        )
+        if resp.status_code >= 400:
+            return False, None, resp.text[:500]
+        data = resp.json()
+        wa_message_id = (data.get("messages") or [{}])[0].get("id")
+        return True, wa_message_id, None
+    except Exception as e:
+        return False, None, str(e)[:500]
+
+def _log_whatsapp_message(cursor, conversation_id, direction, status, message_type='text',
+                           template_name=None, body=None, wa_message_id=None, error_message=None,
+                           created_by=None, media_url=None, referral_json=None):
+    cursor.execute(
+        """INSERT INTO whatsapp_message
+           (conversation_id, direction, wa_message_id, message_type, template_name, body,
+            media_url, status, error_message, created_by, referral_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (conversation_id, direction, wa_message_id, message_type, template_name, body,
+         media_url, status, error_message, created_by, referral_json)
+    )
+    cursor.execute("UPDATE whatsapp_conversation SET last_message_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (conversation_id,))
+    return cursor.lastrowid
 
 # ============= HEALTH CHECK =============
 
@@ -3487,8 +3588,13 @@ async def send_sms(sms: SmsSendRequest, token: str = Query(None)):
 
 @app.post("/api/whatsapp/send", response_model=WhatsAppSendResponse)
 async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
-    """Send a real WhatsApp message via the Meta Cloud API. Returns configured=False when
-    WHATSAPP_TOKEN/WHATSAPP_PHONE_ID aren't set, so the frontend can fall back to a wa.me link."""
+    """Send a real WhatsApp message via the Meta Cloud API - freeform text (only deliverable
+    inside Meta's 24h customer-service window) or an approved template (deliverable any time,
+    required for anything marketing-like). Returns configured=False when WHATSAPP_TOKEN/
+    WHATSAPP_PHONE_ID aren't set, so the frontend can fall back to a wa.me link. Every attempt
+    is logged to both whatsapp_message (the real conversation thread, for Inbox) and
+    communication_log (the pre-existing Activities feed / Reports still read from this) -
+    the two aren't merged into one because communication_log has no concept of a thread."""
     current_user = get_current_user(token)
 
     wa_token = os.getenv("WHATSAPP_TOKEN")
@@ -3497,28 +3603,325 @@ async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
     if not (wa_token and phone_id):
         return WhatsAppSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
 
+    if not payload.message and not payload.template_name:
+        raise HTTPException(status_code=400, detail="Provide either 'message' (freeform text) or 'template_name'.")
+
+    to_digits = normalize_phone(payload.to)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        convo = _find_or_link_conversation(cursor, to_digits)
+        if payload.contact_id and not convo['contact_id']:
+            cursor.execute("UPDATE whatsapp_conversation SET contact_id = ? WHERE id = ?", (payload.contact_id, convo['id']))
+        if payload.lead_id and not convo['lead_id']:
+            cursor.execute("UPDATE whatsapp_conversation SET lead_id = ? WHERE id = ?", (payload.lead_id, convo['id']))
+        conn.commit()
+
+        if convo['opted_out_at']:
+            return WhatsAppSendResponse(
+                configured=True,
+                message="This contact opted out of WhatsApp messages and cannot be messaged.",
+                conversation_id=convo['id']
+            )
+
+        ok, wa_message_id, error = _send_whatsapp_api_message(
+            to_digits, message=payload.message, template_name=payload.template_name,
+            template_language=payload.template_language, template_params=payload.template_params
+        )
+        _log_whatsapp_message(
+            cursor, convo['id'], direction='out', status='sent' if ok else 'failed',
+            message_type='template' if payload.template_name else 'text',
+            template_name=payload.template_name, body=payload.message,
+            wa_message_id=wa_message_id, error_message=error, created_by=current_user['user_id']
+        )
+        conn.commit()
+
+    log_body = payload.message or f"[template: {payload.template_name}]"
+    if ok:
+        _log_communication("WhatsApp", payload.to, log_body, "Sent", user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
+        return WhatsAppSendResponse(configured=True, message=f"WhatsApp message sent to {payload.to}.", conversation_id=convo['id'])
+    _log_communication("WhatsApp", payload.to, log_body, "Failed", error_detail=error, user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
+    return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {error}", conversation_id=convo['id'])
+
+@app.get("/api/whatsapp/templates", response_model=WhatsAppTemplatesResponse)
+async def get_whatsapp_templates(token: str = Query(None)):
+    """List message templates approved (or pending/rejected) on the connected WhatsApp
+    Business Account. Requires WHATSAPP_BUSINESS_ACCOUNT_ID (the WABA id, not the phone id)
+    alongside WHATSAPP_TOKEN."""
+    get_current_user(token)
+
+    wa_token = os.getenv("WHATSAPP_TOKEN")
+    waba_id = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID")
+    if not (wa_token and waba_id):
+        return WhatsAppTemplatesResponse(configured=False, message="WHATSAPP_BUSINESS_ACCOUNT_ID is not configured on this server.", templates=[])
+
     try:
         import requests
-        to_digits = ''.join(ch for ch in payload.to if ch.isdigit())
-        resp = requests.post(
-            f"https://graph.facebook.com/v19.0/{phone_id}/messages",
+        resp = requests.get(
+            f"https://graph.facebook.com/v19.0/{waba_id}/message_templates",
             headers={"Authorization": f"Bearer {wa_token}"},
-            json={
-                "messaging_product": "whatsapp",
-                "to": to_digits,
-                "type": "text",
-                "text": {"body": payload.message}
-            },
+            params={"limit": 100},
             timeout=10
         )
         if resp.status_code >= 400:
-            _log_communication("WhatsApp", payload.to, payload.message, "Failed", error_detail=resp.text[:200], user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
-            return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {resp.text[:200]}")
-        _log_communication("WhatsApp", payload.to, payload.message, "Sent", user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
-        return WhatsAppSendResponse(configured=True, message=f"WhatsApp message sent to {payload.to}.")
+            return WhatsAppTemplatesResponse(configured=True, message=f"Could not fetch templates: {resp.text[:200]}", templates=[])
+        data = resp.json()
+        templates = [
+            {"name": t.get("name"), "status": t.get("status"), "category": t.get("category"), "language": t.get("language")}
+            for t in data.get("data", [])
+        ]
+        return WhatsAppTemplatesResponse(configured=True, message=f"Found {len(templates)} template(s).", templates=templates)
     except Exception as e:
-        _log_communication("WhatsApp", payload.to, payload.message, "Failed", error_detail=str(e), user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
-        return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {str(e)}")
+        return WhatsAppTemplatesResponse(configured=True, message=f"Failed to fetch templates: {str(e)}", templates=[])
+
+@app.get("/api/whatsapp/conversations", response_model=list[WhatsAppConversationResponse])
+async def get_whatsapp_conversations(token: str = Query(None), status: str = Query(None), mine_only: bool = Query(False)):
+    """List WhatsApp conversations, newest activity first. mine_only restricts the list to
+    conversations assigned to the calling user - the 'agent visibility scope' equivalent."""
+    current_user = get_current_user(token)
+
+    query = """
+        SELECT c.*, ct.name as contact_name, ld.name as lead_name,
+               (SELECT body FROM whatsapp_message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
+               (SELECT message_type FROM whatsapp_message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_type
+        FROM whatsapp_conversation c
+        LEFT JOIN contacts ct ON ct.id = c.contact_id
+        LEFT JOIN leads ld ON ld.id = c.lead_id
+        WHERE 1=1
+    """
+    params = []
+    if status:
+        query += " AND c.status = ?"
+        params.append(status)
+    if mine_only:
+        query += " AND c.assigned_user_id = ?"
+        params.append(current_user['user_id'])
+    query += " ORDER BY c.last_message_at DESC"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        conversations = [dict(row) for row in cursor.fetchall()]
+
+    return conversations
+
+@app.get("/api/whatsapp/conversations/{conversation_id}/messages", response_model=list[WhatsAppMessageResponse])
+async def get_whatsapp_messages(conversation_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM whatsapp_message WHERE conversation_id = ? ORDER BY created_at ASC", (conversation_id,))
+        messages = [dict(row) for row in cursor.fetchall()]
+    return messages
+
+@app.post("/api/whatsapp/conversations/{conversation_id}/reply", response_model=WhatsAppSendResponse)
+async def reply_whatsapp_conversation(conversation_id: int, payload: WhatsAppReplyRequest, token: str = Query(None)):
+    """Send a message inside an existing conversation, without needing the customer's raw
+    phone number again - used by the agent inbox / conversation thread view."""
+    current_user = get_current_user(token)
+
+    wa_token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_ID")
+    if not (wa_token and phone_id):
+        return WhatsAppSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
+    if not payload.message and not payload.template_name:
+        raise HTTPException(status_code=400, detail="Provide either 'message' or 'template_name'.")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM whatsapp_conversation WHERE id = ?", (conversation_id,))
+        convo = cursor.fetchone()
+        if not convo:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        convo = dict(convo)
+
+        if convo['opted_out_at']:
+            return WhatsAppSendResponse(configured=True, message="This contact opted out and cannot be messaged.", conversation_id=convo['id'])
+
+        ok, wa_message_id, error = _send_whatsapp_api_message(
+            convo['wa_number'], message=payload.message, template_name=payload.template_name,
+            template_language=payload.template_language, template_params=payload.template_params
+        )
+        _log_whatsapp_message(
+            cursor, convo['id'], direction='out', status='sent' if ok else 'failed',
+            message_type='template' if payload.template_name else 'text',
+            template_name=payload.template_name, body=payload.message,
+            wa_message_id=wa_message_id, error_message=error, created_by=current_user['user_id']
+        )
+        conn.commit()
+
+    if ok:
+        return WhatsAppSendResponse(configured=True, message="Message sent.", conversation_id=conversation_id)
+    return WhatsAppSendResponse(configured=True, message=f"Send failed: {error}", conversation_id=conversation_id)
+
+@app.put("/api/whatsapp/conversations/{conversation_id}/assign")
+async def assign_whatsapp_conversation(conversation_id: int, payload: ConversationAssign, token: str = Query(None)):
+    """Hand a conversation to a specific team member, or unassign it (user_id=null) -
+    the 'human handover' step after an automated flow decides a person should take over."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE whatsapp_conversation SET assigned_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (payload.user_id, conversation_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"message": "Conversation assignment updated"}
+
+@app.put("/api/whatsapp/conversations/{conversation_id}/status")
+async def update_whatsapp_conversation_status(conversation_id: int, payload: ConversationStatusUpdate, token: str = Query(None)):
+    get_current_user(token)
+    if payload.status not in ('open', 'closed', 'handed_off'):
+        raise HTTPException(status_code=400, detail="status must be one of: open, closed, handed_off")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE whatsapp_conversation SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (payload.status, conversation_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"message": "Conversation status updated"}
+
+@app.post("/api/whatsapp/conversations/{conversation_id}/opt-out")
+async def opt_out_whatsapp_conversation(conversation_id: int, token: str = Query(None)):
+    """Manually mark a conversation opted-out (e.g. a customer asked verbally, not over
+    WhatsApp) - the same stop condition the webhook applies automatically for a 'STOP' reply."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE whatsapp_conversation SET opted_out_at = CURRENT_TIMESTAMP, opt_out_reason = 'Marked opted-out manually', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (conversation_id,)
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"message": "Conversation marked opted-out"}
+
+# ============= WHATSAPP WEBHOOKS (Meta Cloud API) =============
+
+@app.get("/api/webhooks/whatsapp")
+async def verify_whatsapp_webhook(request: Request):
+    """Meta calls this once, with a GET, when you register the webhook URL in the Meta App
+    dashboard - it must be answered with the raw hub.challenge value to complete setup."""
+    params = request.query_params
+    mode = params.get("hub.mode")
+    verify_token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge", "")
+    expected_token = os.getenv("WHATSAPP_VERIFY_TOKEN")
+
+    if mode == "subscribe" and expected_token and verify_token == expected_token:
+        return PlainTextResponse(challenge)
+    raise HTTPException(status_code=403, detail="Webhook verification failed")
+
+@app.post("/api/webhooks/whatsapp")
+async def receive_whatsapp_webhook(request: Request):
+    """Receives inbound messages and delivery/read status updates from Meta. This endpoint has
+    no user login - Meta can't carry our JWT - so it's protected instead by verifying Meta's
+    HMAC signature (WHATSAPP_APP_SECRET). Always returns 200 quickly: Meta retries aggressively
+    (and can eventually disable the webhook) if it doesn't get a fast 2xx, so processing errors
+    are logged server-side rather than surfaced as an HTTP error."""
+    raw_body = await request.body()
+
+    app_secret = os.getenv("WHATSAPP_APP_SECRET")
+    if app_secret:
+        signature = request.headers.get("x-hub-signature-256", "")
+        expected = "sha256=" + hmac.new(app_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    try:
+        payload = json.loads(raw_body or b"{}")
+        _process_whatsapp_webhook_payload(payload)
+    except Exception as e:
+        print(f"[WARN] WhatsApp webhook processing failed: {e}")
+
+    return {"status": "received"}
+
+_STATUS_RANK = {'sent': 1, 'delivered': 2, 'read': 3, 'failed': 4}
+_OPT_OUT_KEYWORDS = {'stop', 'unsubscribe', 'opt out', 'optout'}
+
+def _process_whatsapp_webhook_payload(payload):
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            messages = value.get("messages", [])
+            statuses = value.get("statuses", [])
+
+            if messages:
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    for msg in messages:
+                        wa_number = normalize_phone(msg.get("from", ""))
+                        if not wa_number:
+                            continue
+                        msg_type = msg.get("type", "text")
+                        body = None
+                        media_url = None
+                        if msg_type == "text":
+                            body = msg.get("text", {}).get("body")
+                        elif msg_type == "button":
+                            body = msg.get("button", {}).get("text")
+                        elif msg_type == "interactive":
+                            interactive = msg.get("interactive", {})
+                            reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
+                            body = reply.get("title")
+                        elif msg_type in ("image", "document", "audio", "video", "sticker"):
+                            # Meta gives a media id here, not a URL - a follow-up GET to
+                            # /{media-id} (then downloading the returned url) is needed to
+                            # actually fetch the file. Stored as-is so nothing is lost.
+                            media_url = (msg.get(msg_type) or {}).get("id")
+
+                        referral = msg.get("referral")  # present on the first message of a click-to-WhatsApp ad
+                        referral_json = json.dumps(referral) if referral else None
+
+                        convo = _find_or_link_conversation(cursor, wa_number)
+                        if not convo['contact_id'] and not convo['lead_id']:
+                            source = 'WhatsApp Ad' if referral else 'WhatsApp'
+                            cursor.execute(
+                                "INSERT INTO leads (name, phone, status, source) VALUES (?, ?, 'New', ?)",
+                                (f"WhatsApp {wa_number[-4:]}", wa_number, source)
+                            )
+                            lead_id = cursor.lastrowid
+                            cursor.execute("UPDATE whatsapp_conversation SET lead_id = ? WHERE id = ?", (lead_id, convo['id']))
+                            convo['lead_id'] = lead_id
+
+                        _log_whatsapp_message(
+                            cursor, convo['id'], direction='in', status='received',
+                            message_type=msg_type, body=body, media_url=media_url,
+                            wa_message_id=msg.get("id"), referral_json=referral_json
+                        )
+
+                        if body and body.strip().lower() in _OPT_OUT_KEYWORDS:
+                            cursor.execute(
+                                "UPDATE whatsapp_conversation SET opted_out_at = CURRENT_TIMESTAMP, opt_out_reason = 'Customer replied STOP' WHERE id = ?",
+                                (convo['id'],)
+                            )
+                    conn.commit()
+
+            if statuses:
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    for st in statuses:
+                        wa_message_id = st.get("id")
+                        new_status = st.get("status")
+                        if not (wa_message_id and new_status):
+                            continue
+                        cursor.execute("SELECT id, status FROM whatsapp_message WHERE wa_message_id = ?", (wa_message_id,))
+                        row = cursor.fetchone()
+                        if not row:
+                            continue
+                        current_rank = _STATUS_RANK.get(row['status'], 0)
+                        new_rank = _STATUS_RANK.get(new_status, 0)
+                        if new_status == 'failed' or new_rank >= current_rank:
+                            error_text = None
+                            if new_status == 'failed':
+                                errors = st.get("errors") or []
+                                if errors:
+                                    error_text = errors[0].get("title")
+                            cursor.execute(
+                                "UPDATE whatsapp_message SET status = ?, error_message = COALESCE(?, error_message) WHERE id = ?",
+                                (new_status, error_text, row['id'])
+                            )
+                    conn.commit()
 
 @app.post("/api/email/send", response_model=EmailSendResponse)
 async def send_email_real(payload: EmailSendRequest, token: str = Query(None)):

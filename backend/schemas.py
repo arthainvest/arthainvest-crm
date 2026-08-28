@@ -618,13 +618,64 @@ class GenerateContentResponse(BaseModel):
 # WhatsApp Business API (Meta Cloud API)
 class WhatsAppSendRequest(BaseModel):
     to: str
-    message: str
+    message: Optional[str] = None  # freeform text - required unless template_name is set
+    template_name: Optional[str] = None
+    template_language: Optional[str] = "en_US"
+    template_params: Optional[List[str]] = None  # values for the template's {{1}}, {{2}}, ... body variables
     lead_id: Optional[int] = None
     contact_id: Optional[int] = None
 
 class WhatsAppSendResponse(BaseModel):
     configured: bool
     message: str
+    conversation_id: Optional[int] = None
+
+class WhatsAppReplyRequest(BaseModel):
+    message: Optional[str] = None
+    template_name: Optional[str] = None
+    template_language: Optional[str] = "en_US"
+    template_params: Optional[List[str]] = None
+
+class WhatsAppTemplatesResponse(BaseModel):
+    configured: bool
+    message: str
+    templates: List[dict] = []
+
+class WhatsAppConversationResponse(BaseModel):
+    id: int
+    contact_id: Optional[int]
+    lead_id: Optional[int]
+    contact_name: Optional[str] = None
+    lead_name: Optional[str] = None
+    wa_number: str
+    status: str
+    assigned_user_id: Optional[int] = None
+    opted_out_at: Optional[str] = None
+    opt_out_reason: Optional[str] = None
+    last_message_at: Optional[str] = None
+    last_message: Optional[str] = None
+    last_message_type: Optional[str] = None
+    created_at: datetime
+
+class WhatsAppMessageResponse(BaseModel):
+    id: int
+    conversation_id: int
+    direction: str
+    wa_message_id: Optional[str]
+    message_type: str
+    template_name: Optional[str]
+    body: Optional[str]
+    media_url: Optional[str]
+    status: str
+    error_message: Optional[str]
+    created_by: Optional[int]
+    created_at: datetime
+
+class ConversationAssign(BaseModel):
+    user_id: Optional[int] = None  # None unassigns
+
+class ConversationStatusUpdate(BaseModel):
+    status: str  # open, closed, handed_off
 
 # Email Service (SMTP)
 class EmailSendRequest(BaseModel):

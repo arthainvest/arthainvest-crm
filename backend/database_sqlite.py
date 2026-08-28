@@ -763,8 +763,69 @@ def init_db():
             )
         """)
 
-        # Canned responses an agent can fire off in one click - not yet wired to a conversation
-        # UI on this branch (that lands with WhatsApp), but harmless to create the table now.
+        # One row per WhatsApp thread with a phone number - linked to a contact/lead when a
+        # matching phone number is found, otherwise left unlinked until one is (e.g. a first
+        # inbound message from a brand-new number auto-creates a lead - see webhook handling
+        # in main.py). opted_out_at/opt_out_reason record a customer replying STOP; checked
+        # before every outbound send so we never message someone who opted out.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS whatsapp_conversation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER,
+                lead_id INTEGER,
+                wa_number TEXT NOT NULL,
+                status TEXT DEFAULT 'open',
+                opted_out_at TIMESTAMP,
+                opt_out_reason TEXT,
+                last_message_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (lead_id) REFERENCES leads(id)
+            )
+        """)
+
+        # wa_message_id is Meta's own message id, used to match an incoming delivery/read
+        # status update (from the webhook) back to the row we created when we sent it.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS whatsapp_message (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                direction TEXT NOT NULL,
+                wa_message_id TEXT,
+                message_type TEXT DEFAULT 'text',
+                template_name TEXT,
+                body TEXT,
+                media_url TEXT,
+                status TEXT DEFAULT 'sent',
+                error_message TEXT,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES whatsapp_conversation(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_whatsapp_conversation_wa_number ON whatsapp_conversation(wa_number)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_whatsapp_message_wa_message_id ON whatsapp_message(wa_message_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_whatsapp_message_conversation ON whatsapp_message(conversation_id)")
+
+        try:
+            # Which team member (agent) currently owns this conversation - the Inbox's "mine
+            # only" filter scopes to this for non-admin roles.
+            cursor.execute("ALTER TABLE whatsapp_conversation ADD COLUMN assigned_user_id INTEGER REFERENCES users(id)")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # Meta attaches a `referral` block to the first inbound message of a click-to-WhatsApp
+            # ad conversation (source URL, headline, ad/media id) - stored as raw JSON so we know
+            # which ad brought this lead in, without needing a separate ads-tracking table.
+            cursor.execute("ALTER TABLE whatsapp_message ADD COLUMN referral_json TEXT")
+        except sqlite3.OperationalError:
+            pass
+
+        # Canned responses an agent can fire off in one click - wired to the WhatsApp
+        # conversation composer.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS quick_replies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
