@@ -1823,6 +1823,21 @@ async def unassign_group(payload: EntityGroupRequest, token: str = Query(None)):
         conn.commit()
     return {"message": "Removed from group"}
 
+@app.get("/api/groups/for/{entity_type}/{entity_id}", response_model=list[GroupResponse])
+async def get_groups_for_entity(entity_type: str, entity_id: int, token: str = Query(None)):
+    """Which groups this contact/lead currently belongs to - mirrors GET /api/tags/for/...
+    Without this there was no way to see (or build a UI for) a record's group membership,
+    even though groups can be created and enrolled into automations."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT g.* FROM groups g JOIN entity_groups eg ON eg.group_id = g.id
+               WHERE eg.entity_type = ? AND eg.entity_id = ? ORDER BY g.name""",
+            (entity_type, entity_id)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
 def _group_member_conversations(cursor, group_id):
     """Every open WhatsApp conversation belonging to a contact/lead in this group - the
     audience a broadcast campaign or automation targets."""

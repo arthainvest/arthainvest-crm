@@ -51,6 +51,35 @@
   opacity: 1;
 }
 
+.entity-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px 3px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border-neutral);
+  background: var(--bg-subtle-alt);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.entity-group-chip button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+}
+
+.entity-group-chip button:hover {
+  opacity: 1;
+}
+
 .entity-tag-add,
 .entity-field-add {
   border: 1px dashed var(--border-neutral);

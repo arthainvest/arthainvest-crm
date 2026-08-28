@@ -7,6 +7,7 @@ import {
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import EntityTags from './EntityTags';
+import EntityGroups from './EntityGroups';
 import EntityCustomFields from './EntityCustomFields';
 import '../styles/LeadsList.css';
 
@@ -649,6 +650,7 @@ export default function LeadsList() {
                     </div>
                     <div className="entity-row-extra">
                       <EntityTags token={token} entityType="lead" entityId={lead.id} />
+                      <EntityGroups token={token} entityType="lead" entityId={lead.id} />
                       <EntityCustomFields token={token} entityType="lead" entityId={lead.id} />
                     </div>
                   </>

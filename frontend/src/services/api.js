@@ -395,6 +395,21 @@ export const createGroup = async (token, groupData) => {
   return response.data;
 };
 
+export const getGroupsForEntity = async (token, entityType, entityId) => {
+  const response = await api.get(`/api/groups/for/${entityType}/${entityId}?token=${token}`);
+  return response.data;
+};
+
+export const assignGroup = async (token, entityType, entityId, groupId) => {
+  const response = await api.post(`/api/groups/assign?token=${token}`, { entity_type: entityType, entity_id: entityId, group_id: groupId });
+  return response.data;
+};
+
+export const unassignGroup = async (token, entityType, entityId, groupId) => {
+  const response = await api.post(`/api/groups/unassign?token=${token}`, { entity_type: entityType, entity_id: entityId, group_id: groupId });
+  return response.data;
+};
+
 // Automations (drip sequences)
 export const getAutomations = async (token) => {
   const response = await api.get(`/api/automations?token=${token}`);

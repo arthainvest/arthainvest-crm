@@ -6,6 +6,7 @@ import {
   sendWhatsApp, sendEmailReal, sendSms
 } from '../services/api';
 import EntityTags from './EntityTags';
+import EntityGroups from './EntityGroups';
 import EntityCustomFields from './EntityCustomFields';
 import '../styles/Contacts.css';
 
@@ -569,6 +570,7 @@ export default function Contacts() {
                   </div>
                   <div className="entity-row-extra">
                     <EntityTags token={token} entityType="contact" entityId={contact.id} />
+                    <EntityGroups token={token} entityType="contact" entityId={contact.id} />
                     <EntityCustomFields token={token} entityType="contact" entityId={contact.id} />
                   </div>
                 </>
