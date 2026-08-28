@@ -834,6 +834,20 @@ class ZapierWebhookResponse(BaseModel):
     last_triggered_at: Optional[str] = None
     last_status: Optional[str] = None
 
+# Slack outbound notifications - same shape as Zapier's webhooks, but POSTs a formatted
+# {"text": "..."} message (Slack's Incoming Webhook format) instead of a raw event dump
+class SlackWebhookCreate(BaseModel):
+    url: str
+    event_type: str = "all"  # 'lead.created', 'deal.closed', or 'all'
+
+class SlackWebhookResponse(BaseModel):
+    id: int
+    url: str
+    event_type: str
+    created_at: datetime
+    last_triggered_at: Optional[str] = None
+    last_status: Optional[str] = None
+
 # Priti - AI Voice Caller (Vapi)
 class VoiceCallTriggerRequest(BaseModel):
     lead_id: Optional[int] = None

@@ -286,6 +286,24 @@ export const deleteZapierWebhook = async (token, webhookId) => {
   return response.data;
 };
 
+// Slack outbound notifications - registered Incoming Webhook URLs, same shape as Zapier's
+export const getSlackWebhooks = async (token) => {
+  const response = await api.get(`/api/integrations/slack/webhooks?token=${token}`);
+  return response.data;
+};
+
+export const createSlackWebhook = async (token, url, eventType) => {
+  const response = await api.post(`/api/integrations/slack/webhooks?token=${token}`, {
+    url, event_type: eventType
+  });
+  return response.data;
+};
+
+export const deleteSlackWebhook = async (token, webhookId) => {
+  const response = await api.delete(`/api/integrations/slack/webhooks/${webhookId}?token=${token}`);
+  return response.data;
+};
+
 // Settings
 export const getSettings = async (token) => {
   const response = await api.get(`/api/settings?token=${token}`);

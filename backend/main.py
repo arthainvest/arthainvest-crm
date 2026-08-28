@@ -53,6 +53,7 @@ from schemas import (
     GoogleSheetsImportRequest, GoogleSheetsImportResponse,
     GmailSendRequest, GmailSendResponse, CalendarSyncResponse,
     ZapierWebhookCreate, ZapierWebhookResponse,
+    SlackWebhookCreate, SlackWebhookResponse,
     TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow,
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
     DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
@@ -734,6 +735,7 @@ async def create_lead(lead: LeadCreate, token: str = Query(None)):
         new_lead = fetch_lead_with_member_name(cursor, lead_id)
 
     _fire_zapier_webhooks('lead.created', new_lead)
+    _fire_slack_webhooks('lead.created', new_lead)
     return new_lead
 
 @app.get("/api/leads/{lead_id}", response_model=LeadResponse)
@@ -1289,6 +1291,7 @@ async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
 
     if move.stage == 'closed' and previous_stage != 'closed':
         _fire_zapier_webhooks('deal.closed', updated_deal)
+        _fire_slack_webhooks('deal.closed', updated_deal)
 
     return updated_deal
 
@@ -2025,6 +2028,13 @@ async def get_integrations_status(token: str = Query(None)):
         statuses["Zapier"] = IntegrationStatusItem(
             configured=webhook_count > 0,
             detail=f"{webhook_count} webhook(s) registered" if webhook_count else None
+        )
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM slack_webhooks")
+        slack_webhook_count = cursor.fetchone()['cnt']
+        statuses["Slack"] = IntegrationStatusItem(
+            configured=slack_webhook_count > 0,
+            detail=f"{slack_webhook_count} webhook(s) registered" if slack_webhook_count else None
         )
 
     return statuses
@@ -3822,6 +3832,80 @@ async def delete_zapier_webhook(webhook_id: int, token: str = Query(None)):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM zapier_webhooks WHERE id = ?", (webhook_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Webhook not found")
+    return {"message": "Webhook deleted"}
+
+def _slack_text_for_event(event_type, payload):
+    """Slack's Incoming Webhook format wants a human-readable {"text": "..."} message, not a
+    raw event dump like Zapier gets - built from whatever fields the lead/deal dict actually
+    has (see fetch_lead_with_member_name / fetch_deal_with_member_name)."""
+    if event_type == 'lead.created':
+        company = f" ({payload['company']})" if payload.get('company') else ""
+        source = f" via {payload['source']}" if payload.get('source') else ""
+        return f":dart: New lead: *{payload['name']}*{company}{source}"
+    if event_type == 'deal.closed':
+        value = payload.get('deal_value')
+        value_str = f"₹{value:,.0f}" if value is not None else "an unknown amount"
+        return f":moneybag: Deal closed: *{payload.get('loan_product', 'Loan')}* worth {value_str}"
+    return f"CRM event: {event_type}"
+
+def _fire_slack_webhooks(event_type, payload):
+    """Same best-effort, never-blocks-the-triggering-action pattern as _fire_zapier_webhooks,
+    but POSTs Slack's {"text": "..."} Incoming Webhook shape instead of a raw event dump."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM slack_webhooks WHERE event_type = ? OR event_type = 'all'", (event_type,))
+        hooks = [dict(row) for row in cursor.fetchall()]
+        if not hooks:
+            return
+
+        import requests
+        text = _slack_text_for_event(event_type, payload)
+        for hook in hooks:
+            try:
+                resp = requests.post(hook['url'], json={"text": text}, timeout=5)
+                status = 'success' if resp.status_code < 400 else f'failed ({resp.status_code})'
+            except Exception as e:
+                status = f'failed ({str(e)[:100]})'
+            cursor.execute(
+                "UPDATE slack_webhooks SET last_triggered_at = CURRENT_TIMESTAMP, last_status = ? WHERE id = ?",
+                (status, hook['id'])
+            )
+        conn.commit()
+
+@app.get("/api/integrations/slack/webhooks", response_model=list[SlackWebhookResponse])
+async def get_slack_webhooks(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM slack_webhooks ORDER BY created_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/integrations/slack/webhooks", response_model=SlackWebhookResponse)
+async def create_slack_webhook(webhook: SlackWebhookCreate, token: str = Query(None)):
+    """Registers a Slack Incoming Webhook URL - same "nothing to verify server-side" reasoning
+    as Zapier's, since the URL itself is the secret and Slack has no separate API key step."""
+    current_user = get_current_user(token)
+    if webhook.event_type not in ('all', 'lead.created', 'deal.closed'):
+        raise HTTPException(status_code=400, detail="event_type must be 'all', 'lead.created', or 'deal.closed'")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO slack_webhooks (url, event_type, created_by) VALUES (?, ?, ?)",
+            (webhook.url, webhook.event_type, current_user['user_id'])
+        )
+        conn.commit()
+        cursor.execute("SELECT * FROM slack_webhooks WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.delete("/api/integrations/slack/webhooks/{webhook_id}")
+async def delete_slack_webhook(webhook_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM slack_webhooks WHERE id = ?", (webhook_id,))
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Webhook not found")

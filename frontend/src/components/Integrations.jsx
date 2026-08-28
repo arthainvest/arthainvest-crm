@@ -3,7 +3,8 @@ import {
   getIntegrations, toggleIntegration, getIntegrationsStatus,
   getLinkedInConnectUrl, getGoogleConnectUrl, disconnectGoogle,
   exportToGoogleSheets, importFromGoogleSheets,
-  getZapierWebhooks, createZapierWebhook, deleteZapierWebhook
+  getZapierWebhooks, createZapierWebhook, deleteZapierWebhook,
+  getSlackWebhooks, createSlackWebhook, deleteSlackWebhook
 } from '../services/api';
 import '../styles/Integrations.css';
 
@@ -13,7 +14,7 @@ import '../styles/Integrations.css';
 // does something real instead of just toggling a flag.
 const REAL_STATUS_INTEGRATIONS = new Set([
   'WhatsApp Business API', 'Twilio', 'Email Service', 'Mailchimp', 'Claude AI', 'LinkedIn',
-  'Google Sheets', 'Gmail', 'Google Calendar', 'Zapier'
+  'Google Sheets', 'Gmail', 'Google Calendar', 'Zapier', 'Slack'
 ]);
 // Sheets, Gmail send, and Calendar sync all ride on one connected Google account - the same
 // Connect/Disconnect button and OAuth flow serves all three rows.
@@ -34,12 +35,17 @@ export default function Integrations() {
   const [zapierUrl, setZapierUrl] = useState('');
   const [zapierEventType, setZapierEventType] = useState('all');
   const [zapierBusy, setZapierBusy] = useState(false);
+  const [slackWebhooks, setSlackWebhooks] = useState([]);
+  const [slackUrl, setSlackUrl] = useState('');
+  const [slackEventType, setSlackEventType] = useState('all');
+  const [slackBusy, setSlackBusy] = useState(false);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
     fetchIntegrations();
     fetchRealStatus();
     fetchZapierWebhooks();
+    fetchSlackWebhooks();
 
     // Google's OAuth redirect lands back here with ?google=connected|error - same pattern
     // Marketing.jsx already uses for LinkedIn's redirect. Surface it once, then clean the URL.
@@ -210,6 +216,46 @@ export default function Integrations() {
     }
   };
 
+  const fetchSlackWebhooks = async () => {
+    try {
+      const data = await getSlackWebhooks(token);
+      setSlackWebhooks(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching Slack webhooks:', error);
+    }
+  };
+
+  const handleAddSlackWebhook = async () => {
+    if (!slackUrl.trim()) {
+      alert('Paste the Slack Incoming Webhook URL first.');
+      return;
+    }
+    setSlackBusy(true);
+    try {
+      await createSlackWebhook(token, slackUrl.trim(), slackEventType);
+      setSlackUrl('');
+      await Promise.all([fetchSlackWebhooks(), fetchRealStatus()]);
+    } catch (error) {
+      console.error('Error adding Slack webhook:', error);
+      alert('Failed to add webhook. Please check the URL and try again.');
+    } finally {
+      setSlackBusy(false);
+    }
+  };
+
+  const handleDeleteSlackWebhook = async (webhookId) => {
+    setSlackBusy(true);
+    try {
+      await deleteSlackWebhook(token, webhookId);
+      await Promise.all([fetchSlackWebhooks(), fetchRealStatus()]);
+    } catch (error) {
+      console.error('Error deleting Slack webhook:', error);
+      alert('Failed to remove webhook. Please try again.');
+    } finally {
+      setSlackBusy(false);
+    }
+  };
+
   return (
     <div className="integrations-container">
       <div className="integrations-header">
@@ -226,6 +272,7 @@ export default function Integrations() {
           const isGoogleSheets = integration.name === 'Google Sheets';
           const isGoogleAccountRow = GOOGLE_ACCOUNT_INTEGRATIONS.has(integration.name);
           const isZapier = integration.name === 'Zapier';
+          const isSlack = integration.name === 'Slack';
           const status = realStatus[integration.name];
           // For the seven real rows, the actual configured/connected state overrides the
           // cosmetic DB toggle entirely - that toggle can no longer say anything different.
@@ -277,7 +324,7 @@ export default function Integrations() {
                       {googleConnecting ? 'Connecting…' : 'Connect'}
                     </button>
                   )
-                ) : isZapier ? (
+                ) : isZapier || isSlack ? (
                   <span className="integration-env-note">Add a webhook URL below to connect</span>
                 ) : (
                   <button
@@ -344,6 +391,45 @@ export default function Integrations() {
                       <option value="deal.closed">Deal closed</option>
                     </select>
                     <button className="btn-secondary small" onClick={handleAddZapierWebhook} disabled={zapierBusy}>
+                      Add webhook
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isSlack && (
+                <div className="integration-sheets-sync">
+                  {slackWebhooks.map((hook) => (
+                    <div key={hook.id} className="zapier-webhook-row">
+                      <div className="zapier-webhook-info">
+                        <span className="zapier-webhook-url" title={hook.url}>{hook.url}</span>
+                        <span className="zapier-webhook-meta">
+                          {hook.event_type}
+                          {hook.last_status ? ` · last: ${hook.last_status}` : ' · not fired yet'}
+                        </span>
+                      </div>
+                      <button
+                        className="btn-action disconnect"
+                        onClick={() => handleDeleteSlackWebhook(hook.id)}
+                        disabled={slackBusy}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <input
+                    type="text"
+                    placeholder="Slack Incoming Webhook URL"
+                    value={slackUrl}
+                    onChange={(e) => setSlackUrl(e.target.value)}
+                  />
+                  <div className="integration-sheets-sync-actions">
+                    <select value={slackEventType} onChange={(e) => setSlackEventType(e.target.value)}>
+                      <option value="all">All events</option>
+                      <option value="lead.created">Lead created</option>
+                      <option value="deal.closed">Deal closed</option>
+                    </select>
+                    <button className="btn-secondary small" onClick={handleAddSlackWebhook} disabled={slackBusy}>
                       Add webhook
                     </button>
                   </div>

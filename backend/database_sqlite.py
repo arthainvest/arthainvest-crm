@@ -918,6 +918,19 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS slack_webhooks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT NOT NULL,
+                event_type TEXT NOT NULL DEFAULT 'all',
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_triggered_at TIMESTAMP,
+                last_status TEXT,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
         conn.commit()
 
         # Runs on every startup regardless of seed state (unlike the demo-data block below),
