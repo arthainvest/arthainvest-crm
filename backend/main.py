@@ -3965,11 +3965,11 @@ def fetch_quotation_with_details(cursor, quotation_id):
     Companies/Pipeline and finding the matching deal by hand."""
     cursor.execute(
         """
-        SELECT quotations.*, leads.name as lead_name, contacts.name as contact_name,
+        SELECT COALESCE(quotations.company_id, deals.company_id) as company_id,
+               COALESCE(direct_companies.name, deals_companies.name) as company_name,
+               quotations.*, leads.name as lead_name, contacts.name as contact_name,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
                deal_leads.name as deal_lead_name,
-               COALESCE(quotations.company_id, deals.company_id) as company_id,
-               COALESCE(direct_companies.name, deals_companies.name) as company_name,
                deals.assigned_team_member_id as assigned_team_member_id,
                team_members.name as assigned_team_member_name,
                calls.name as call_name
@@ -4233,30 +4233,6 @@ async def link_quotation_company(quotation_id: int, link: QuotationCompanyAssign
         conn.commit()
 
         return fetch_quotation_with_details(cursor, quotation_id)
-
-@app.get("/api/companies/{company_id}/quotations", response_model=list[QuotationResponse])
-async def get_company_quotations(company_id: int, token: str = Query(None)):
-    """Quotations directly linked to this Company."""
-    get_current_user(token)
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Company not found")
-
-        cursor.execute(
-            "SELECT id FROM quotations WHERE company_id = ? ORDER BY created_at DESC",
-            (company_id,)
-        )
-        rows = cursor.fetchall()
-        quotations = []
-        for row in rows:
-            quotation = fetch_quotation_with_details(cursor, row['id'])
-            if quotation:
-                quotations.append(quotation)
-
-    return quotations
 
 @app.put("/api/quotations/{quotation_id}/call", response_model=QuotationResponse)
 async def link_quotation_call(quotation_id: int, link: QuotationCallAssign, token: str = Query(None)):
