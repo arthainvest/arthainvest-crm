@@ -2480,12 +2480,15 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
                 """
                 SELECT tasks.*, team_members.name as assigned_team_member_name,
                        leads.name as lead_name, contacts.name as contact_name,
-                       companies.name as company_name
+                       companies.name as company_name,
+                       calls.name as call_name, quotations.title as quotation_title
                 FROM tasks
                 LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = tasks.lead_id
                 LEFT JOIN contacts ON contacts.id = tasks.contact_id
                 LEFT JOIN companies ON companies.id = tasks.company_id
+                LEFT JOIN calls ON calls.id = tasks.call_id
+                LEFT JOIN quotations ON quotations.id = tasks.quotation_id
                 WHERE tasks.assigned_team_member_id = ?
                 ORDER BY tasks.due_date DESC, tasks.created_at DESC
                 """,
@@ -2496,12 +2499,15 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
                 """
                 SELECT tasks.*, team_members.name as assigned_team_member_name,
                        leads.name as lead_name, contacts.name as contact_name,
-                       companies.name as company_name
+                       companies.name as company_name,
+                       calls.name as call_name, quotations.title as quotation_title
                 FROM tasks
                 LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = tasks.lead_id
                 LEFT JOIN contacts ON contacts.id = tasks.contact_id
                 LEFT JOIN companies ON companies.id = tasks.company_id
+                LEFT JOIN calls ON calls.id = tasks.call_id
+                LEFT JOIN quotations ON quotations.id = tasks.quotation_id
                 WHERE tasks.priority = 'High' AND tasks.completed = 0
                 ORDER BY tasks.due_date ASC, tasks.created_at ASC
                 """
@@ -2511,12 +2517,15 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
                 """
                 SELECT tasks.*, team_members.name as assigned_team_member_name,
                        leads.name as lead_name, contacts.name as contact_name,
-                       companies.name as company_name
+                       companies.name as company_name,
+                       calls.name as call_name, quotations.title as quotation_title
                 FROM tasks
                 LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = tasks.lead_id
                 LEFT JOIN contacts ON contacts.id = tasks.contact_id
                 LEFT JOIN companies ON companies.id = tasks.company_id
+                LEFT JOIN calls ON calls.id = tasks.call_id
+                LEFT JOIN quotations ON quotations.id = tasks.quotation_id
                 WHERE tasks.due_date = COALESCE(?, date('now'))
                 ORDER BY tasks.completed ASC, tasks.created_at ASC
                 """,

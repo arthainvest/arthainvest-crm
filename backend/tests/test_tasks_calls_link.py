@@ -81,3 +81,20 @@ def test_task_unknown_404s(auth_client):
 def test_call_unknown_404s(auth_client):
     resp = auth_client.get("/api/calls/9999/tasks")
     assert resp.status_code == 404
+
+
+def test_task_list_resolves_call_name(auth_client):
+    task = auth_client.post("/api/tasks", json={
+        "title": "List Test Task", "due_date": "2026-08-26", "priority": "High"
+    }).json()
+    call_lead = auth_client.get("/api/leads").json()[0]
+    call = auth_client.post("/api/calls", json={
+        "name": "Task List Call", "lead_id": call_lead["id"], "type": "Outbound",
+        "duration_seconds": 120, "outcome": "Qualified"
+    }).json()
+    auth_client.put(f"/api/tasks/{task['id']}/call", json={"call_id": call["id"]})
+
+    tasks = auth_client.get("/api/tasks?date=2026-08-26").json()
+    listed = next(t for t in tasks if t["id"] == task["id"])
+    assert listed["call_id"] == call["id"]
+    assert listed["call_name"] == call["name"]
