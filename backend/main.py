@@ -51,6 +51,7 @@ from schemas import (
     GoogleConnectResponse, GoogleStatusResponse,
     GoogleSheetsExportRequest, GoogleSheetsExportResponse,
     GoogleSheetsImportRequest, GoogleSheetsImportResponse,
+    ZapierWebhookCreate, ZapierWebhookResponse,
     TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow,
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
     DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
@@ -731,6 +732,7 @@ async def create_lead(lead: LeadCreate, token: str = Query(None)):
 
         new_lead = fetch_lead_with_member_name(cursor, lead_id)
 
+    _fire_zapier_webhooks('lead.created', new_lead)
     return new_lead
 
 @app.get("/api/leads/{lead_id}", response_model=LeadResponse)
@@ -1267,6 +1269,12 @@ async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT stage FROM deals WHERE id = ?", (deal_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Deal not found")
+        previous_stage = existing['stage']
+
         cursor.execute(
             """
             UPDATE deals SET stage = ?, updated_at = CURRENT_TIMESTAMP
@@ -1276,11 +1284,10 @@ async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
         )
         conn.commit()
 
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Deal not found")
-
         updated_deal = fetch_deal_with_member_name(cursor, deal_id)
+
+    if move.stage == 'closed' and previous_stage != 'closed':
+        _fire_zapier_webhooks('deal.closed', updated_deal)
 
     return updated_deal
 
@@ -2007,6 +2014,13 @@ async def get_integrations_status(token: str = Query(None)):
         cursor.execute("SELECT google_email FROM google_oauth_tokens WHERE user_id = ?", (current_user['user_id'],))
         row = cursor.fetchone()
         statuses["Google Sheets"] = IntegrationStatusItem(configured=bool(row), detail=row['google_email'] if row else None)
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM zapier_webhooks")
+        webhook_count = cursor.fetchone()['cnt']
+        statuses["Zapier"] = IntegrationStatusItem(
+            configured=webhook_count > 0,
+            detail=f"{webhook_count} webhook(s) registered" if webhook_count else None
+        )
 
     return statuses
 
@@ -3742,6 +3756,71 @@ def _log_communication(channel, recipient, message, status, subject=None, error_
             (channel, recipient, subject, message, status, error_detail, user_id, lead_id, contact_id)
         )
         conn.commit()
+
+def _fire_zapier_webhooks(event_type, payload):
+    """POSTs `payload` (plus event/timestamp) to every registered Zapier webhook matching
+    event_type or registered as 'all'. Best-effort and synchronous but never lets a slow or
+    dead Zapier URL block the actual CRM action that triggered it - a short timeout and a
+    broad except around each POST, with the outcome recorded on the row for visibility rather
+    than surfaced as an error to whoever created the lead/closed the deal."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM zapier_webhooks WHERE event_type = ? OR event_type = 'all'", (event_type,))
+        hooks = [dict(row) for row in cursor.fetchall()]
+        if not hooks:
+            return
+
+        import requests
+        body = {"event": event_type, "timestamp": datetime.utcnow().isoformat() + "Z", "data": payload}
+        for hook in hooks:
+            try:
+                resp = requests.post(hook['url'], json=body, timeout=5)
+                status = 'success' if resp.status_code < 400 else f'failed ({resp.status_code})'
+            except Exception as e:
+                status = f'failed ({str(e)[:100]})'
+            cursor.execute(
+                "UPDATE zapier_webhooks SET last_triggered_at = CURRENT_TIMESTAMP, last_status = ? WHERE id = ?",
+                (status, hook['id'])
+            )
+        conn.commit()
+
+@app.get("/api/integrations/zapier/webhooks", response_model=list[ZapierWebhookResponse])
+async def get_zapier_webhooks(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM zapier_webhooks ORDER BY created_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/integrations/zapier/webhooks", response_model=ZapierWebhookResponse)
+async def create_zapier_webhook(webhook: ZapierWebhookCreate, token: str = Query(None)):
+    """Registers a Zapier "Catch Hook" URL. Nothing to verify server-side (no OAuth, no API
+    key) - the first real event is the actual test, same as Zapier's own "Find data" step
+    expects. event_type must be one this codebase actually fires; anything else would
+    register a webhook that silently never triggers."""
+    current_user = get_current_user(token)
+    if webhook.event_type not in ('all', 'lead.created', 'deal.closed'):
+        raise HTTPException(status_code=400, detail="event_type must be 'all', 'lead.created', or 'deal.closed'")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO zapier_webhooks (url, event_type, created_by) VALUES (?, ?, ?)",
+            (webhook.url, webhook.event_type, current_user['user_id'])
+        )
+        conn.commit()
+        cursor.execute("SELECT * FROM zapier_webhooks WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.delete("/api/integrations/zapier/webhooks/{webhook_id}")
+async def delete_zapier_webhook(webhook_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM zapier_webhooks WHERE id = ?", (webhook_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Webhook not found")
+    return {"message": "Webhook deleted"}
 
 @app.post("/api/sms/send", response_model=SmsSendResponse)
 async def send_sms(sms: SmsSendRequest, token: str = Query(None)):

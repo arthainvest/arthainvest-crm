@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   getIntegrations, toggleIntegration, getIntegrationsStatus,
   getLinkedInConnectUrl, getGoogleConnectUrl, disconnectGoogle,
-  exportToGoogleSheets, importFromGoogleSheets
+  exportToGoogleSheets, importFromGoogleSheets,
+  getZapierWebhooks, createZapierWebhook, deleteZapierWebhook
 } from '../services/api';
 import '../styles/Integrations.css';
 
@@ -11,7 +12,7 @@ import '../styles/Integrations.css';
 // anyone (or any bug) could flip to say anything. Their Connect/Disconnect button (if any)
 // does something real instead of just toggling a flag.
 const REAL_STATUS_INTEGRATIONS = new Set([
-  'WhatsApp Business API', 'Twilio', 'Email Service', 'Mailchimp', 'Claude AI', 'LinkedIn', 'Google Sheets'
+  'WhatsApp Business API', 'Twilio', 'Email Service', 'Mailchimp', 'Claude AI', 'LinkedIn', 'Google Sheets', 'Zapier'
 ]);
 // These five have no user-facing "connect" action at all - they're wired up (or not) purely
 // by which env vars are set on the server, so there's nothing to click here.
@@ -25,11 +26,16 @@ export default function Integrations() {
   const [googleDisconnecting, setGoogleDisconnecting] = useState(false);
   const [sheetsSpreadsheetId, setSheetsSpreadsheetId] = useState('');
   const [sheetsBusy, setSheetsBusy] = useState(false);
+  const [zapierWebhooks, setZapierWebhooks] = useState([]);
+  const [zapierUrl, setZapierUrl] = useState('');
+  const [zapierEventType, setZapierEventType] = useState('all');
+  const [zapierBusy, setZapierBusy] = useState(false);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
     fetchIntegrations();
     fetchRealStatus();
+    fetchZapierWebhooks();
 
     // Google's OAuth redirect lands back here with ?google=connected|error - same pattern
     // Marketing.jsx already uses for LinkedIn's redirect. Surface it once, then clean the URL.
@@ -160,6 +166,46 @@ export default function Integrations() {
     }
   };
 
+  const fetchZapierWebhooks = async () => {
+    try {
+      const data = await getZapierWebhooks(token);
+      setZapierWebhooks(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching Zapier webhooks:', error);
+    }
+  };
+
+  const handleAddZapierWebhook = async () => {
+    if (!zapierUrl.trim()) {
+      alert('Paste the Zapier "Catch Hook" URL first.');
+      return;
+    }
+    setZapierBusy(true);
+    try {
+      await createZapierWebhook(token, zapierUrl.trim(), zapierEventType);
+      setZapierUrl('');
+      await Promise.all([fetchZapierWebhooks(), fetchRealStatus()]);
+    } catch (error) {
+      console.error('Error adding Zapier webhook:', error);
+      alert('Failed to add webhook. Please check the URL and try again.');
+    } finally {
+      setZapierBusy(false);
+    }
+  };
+
+  const handleDeleteZapierWebhook = async (webhookId) => {
+    setZapierBusy(true);
+    try {
+      await deleteZapierWebhook(token, webhookId);
+      await Promise.all([fetchZapierWebhooks(), fetchRealStatus()]);
+    } catch (error) {
+      console.error('Error deleting Zapier webhook:', error);
+      alert('Failed to remove webhook. Please try again.');
+    } finally {
+      setZapierBusy(false);
+    }
+  };
+
   return (
     <div className="integrations-container">
       <div className="integrations-header">
@@ -174,6 +220,7 @@ export default function Integrations() {
           const isEnvOnly = ENV_ONLY_INTEGRATIONS.has(integration.name);
           const isLinkedIn = integration.name === 'LinkedIn';
           const isGoogleSheets = integration.name === 'Google Sheets';
+          const isZapier = integration.name === 'Zapier';
           const status = realStatus[integration.name];
           // For the seven real rows, the actual configured/connected state overrides the
           // cosmetic DB toggle entirely - that toggle can no longer say anything different.
@@ -225,6 +272,8 @@ export default function Integrations() {
                       {googleConnecting ? 'Connecting…' : 'Connect'}
                     </button>
                   )
+                ) : isZapier ? (
+                  <span className="integration-env-note">Add a webhook URL below to connect</span>
                 ) : (
                   <button
                     className={`btn-action ${integration.connected ? 'disconnect' : 'connect'}`}
@@ -252,6 +301,45 @@ export default function Integrations() {
                     </button>
                     <button className="btn-secondary small" onClick={handleSheetsImport} disabled={sheetsBusy}>
                       Import Leads
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isZapier && (
+                <div className="integration-sheets-sync">
+                  {zapierWebhooks.map((hook) => (
+                    <div key={hook.id} className="zapier-webhook-row">
+                      <div className="zapier-webhook-info">
+                        <span className="zapier-webhook-url" title={hook.url}>{hook.url}</span>
+                        <span className="zapier-webhook-meta">
+                          {hook.event_type}
+                          {hook.last_status ? ` · last: ${hook.last_status}` : ' · not fired yet'}
+                        </span>
+                      </div>
+                      <button
+                        className="btn-action disconnect"
+                        onClick={() => handleDeleteZapierWebhook(hook.id)}
+                        disabled={zapierBusy}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <input
+                    type="text"
+                    placeholder="Zapier Catch Hook URL"
+                    value={zapierUrl}
+                    onChange={(e) => setZapierUrl(e.target.value)}
+                  />
+                  <div className="integration-sheets-sync-actions">
+                    <select value={zapierEventType} onChange={(e) => setZapierEventType(e.target.value)}>
+                      <option value="all">All events</option>
+                      <option value="lead.created">Lead created</option>
+                      <option value="deal.closed">Deal closed</option>
+                    </select>
+                    <button className="btn-secondary small" onClick={handleAddZapierWebhook} disabled={zapierBusy}>
+                      Add webhook
                     </button>
                   </div>
                 </div>

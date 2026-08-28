@@ -6,7 +6,7 @@ def test_status_shows_all_unconfigured_by_default(auth_client):
     assert resp.status_code == 200
     data = resp.json()
 
-    for name in ["WhatsApp Business API", "Twilio", "Email Service", "Mailchimp", "Claude AI", "LinkedIn", "Google Sheets"]:
+    for name in ["WhatsApp Business API", "Twilio", "Email Service", "Mailchimp", "Claude AI", "LinkedIn", "Google Sheets", "Zapier"]:
         assert name in data
         assert data[name]["configured"] is False
 

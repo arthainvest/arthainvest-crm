@@ -255,6 +255,24 @@ export const importFromGoogleSheets = async (token, spreadsheetId, sheetName) =>
   return response.data;
 };
 
+// Zapier outbound webhooks - no OAuth, just registered "Catch Hook" URLs
+export const getZapierWebhooks = async (token) => {
+  const response = await api.get(`/api/integrations/zapier/webhooks?token=${token}`);
+  return response.data;
+};
+
+export const createZapierWebhook = async (token, url, eventType) => {
+  const response = await api.post(`/api/integrations/zapier/webhooks?token=${token}`, {
+    url, event_type: eventType
+  });
+  return response.data;
+};
+
+export const deleteZapierWebhook = async (token, webhookId) => {
+  const response = await api.delete(`/api/integrations/zapier/webhooks/${webhookId}?token=${token}`);
+  return response.data;
+};
+
 // Settings
 export const getSettings = async (token) => {
   const response = await api.get(`/api/settings?token=${token}`);

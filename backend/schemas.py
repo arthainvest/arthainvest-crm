@@ -802,6 +802,19 @@ class GoogleSheetsImportResponse(BaseModel):
     created: int = 0
     failed: int = 0
 
+# Zapier outbound webhooks - no OAuth, just a "Catch Hook" URL the CRM POSTs to on events
+class ZapierWebhookCreate(BaseModel):
+    url: str
+    event_type: str = "all"  # 'lead.created', 'deal.closed', or 'all'
+
+class ZapierWebhookResponse(BaseModel):
+    id: int
+    url: str
+    event_type: str
+    created_at: datetime
+    last_triggered_at: Optional[str] = None
+    last_status: Optional[str] = None
+
 # Priti - AI Voice Caller (Vapi)
 class VoiceCallTriggerRequest(BaseModel):
     lead_id: Optional[int] = None
