@@ -618,4 +618,89 @@ export const getDealQuotations = async (token, dealId) => {
   return response.data;
 };
 
+// Tags (free-form labels on contacts/leads)
+export const getTags = async (token) => {
+  const response = await api.get(`/api/tags?token=${token}`);
+  return response.data;
+};
+
+export const createTag = async (token, tagData) => {
+  const response = await api.post(`/api/tags?token=${token}`, tagData);
+  return response.data;
+};
+
+export const deleteTag = async (token, tagId) => {
+  await api.delete(`/api/tags/${tagId}?token=${token}`);
+};
+
+export const getTagsForEntity = async (token, entityType, entityId) => {
+  const response = await api.get(`/api/tags/for/${entityType}/${entityId}?token=${token}`);
+  return response.data;
+};
+
+export const assignTag = async (token, entityType, entityId, tagId) => {
+  const response = await api.post(`/api/tags/assign?token=${token}`, { entity_type: entityType, entity_id: entityId, tag_id: tagId });
+  return response.data;
+};
+
+export const unassignTag = async (token, entityType, entityId, tagId) => {
+  const response = await api.post(`/api/tags/unassign?token=${token}`, { entity_type: entityType, entity_id: entityId, tag_id: tagId });
+  return response.data;
+};
+
+// Groups (audience segments - a contact/lead can belong to more than one)
+export const getGroups = async (token) => {
+  const response = await api.get(`/api/groups?token=${token}`);
+  return response.data;
+};
+
+export const createGroup = async (token, groupData) => {
+  const response = await api.post(`/api/groups?token=${token}`, groupData);
+  return response.data;
+};
+
+export const deleteGroup = async (token, groupId) => {
+  await api.delete(`/api/groups/${groupId}?token=${token}`);
+};
+
+export const getGroupsForEntity = async (token, entityType, entityId) => {
+  const response = await api.get(`/api/groups/for/${entityType}/${entityId}?token=${token}`);
+  return response.data;
+};
+
+export const assignGroup = async (token, entityType, entityId, groupId) => {
+  const response = await api.post(`/api/groups/assign?token=${token}`, { entity_type: entityType, entity_id: entityId, group_id: groupId });
+  return response.data;
+};
+
+export const unassignGroup = async (token, entityType, entityId, groupId) => {
+  const response = await api.post(`/api/groups/unassign?token=${token}`, { entity_type: entityType, entity_id: entityId, group_id: groupId });
+  return response.data;
+};
+
+// Custom fields (per-contact/lead key-value data, e.g. SIP Amount)
+export const getCustomFields = async (token) => {
+  const response = await api.get(`/api/custom-fields?token=${token}`);
+  return response.data;
+};
+
+export const createCustomField = async (token, fieldData) => {
+  const response = await api.post(`/api/custom-fields?token=${token}`, fieldData);
+  return response.data;
+};
+
+export const deleteCustomField = async (token, fieldId) => {
+  await api.delete(`/api/custom-fields/${fieldId}?token=${token}`);
+};
+
+export const getCustomFieldValuesForEntity = async (token, entityType, entityId) => {
+  const response = await api.get(`/api/custom-fields/for/${entityType}/${entityId}?token=${token}`);
+  return response.data;
+};
+
+export const setCustomFieldValue = async (token, payload) => {
+  const response = await api.put(`/api/custom-fields/value?token=${token}`, payload);
+  return response.data;
+};
+
 export default api;

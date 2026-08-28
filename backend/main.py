@@ -43,7 +43,11 @@ from schemas import (
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
     DialerAssignRequest, DialerQueueItemResponse, DialerStatusUpdate,
     ActivityItem, CompanyCreate, CompanyUpdate, CompanyResponse,
-    QuotationCreate, QuotationUpdate, QuotationContactAssign, QuotationCompanyAssign, QuotationCallAssign, QuotationDealAssign, QuotationResponse
+    QuotationCreate, QuotationUpdate, QuotationContactAssign, QuotationCompanyAssign, QuotationCallAssign, QuotationDealAssign, QuotationResponse,
+    TagCreate, TagResponse, EntityTagRequest,
+    GroupCreate, GroupResponse, EntityGroupRequest,
+    CustomFieldCreate, CustomFieldResponse, CustomFieldValueSet,
+    QuickReplyCreate, QuickReplyUpdate, QuickReplyResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -4587,6 +4591,273 @@ async def sync_mailchimp(token: str = Query(None)):
         return MailchimpSyncResponse(configured=True, message=f"Synced {synced} of {len(contacts)} contact(s) to Mailchimp.", synced_count=synced)
     except Exception as e:
         return MailchimpSyncResponse(configured=True, message=f"Mailchimp sync failed: {str(e)}")
+
+# ============= TAGS & GROUPS =============
+
+@app.get("/api/tags", response_model=list[TagResponse])
+async def get_tags(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tags ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/tags", response_model=TagResponse)
+async def create_tag(tag: TagCreate, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO tags (name, color) VALUES (?, ?)", (tag.name, tag.color))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="A tag with this name already exists")
+        cursor.execute("SELECT * FROM tags WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.delete("/api/tags/{tag_id}")
+async def delete_tag(tag_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM entity_tags WHERE tag_id = ?", (tag_id,))
+        cursor.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
+        conn.commit()
+    return {"message": "Tag deleted"}
+
+@app.post("/api/tags/assign")
+async def assign_tag(payload: EntityTagRequest, token: str = Query(None)):
+    get_current_user(token)
+    if payload.entity_type not in ('contact', 'lead'):
+        raise HTTPException(status_code=400, detail="entity_type must be 'contact' or 'lead'")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO entity_tags (entity_type, entity_id, tag_id) VALUES (?, ?, ?)",
+                (payload.entity_type, payload.entity_id, payload.tag_id)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            pass  # already tagged - not an error
+    return {"message": "Tag assigned"}
+
+@app.post("/api/tags/unassign")
+async def unassign_tag(payload: EntityTagRequest, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM entity_tags WHERE entity_type = ? AND entity_id = ? AND tag_id = ?",
+            (payload.entity_type, payload.entity_id, payload.tag_id)
+        )
+        conn.commit()
+    return {"message": "Tag unassigned"}
+
+@app.get("/api/tags/for/{entity_type}/{entity_id}", response_model=list[TagResponse])
+async def get_tags_for_entity(entity_type: str, entity_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT t.* FROM tags t JOIN entity_tags et ON et.tag_id = t.id
+               WHERE et.entity_type = ? AND et.entity_id = ? ORDER BY t.name""",
+            (entity_type, entity_id)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.get("/api/groups", response_model=list[GroupResponse])
+async def get_groups(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM groups ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/groups", response_model=GroupResponse)
+async def create_group(group: GroupCreate, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO groups (name, description) VALUES (?, ?)", (group.name, group.description))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="A group with this name already exists")
+        cursor.execute("SELECT * FROM groups WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.delete("/api/groups/{group_id}")
+async def delete_group(group_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM entity_groups WHERE group_id = ?", (group_id,))
+        cursor.execute("DELETE FROM groups WHERE id = ?", (group_id,))
+        conn.commit()
+    return {"message": "Group deleted"}
+
+@app.post("/api/groups/assign")
+async def assign_group(payload: EntityGroupRequest, token: str = Query(None)):
+    get_current_user(token)
+    if payload.entity_type not in ('contact', 'lead'):
+        raise HTTPException(status_code=400, detail="entity_type must be 'contact' or 'lead'")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO entity_groups (entity_type, entity_id, group_id) VALUES (?, ?, ?)",
+                (payload.entity_type, payload.entity_id, payload.group_id)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            pass
+    return {"message": "Added to group"}
+
+@app.post("/api/groups/unassign")
+async def unassign_group(payload: EntityGroupRequest, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM entity_groups WHERE entity_type = ? AND entity_id = ? AND group_id = ?",
+            (payload.entity_type, payload.entity_id, payload.group_id)
+        )
+        conn.commit()
+    return {"message": "Removed from group"}
+
+@app.get("/api/groups/for/{entity_type}/{entity_id}", response_model=list[GroupResponse])
+async def get_groups_for_entity(entity_type: str, entity_id: int, token: str = Query(None)):
+    """Which groups this contact/lead currently belongs to - mirrors GET /api/tags/for/...
+    Without this there was no way to see (or build a UI for) a record's group membership,
+    even though groups can be created."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT g.* FROM groups g JOIN entity_groups eg ON eg.group_id = g.id
+               WHERE eg.entity_type = ? AND eg.entity_id = ? ORDER BY g.name""",
+            (entity_type, entity_id)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+# ============= CUSTOM FIELDS =============
+
+@app.get("/api/custom-fields", response_model=list[CustomFieldResponse])
+async def get_custom_fields(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM custom_fields ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/custom-fields", response_model=CustomFieldResponse)
+async def create_custom_field(field: CustomFieldCreate, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO custom_fields (name, field_type) VALUES (?, ?)", (field.name, field.field_type))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="A custom field with this name already exists")
+        cursor.execute("SELECT * FROM custom_fields WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.delete("/api/custom-fields/{field_id}")
+async def delete_custom_field(field_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM custom_field_values WHERE custom_field_id = ?", (field_id,))
+        cursor.execute("DELETE FROM custom_fields WHERE id = ?", (field_id,))
+        conn.commit()
+    return {"message": "Custom field deleted"}
+
+@app.put("/api/custom-fields/value")
+async def set_custom_field_value(payload: CustomFieldValueSet, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO custom_field_values (custom_field_id, entity_type, entity_id, value)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(custom_field_id, entity_type, entity_id) DO UPDATE SET value = excluded.value""",
+            (payload.custom_field_id, payload.entity_type, payload.entity_id, payload.value)
+        )
+        conn.commit()
+    return {"message": "Custom field value saved"}
+
+@app.get("/api/custom-fields/for/{entity_type}/{entity_id}")
+async def get_custom_field_values(entity_type: str, entity_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT cf.id, cf.name, cf.field_type, cfv.value
+               FROM custom_fields cf
+               LEFT JOIN custom_field_values cfv
+                 ON cfv.custom_field_id = cf.id AND cfv.entity_type = ? AND cfv.entity_id = ?
+               ORDER BY cf.name""",
+            (entity_type, entity_id)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+# ============= QUICK REPLIES =============
+
+@app.get("/api/quick-replies", response_model=list[QuickReplyResponse])
+async def get_quick_replies(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM quick_replies ORDER BY shortcut")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/quick-replies", response_model=QuickReplyResponse)
+async def create_quick_reply(reply: QuickReplyCreate, token: str = Query(None)):
+    current_user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO quick_replies (shortcut, message, created_by) VALUES (?, ?, ?)",
+                (reply.shortcut, reply.message, current_user['user_id'])
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="A quick reply with this shortcut already exists")
+        cursor.execute("SELECT * FROM quick_replies WHERE id = ?", (cursor.lastrowid,))
+        return dict(cursor.fetchone())
+
+@app.put("/api/quick-replies/{reply_id}", response_model=QuickReplyResponse)
+async def update_quick_reply(reply_id: int, reply: QuickReplyUpdate, token: str = Query(None)):
+    get_current_user(token)
+    updates, values = [], []
+    if reply.shortcut is not None:
+        updates.append("shortcut = ?"); values.append(reply.shortcut)
+    if reply.message is not None:
+        updates.append("message = ?"); values.append(reply.message)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    values.append(reply_id)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE quick_replies SET {', '.join(updates)} WHERE id = ?", values)
+        conn.commit()
+        cursor.execute("SELECT * FROM quick_replies WHERE id = ?", (reply_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Quick reply not found")
+        return dict(row)
+
+@app.delete("/api/quick-replies/{reply_id}")
+async def delete_quick_reply(reply_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM quick_replies WHERE id = ?", (reply_id,))
+        conn.commit()
+    return {"message": "Quick reply deleted"}
 
 # ============= LINKEDIN (MARKETING TAB "POST TO LINKEDIN") =============
 #

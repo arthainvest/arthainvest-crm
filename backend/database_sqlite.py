@@ -7,9 +7,19 @@ DB_PATH = os.getenv("DB_PATH", "arthainvest_crm.db")
 
 @contextmanager
 def get_db():
-    """Get SQLite database connection"""
-    conn = sqlite3.connect(DB_PATH)
+    """Get SQLite database connection.
+
+    WAL journal mode + a busy_timeout are required once more than one connection can be open
+    at once (e.g. a background scheduler alongside request handling). SQLite's default
+    rollback-journal mode locks the *entire file* for the duration of a write, so two
+    connections writing around the same time reliably hit "database is locked" - WAL lets
+    readers and a single writer proceed concurrently instead, and the busy_timeout makes a
+    genuine write/write collision wait and retry rather than failing immediately.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
     try:
         yield conn
     finally:
@@ -685,6 +695,86 @@ def init_db():
             cursor.execute("ALTER TABLE user_settings ADD COLUMN linkedin_member_urn TEXT")
         except sqlite3.OperationalError:
             pass
+
+        # Tags: free-form colored labels a contact/lead can carry. entity_type/entity_id is a
+        # polymorphic pointer (rather than separate contact_tags/lead_tags junction tables) so
+        # the same tag can be assigned across entity kinds without duplicating the schema.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                color TEXT DEFAULT '#9c6b2e',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS entity_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (tag_id) REFERENCES tags(id),
+                UNIQUE(entity_type, entity_id, tag_id)
+            )
+        """)
+
+        # Groups are audience segments (e.g. "Diwali campaign", "SIP clients") that a broadcast
+        # or automation can target - separate from tags, which are free-form labels.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS entity_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                group_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES groups(id),
+                UNIQUE(entity_type, entity_id, group_id)
+            )
+        """)
+
+        # Custom field definitions (e.g. "SIP Amount", "Policy Number") plus the actual values
+        # stored per contact/lead - same entity_type/entity_id pattern as tags/groups above.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS custom_fields (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                field_type TEXT DEFAULT 'text',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS custom_field_values (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                custom_field_id INTEGER NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                value TEXT,
+                FOREIGN KEY (custom_field_id) REFERENCES custom_fields(id),
+                UNIQUE(custom_field_id, entity_type, entity_id)
+            )
+        """)
+
+        # Canned responses an agent can fire off in one click - not yet wired to a conversation
+        # UI on this branch (that lands with WhatsApp), but harmless to create the table now.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quick_replies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                shortcut TEXT UNIQUE NOT NULL,
+                message TEXT NOT NULL,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
 
         conn.commit()
 

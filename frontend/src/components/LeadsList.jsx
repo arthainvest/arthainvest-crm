@@ -6,6 +6,9 @@ import {
   sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate, assignToDialer, getActivities, getDeals, convertLeadToContact
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
+import EntityTags from './EntityTags';
+import EntityGroups from './EntityGroups';
+import EntityCustomFields from './EntityCustomFields';
 import '../styles/LeadsList.css';
 
 const STATUS_OPTIONS = ['New', 'Contacted', 'Interested', 'Document Pending', 'In Process', 'Qualified', 'Not Interested', 'CIBIL Issue', 'Lost to Competition'];
@@ -827,6 +830,14 @@ export default function LeadsList() {
                     {lead.converted_contact_id && (
                       <p><strong>Converted to Contact:</strong> {lead.converted_contact_name || `#${lead.converted_contact_id}`}</p>
                     )}
+                  </div>
+                )}
+
+                {isExpanded && (
+                  <div className="entity-row-extra">
+                    <EntityTags token={token} entityType="lead" entityId={lead.id} />
+                    <EntityGroups token={token} entityType="lead" entityId={lead.id} />
+                    <EntityCustomFields token={token} entityType="lead" entityId={lead.id} />
                   </div>
                 )}
               </div>

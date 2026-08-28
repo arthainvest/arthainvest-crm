@@ -7,6 +7,9 @@ import {
   getCompanies, linkContactCompany, getActivities, getCompanyDeals
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
+import EntityTags from './EntityTags';
+import EntityGroups from './EntityGroups';
+import EntityCustomFields from './EntityCustomFields';
 import '../styles/Contacts.css';
 
 const STATUS_OPTIONS = ['Active', 'Renewal Due', 'Lapsed', 'Inactive'];
@@ -817,6 +820,14 @@ export default function Contacts() {
                   {contact.converted_from_lead_id && (
                     <p><strong>Converted from Lead:</strong> {contact.converted_from_lead_name || `#${contact.converted_from_lead_id}`}</p>
                   )}
+                </div>
+              )}
+
+              {isExpanded && (
+                <div className="entity-row-extra">
+                  <EntityTags token={token} entityType="contact" entityId={contact.id} />
+                  <EntityGroups token={token} entityType="contact" entityId={contact.id} />
+                  <EntityCustomFields token={token} entityType="contact" entityId={contact.id} />
                 </div>
               )}
             </div>

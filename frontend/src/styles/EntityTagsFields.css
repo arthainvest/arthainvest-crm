@@ -1,0 +1,261 @@
+/* Shared styling for the Tags and Custom Fields blocks embedded in the Contacts/Leads
+   expanded row. Both live inside a ".entity-row-extra" wrapper added by the parent screen. */
+
+.entity-row-extra {
+  padding: 12px 14px 14px 42px;
+  border-top: 1px solid var(--border-neutral);
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------- Tags ---------- */
+
+.entity-tags {
+  position: relative;
+}
+
+.entity-tags-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.entity-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px 3px 10px;
+  border-radius: 20px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.entity-tag-chip button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+}
+
+.entity-tag-chip button:hover {
+  opacity: 1;
+}
+
+.entity-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px 3px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border-neutral);
+  background: var(--bg-subtle-alt);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.entity-group-chip button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+}
+
+.entity-group-chip button:hover {
+  opacity: 1;
+}
+
+.entity-tag-add,
+.entity-field-add {
+  border: 1px dashed var(--border-neutral);
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.entity-tag-add:hover,
+.entity-field-add:hover {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.entity-tag-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-neutral);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  padding: 10px;
+  min-width: 220px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.entity-picker-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.entity-tag-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.entity-tag-option:hover {
+  background: var(--bg-subtle-alt);
+}
+
+.entity-tag-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.entity-tag-create {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-neutral-alt);
+}
+
+.entity-tag-create input[type="color"] {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-neutral);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+
+.entity-tag-create input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* ---------- Custom fields ---------- */
+
+.entity-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.entity-field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-subtle-alt);
+  border: 1px solid var(--border-neutral-alt);
+  border-radius: 8px;
+  padding: 3px 10px;
+}
+
+.entity-field-name {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.entity-field-value {
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 0;
+  font-family: inherit;
+}
+
+.entity-field-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.entity-field-input {
+  border: 1px solid #667eea;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  width: 110px;
+}
+
+.entity-field-create-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.entity-field-create {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.entity-field-create input[type="text"] {
+  padding: 6px 8px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.entity-field-create select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.entity-field-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}

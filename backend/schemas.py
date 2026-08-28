@@ -839,6 +839,69 @@ class QuotationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+# Tags & Groups
+class TagCreate(BaseModel):
+    name: str
+    color: Optional[str] = "#9c6b2e"
+
+class TagResponse(BaseModel):
+    id: int
+    name: str
+    color: str
+    created_at: datetime
+
+class EntityTagRequest(BaseModel):
+    entity_type: str  # 'contact' or 'lead'
+    entity_id: int
+    tag_id: int
+
+class GroupCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class GroupResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    created_at: datetime
+
+class EntityGroupRequest(BaseModel):
+    entity_type: str
+    entity_id: int
+    group_id: int
+
+# Custom fields
+class CustomFieldCreate(BaseModel):
+    name: str
+    field_type: Optional[str] = "text"
+
+class CustomFieldResponse(BaseModel):
+    id: int
+    name: str
+    field_type: str
+    created_at: datetime
+
+class CustomFieldValueSet(BaseModel):
+    entity_type: str
+    entity_id: int
+    custom_field_id: int
+    value: Optional[str] = None
+
+# Quick replies (canned responses - not yet wired to a conversation UI on this branch)
+class QuickReplyCreate(BaseModel):
+    shortcut: str
+    message: str
+
+class QuickReplyUpdate(BaseModel):
+    shortcut: Optional[str] = None
+    message: Optional[str] = None
+
+class QuickReplyResponse(BaseModel):
+    id: int
+    shortcut: str
+    message: str
+    created_at: datetime
+
 # Token
 class Token(BaseModel):
     access_token: str
