@@ -268,6 +268,10 @@ class IntegrationResponse(BaseModel):
     connected: bool
     last_sync: str
 
+class IntegrationStatusItem(BaseModel):
+    configured: bool
+    detail: Optional[str] = None  # e.g. the connected Google/LinkedIn account, if relevant
+
 # Settings Schemas
 class SettingsUpdate(BaseModel):
     full_name: Optional[str] = None

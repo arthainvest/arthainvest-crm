@@ -1,13 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { getIntegrations, toggleIntegration } from '../services/api';
+import {
+  getIntegrations, toggleIntegration, getIntegrationsStatus,
+  getLinkedInConnectUrl, getGoogleConnectUrl, disconnectGoogle,
+  exportToGoogleSheets, importFromGoogleSheets
+} from '../services/api';
 import '../styles/Integrations.css';
+
+// These rows reflect real server-side configuration or a real OAuth connection - checked
+// against actual env vars / stored tokens by GET /api/integrations/status, not a DB boolean
+// anyone (or any bug) could flip to say anything. Their Connect/Disconnect button (if any)
+// does something real instead of just toggling a flag.
+const REAL_STATUS_INTEGRATIONS = new Set([
+  'WhatsApp Business API', 'Twilio', 'Email Service', 'Mailchimp', 'Claude AI', 'LinkedIn', 'Google Sheets'
+]);
+// These five have no user-facing "connect" action at all - they're wired up (or not) purely
+// by which env vars are set on the server, so there's nothing to click here.
+const ENV_ONLY_INTEGRATIONS = new Set(['WhatsApp Business API', 'Twilio', 'Email Service', 'Mailchimp', 'Claude AI']);
 
 export default function Integrations() {
   const [integrations, setIntegrations] = useState([]);
+  const [realStatus, setRealStatus] = useState({});
+  const [linkedInConnecting, setLinkedInConnecting] = useState(false);
+  const [googleConnecting, setGoogleConnecting] = useState(false);
+  const [googleDisconnecting, setGoogleDisconnecting] = useState(false);
+  const [sheetsSpreadsheetId, setSheetsSpreadsheetId] = useState('');
+  const [sheetsBusy, setSheetsBusy] = useState(false);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
     fetchIntegrations();
+    fetchRealStatus();
+
+    // Google's OAuth redirect lands back here with ?google=connected|error - same pattern
+    // Marketing.jsx already uses for LinkedIn's redirect. Surface it once, then clean the URL.
+    const params = new URLSearchParams(window.location.search);
+    const googleResult = params.get('google');
+    if (googleResult === 'connected') {
+      alert('Google account connected successfully.');
+      window.history.replaceState({}, '', window.location.pathname);
+      fetchRealStatus();
+    } else if (googleResult === 'error') {
+      alert('Google connection failed - please try again.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const fetchIntegrations = async () => {
@@ -16,6 +51,15 @@ export default function Integrations() {
       setIntegrations(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching integrations:', error);
+    }
+  };
+
+  const fetchRealStatus = async () => {
+    try {
+      const data = await getIntegrationsStatus(token);
+      setRealStatus(data || {});
+    } catch (error) {
+      console.error('Error fetching integration status:', error);
     }
   };
 
@@ -35,6 +79,87 @@ export default function Integrations() {
     }
   };
 
+  const handleConnectLinkedIn = async () => {
+    setLinkedInConnecting(true);
+    try {
+      const result = await getLinkedInConnectUrl(token);
+      if (result.configured && result.auth_url) {
+        window.location.href = result.auth_url;
+        return;
+      }
+      alert(result.message);
+    } catch (error) {
+      console.error('Error starting LinkedIn connect:', error);
+      alert('Failed to start LinkedIn connection. Please try again.');
+    } finally {
+      setLinkedInConnecting(false);
+    }
+  };
+
+  const handleConnectGoogle = async () => {
+    setGoogleConnecting(true);
+    try {
+      const result = await getGoogleConnectUrl(token);
+      if (result.configured && result.auth_url) {
+        window.location.href = result.auth_url;
+        return;
+      }
+      alert(result.message);
+    } catch (error) {
+      console.error('Error starting Google connect:', error);
+      alert('Failed to start Google connection. Please try again.');
+    } finally {
+      setGoogleConnecting(false);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    setGoogleDisconnecting(true);
+    try {
+      await disconnectGoogle(token);
+      await fetchRealStatus();
+    } catch (error) {
+      console.error('Error disconnecting Google:', error);
+      alert('Failed to disconnect Google. Please try again.');
+    } finally {
+      setGoogleDisconnecting(false);
+    }
+  };
+
+  const handleSheetsExport = async (entity) => {
+    if (!sheetsSpreadsheetId.trim()) {
+      alert('Paste the spreadsheet ID first (the part of the sheet URL between /d/ and /edit).');
+      return;
+    }
+    setSheetsBusy(true);
+    try {
+      const result = await exportToGoogleSheets(token, sheetsSpreadsheetId.trim(), 'Sheet1', entity);
+      alert(result.message);
+    } catch (error) {
+      console.error('Error exporting to Google Sheets:', error);
+      alert('Export failed. Please try again.');
+    } finally {
+      setSheetsBusy(false);
+    }
+  };
+
+  const handleSheetsImport = async () => {
+    if (!sheetsSpreadsheetId.trim()) {
+      alert('Paste the spreadsheet ID first (the part of the sheet URL between /d/ and /edit).');
+      return;
+    }
+    setSheetsBusy(true);
+    try {
+      const result = await importFromGoogleSheets(token, sheetsSpreadsheetId.trim(), 'Sheet1');
+      alert(result.message);
+    } catch (error) {
+      console.error('Error importing from Google Sheets:', error);
+      alert('Import failed. Please try again.');
+    } finally {
+      setSheetsBusy(false);
+    }
+  };
+
   return (
     <div className="integrations-container">
       <div className="integrations-header">
@@ -44,36 +169,96 @@ export default function Integrations() {
       <p className="integrations-subtitle">Connect your favorite tools to ArthaInvest CRM</p>
 
       <div className="integrations-grid">
-        {integrations.map(integration => (
-          <div key={integration.id} className="integration-card">
-            <div className="integration-header">
-              <div className="integration-logo">{integration.logo}</div>
-              <h3>{integration.name}</h3>
+        {integrations.map(integration => {
+          const isReal = REAL_STATUS_INTEGRATIONS.has(integration.name);
+          const isEnvOnly = ENV_ONLY_INTEGRATIONS.has(integration.name);
+          const isLinkedIn = integration.name === 'LinkedIn';
+          const isGoogleSheets = integration.name === 'Google Sheets';
+          const status = realStatus[integration.name];
+          // For the seven real rows, the actual configured/connected state overrides the
+          // cosmetic DB toggle entirely - that toggle can no longer say anything different.
+          const connected = isReal ? Boolean(status?.configured) : integration.connected;
+
+          return (
+            <div key={integration.id} className="integration-card">
+              <div className="integration-header">
+                <div className="integration-logo">{integration.logo}</div>
+                <h3>{integration.name}</h3>
+              </div>
+
+              <p className="integration-description">{integration.description}</p>
+
+              <div className="integration-status">
+                <div className={`status-indicator ${connected ? 'connected' : 'disconnected'}`}></div>
+                <span className={`status-text ${connected ? 'connected' : 'disconnected'}`}>
+                  {connected ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+
+              {isReal && connected && status?.detail && (
+                <p className="last-sync">{status.detail}</p>
+              )}
+              {!isReal && connected && (
+                <p className="last-sync">Last sync: {integration.last_sync}</p>
+              )}
+
+              <div className="integration-actions">
+                {isEnvOnly ? (
+                  <span className="integration-env-note">
+                    {connected ? 'Configured on the server' : 'Set the required keys in the server .env to enable this'}
+                  </span>
+                ) : isLinkedIn ? (
+                  connected ? (
+                    <span className="integration-env-note">Connected - manage from the Marketing tab</span>
+                  ) : (
+                    <button className="btn-action connect" onClick={handleConnectLinkedIn} disabled={linkedInConnecting}>
+                      {linkedInConnecting ? 'Connecting…' : 'Connect'}
+                    </button>
+                  )
+                ) : isGoogleSheets ? (
+                  connected ? (
+                    <button className="btn-action disconnect" onClick={handleDisconnectGoogle} disabled={googleDisconnecting}>
+                      {googleDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                    </button>
+                  ) : (
+                    <button className="btn-action connect" onClick={handleConnectGoogle} disabled={googleConnecting}>
+                      {googleConnecting ? 'Connecting…' : 'Connect'}
+                    </button>
+                  )
+                ) : (
+                  <button
+                    className={`btn-action ${integration.connected ? 'disconnect' : 'connect'}`}
+                    onClick={() => handleToggle(integration)}
+                  >
+                    {integration.connected ? 'Disconnect' : 'Connect'}
+                  </button>
+                )}
+              </div>
+
+              {isGoogleSheets && connected && (
+                <div className="integration-sheets-sync">
+                  <input
+                    type="text"
+                    placeholder="Spreadsheet ID (from the sheet's URL)"
+                    value={sheetsSpreadsheetId}
+                    onChange={(e) => setSheetsSpreadsheetId(e.target.value)}
+                  />
+                  <div className="integration-sheets-sync-actions">
+                    <button className="btn-secondary small" onClick={() => handleSheetsExport('contacts')} disabled={sheetsBusy}>
+                      Export Contacts
+                    </button>
+                    <button className="btn-secondary small" onClick={() => handleSheetsExport('leads')} disabled={sheetsBusy}>
+                      Export Leads
+                    </button>
+                    <button className="btn-secondary small" onClick={handleSheetsImport} disabled={sheetsBusy}>
+                      Import Leads
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-
-            <p className="integration-description">{integration.description}</p>
-
-            <div className="integration-status">
-              <div className={`status-indicator ${integration.connected ? 'connected' : 'disconnected'}`}></div>
-              <span className={`status-text ${integration.connected ? 'connected' : 'disconnected'}`}>
-                {integration.connected ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
-
-            {integration.connected && (
-              <p className="last-sync">Last sync: {integration.last_sync}</p>
-            )}
-
-            <div className="integration-actions">
-              <button
-                className={`btn-action ${integration.connected ? 'disconnect' : 'connect'}`}
-                onClick={() => handleToggle(integration)}
-              >
-                {integration.connected ? 'Disconnect' : 'Connect'}
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

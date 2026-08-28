@@ -54,6 +54,7 @@ def _ensure_integrations_catalog(cursor, conn):
         ('WhatsApp Business API', '💬', 'Send WhatsApp messages via Meta Cloud API', 0, 'never'),
         ('Email Service', '📮', 'Send real emails via SMTP', 0, 'never'),
         ('Mailchimp', '🐒', 'Sync contacts and send email campaigns', 0, 'never'),
+        ('Google Sheets', '📊', 'Export contacts/leads to a sheet, or bulk-import leads from one', 0, 'never'),
         ('DigiLocker', '🔐', 'Secure document storage and verification', 0, 'never'),
         ('AI Voice Assistant', '🎙️', 'Automated status updates via voice notes', 0, 'never'),
         ('Google Analytics', '📊', 'Track campaign performance and ROI', 0, 'never'),

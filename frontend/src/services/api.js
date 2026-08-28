@@ -223,6 +223,38 @@ export const toggleIntegration = async (token, id, connected) => {
   return response.data;
 };
 
+// True configured/connected state for the integrations that are genuinely real (not just a
+// cosmetic DB toggle) - keyed by integration name, overriding just those rows' displayed status.
+export const getIntegrationsStatus = async (token) => {
+  const response = await api.get(`/api/integrations/status?token=${token}`);
+  return response.data;
+};
+
+// Google Sheets (OAuth - same shape as LinkedIn's connect flow above)
+export const getGoogleConnectUrl = async (token) => {
+  const response = await api.get(`/api/integrations/google/connect?token=${token}`);
+  return response.data;
+};
+
+export const disconnectGoogle = async (token) => {
+  const response = await api.post(`/api/integrations/google/disconnect?token=${token}`);
+  return response.data;
+};
+
+export const exportToGoogleSheets = async (token, spreadsheetId, sheetName, entity) => {
+  const response = await api.post(`/api/integrations/google-sheets/export?token=${token}`, {
+    spreadsheet_id: spreadsheetId, sheet_name: sheetName, entity
+  });
+  return response.data;
+};
+
+export const importFromGoogleSheets = async (token, spreadsheetId, sheetName) => {
+  const response = await api.post(`/api/integrations/google-sheets/import?token=${token}`, {
+    spreadsheet_id: spreadsheetId, sheet_name: sheetName
+  });
+  return response.data;
+};
+
 // Settings
 export const getSettings = async (token) => {
   const response = await api.get(`/api/settings?token=${token}`);

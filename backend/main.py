@@ -27,7 +27,7 @@ from schemas import (
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealTaskAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
     CampaignRecipientAdd, CampaignRecipientResponse, CampaignSendResult,
-    IntegrationToggle, IntegrationResponse,
+    IntegrationToggle, IntegrationResponse, IntegrationStatusItem,
     SettingsUpdate, SettingsResponse,
     ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactQuotationAssign, ContactCallAssign, ContactResponse, RenewalContact,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
@@ -1972,6 +1972,43 @@ async def get_integrations(token: str = Query(None)):
         i['connected'] = bool(i['connected'])
 
     return integrations
+
+@app.get("/api/integrations/status", response_model=dict[str, IntegrationStatusItem])
+async def get_integrations_status(token: str = Query(None)):
+    """True configured/connected state for the integrations that are genuinely real (not
+    just a cosmetic DB toggle) - checked directly against the env vars/OAuth tokens each one
+    actually uses at send time, the same way the endpoints themselves decide configured=false.
+    Keyed by the exact integration name in the `integrations` table, so the frontend can
+    override just these rows' displayed status without touching the rest of the catalog."""
+    current_user = get_current_user(token)
+
+    statuses = {
+        "WhatsApp Business API": IntegrationStatusItem(
+            configured=bool(os.getenv("WHATSAPP_TOKEN") and os.getenv("WHATSAPP_PHONE_ID"))
+        ),
+        "Twilio": IntegrationStatusItem(
+            configured=bool(os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN") and os.getenv("TWILIO_FROM_NUMBER"))
+        ),
+        "Email Service": IntegrationStatusItem(
+            configured=bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_PORT") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD"))
+        ),
+        "Mailchimp": IntegrationStatusItem(
+            configured=bool(os.getenv("MAILCHIMP_API_KEY") and os.getenv("MAILCHIMP_AUDIENCE_ID") and "-" in (os.getenv("MAILCHIMP_API_KEY") or ""))
+        ),
+        "Claude AI": IntegrationStatusItem(configured=bool(os.getenv("ANTHROPIC_API_KEY"))),
+    }
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT linkedin_access_token FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
+        row = cursor.fetchone()
+        statuses["LinkedIn"] = IntegrationStatusItem(configured=bool(row and row['linkedin_access_token']))
+
+        cursor.execute("SELECT google_email FROM google_oauth_tokens WHERE user_id = ?", (current_user['user_id'],))
+        row = cursor.fetchone()
+        statuses["Google Sheets"] = IntegrationStatusItem(configured=bool(row), detail=row['google_email'] if row else None)
+
+    return statuses
 
 @app.put("/api/integrations/{integration_id}/toggle", response_model=IntegrationResponse)
 async def toggle_integration(integration_id: int, toggle: IntegrationToggle, token: str = Query(None)):
