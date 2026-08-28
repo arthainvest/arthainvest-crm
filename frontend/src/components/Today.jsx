@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   getTasks, getHighPriorityTasks, createTask, updateTask, deleteTask,
   getMeetings, createMeeting, updateMeeting, deleteMeeting,
-  getLeads, getContactsList, getTeam
+  getLeads, getContactsList, getTeam, syncMeetingToGoogleCalendar
 } from '../services/api';
 import '../styles/Today.css';
 
@@ -32,6 +32,7 @@ export default function Today() {
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [taskForm, setTaskForm] = useState(emptyTaskForm);
   const [meetingForm, setMeetingForm] = useState(emptyMeetingForm);
+  const [syncingMeetingId, setSyncingMeetingId] = useState(null);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
@@ -152,6 +153,30 @@ export default function Today() {
     }
   };
 
+  const handleSyncToGoogleCalendar = async (meeting) => {
+    setSyncingMeetingId(meeting.id);
+    try {
+      const result = await syncMeetingToGoogleCalendar(token, meeting.id);
+      if (!result.configured) {
+        alert(result.message);
+        return;
+      }
+      if (result.message.toLowerCase().includes('failed')) {
+        alert(result.message);
+        return;
+      }
+      fetchMeetings();
+      if (result.event_link && window.confirm('Synced to Google Calendar. Open the event?')) {
+        window.open(result.event_link, '_blank', 'noopener,noreferrer');
+      }
+    } catch (err) {
+      console.error('Error syncing meeting to Google Calendar:', err);
+      alert('Failed to sync to Google Calendar. Please try again.');
+    } finally {
+      setSyncingMeetingId(null);
+    }
+  };
+
   const handleAddMeeting = async (e) => {
     e.preventDefault();
     if (!meetingForm.title.trim()) return;
@@ -260,6 +285,14 @@ export default function Today() {
                 {meeting.status === 'Scheduled' && (
                   <button className="today-small-btn" onClick={() => handleMarkConducted(meeting)}>Mark Conducted</button>
                 )}
+                <button
+                  className="today-small-btn"
+                  onClick={() => handleSyncToGoogleCalendar(meeting)}
+                  disabled={syncingMeetingId === meeting.id}
+                  title={meeting.google_calendar_event_id ? 'Update the synced Google Calendar event' : 'Add this meeting to Google Calendar'}
+                >
+                  {syncingMeetingId === meeting.id ? 'Syncing…' : (meeting.google_calendar_event_id ? '📅 Re-sync' : '📅 Sync to Calendar')}
+                </button>
                 <button className="today-delete-btn" onClick={() => handleDeleteMeeting(meeting.id)} title="Delete">🗑️</button>
               </div>
             </div>

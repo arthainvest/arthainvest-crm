@@ -503,6 +503,7 @@ class MeetingResponse(BaseModel):
     task_name: Optional[str] = None
     quotation_id: Optional[int] = None
     quotation_title: Optional[str] = None
+    google_calendar_event_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -801,6 +802,24 @@ class GoogleSheetsImportResponse(BaseModel):
     message: str
     created: int = 0
     failed: int = 0
+
+# Gmail (send-only, via the same connected Google account as Google Sheets)
+class GmailSendRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
+
+class GmailSendResponse(BaseModel):
+    configured: bool
+    message: str
+
+# Google Calendar (same connected Google account) - syncs a CRM Meeting to a real event
+class CalendarSyncResponse(BaseModel):
+    configured: bool
+    message: str
+    event_link: Optional[str] = None
 
 # Zapier outbound webhooks - no OAuth, just a "Catch Hook" URL the CRM POSTs to on events
 class ZapierWebhookCreate(BaseModel):

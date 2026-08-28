@@ -255,6 +255,19 @@ export const importFromGoogleSheets = async (token, spreadsheetId, sheetName) =>
   return response.data;
 };
 
+// Gmail send + Calendar sync - same connected Google account as Google Sheets above
+export const sendGmailEmail = async (token, { to, subject, body, leadId, contactId }) => {
+  const response = await api.post(`/api/integrations/gmail/send?token=${token}`, {
+    to, subject, body, lead_id: leadId || null, contact_id: contactId || null
+  });
+  return response.data;
+};
+
+export const syncMeetingToGoogleCalendar = async (token, meetingId) => {
+  const response = await api.post(`/api/meetings/${meetingId}/sync-to-google-calendar?token=${token}`);
+  return response.data;
+};
+
 // Zapier outbound webhooks - no OAuth, just registered "Catch Hook" URLs
 export const getZapierWebhooks = async (token) => {
   const response = await api.get(`/api/integrations/zapier/webhooks?token=${token}`);

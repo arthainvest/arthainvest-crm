@@ -51,6 +51,7 @@ from schemas import (
     GoogleConnectResponse, GoogleStatusResponse,
     GoogleSheetsExportRequest, GoogleSheetsExportResponse,
     GoogleSheetsImportRequest, GoogleSheetsImportResponse,
+    GmailSendRequest, GmailSendResponse, CalendarSyncResponse,
     ZapierWebhookCreate, ZapierWebhookResponse,
     TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse, TeamProductivityRow,
     VoiceCallTriggerRequest, VoiceCallTriggerResponse,
@@ -2013,7 +2014,11 @@ async def get_integrations_status(token: str = Query(None)):
 
         cursor.execute("SELECT google_email FROM google_oauth_tokens WHERE user_id = ?", (current_user['user_id'],))
         row = cursor.fetchone()
+        # Sheets, Gmail send, and Calendar sync all ride on this one connected Google account -
+        # same row, same detail, since connecting once covers all three scopes at once.
         statuses["Google Sheets"] = IntegrationStatusItem(configured=bool(row), detail=row['google_email'] if row else None)
+        statuses["Gmail"] = IntegrationStatusItem(configured=bool(row), detail=row['google_email'] if row else None)
+        statuses["Google Calendar"] = IntegrationStatusItem(configured=bool(row), detail=row['google_email'] if row else None)
 
         cursor.execute("SELECT COUNT(*) as cnt FROM zapier_webhooks")
         webhook_count = cursor.fetchone()['cnt']
@@ -5961,6 +5966,12 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+GOOGLE_GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events"
+# One shared connection (google_oauth_tokens) backs all three Google integrations - Sheets,
+# Gmail send, and Calendar sync all request their scope up front at connect time, so there's
+# no separate re-consent flow per integration.
+GOOGLE_ALL_SCOPES = f"{GOOGLE_SHEETS_SCOPE} {GOOGLE_GMAIL_SCOPE} {GOOGLE_CALENDAR_SCOPE}"
 
 # Field order/mapping deliberately matches the existing CSV export/import in Contacts.jsx /
 # LeadsList.jsx exactly - the brief was explicit not to re-derive this from scratch, and
@@ -5985,7 +5996,7 @@ async def google_connect(token: str = Query(None)):
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "state": token,
-        "scope": f"{GOOGLE_SHEETS_SCOPE} openid email",
+        "scope": f"{GOOGLE_ALL_SCOPES} openid email",
         "access_type": "offline",
         "prompt": "consent",  # forces a refresh_token every time, not just on first-ever connect
     }
@@ -6053,7 +6064,7 @@ async def google_callback(code: str = Query(None), state: str = Query(None), err
                        token_expires_at = excluded.token_expires_at,
                        scope = excluded.scope,
                        updated_at = CURRENT_TIMESTAMP""",
-                (current_user['user_id'], google_email, access_token, refresh_token, str(expires_in), GOOGLE_SHEETS_SCOPE)
+                (current_user['user_id'], google_email, access_token, refresh_token, str(expires_in), GOOGLE_ALL_SCOPES)
             )
             conn.commit()
 
@@ -6239,6 +6250,112 @@ async def google_sheets_import(payload: GoogleSheetsImportRequest, token: str = 
         message=f"Imported {created} lead(s){f', {failed} row(s) failed' if failed else ''} from the sheet.",
         created=created, failed=failed
     )
+
+@app.post("/api/integrations/gmail/send", response_model=GmailSendResponse)
+async def gmail_send(payload: GmailSendRequest, token: str = Query(None)):
+    """Sends an email through the Gmail API using the connected Google account, instead of
+    the separate SMTP_* credentials the plain Email Service integration needs - same request
+    shape as /api/email/send, so the frontend can offer either as a send option. Also logs to
+    communication_log so it shows up in the Calls page's Emails tab either way."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        access_token = _get_valid_google_access_token(cursor, current_user['user_id'])
+        conn.commit()
+        if not access_token:
+            return GmailSendResponse(configured=False, message="Gmail is not connected. Connect your Google account first from Integrations.")
+
+    import base64
+    from email.mime.text import MIMEText as _MIMEText
+    msg = _MIMEText(payload.body)
+    msg["To"] = payload.to
+    msg["Subject"] = payload.subject
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+
+    import requests
+    resp = requests.post(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"raw": raw},
+        timeout=15
+    )
+    if resp.status_code >= 400:
+        _log_communication("Email", payload.to, payload.body, "Failed", subject=payload.subject, error_detail=resp.text[:300], user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
+        return GmailSendResponse(configured=True, message=f"Gmail send failed: {resp.text[:300]}")
+
+    _log_communication("Email", payload.to, payload.body, "Sent", subject=payload.subject, user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
+    return GmailSendResponse(configured=True, message=f"Email sent to {payload.to} via Gmail.")
+
+def _meeting_calendar_event_body(meeting):
+    """Builds a Calendar API event body from a meeting row. meeting_time is 'HH:MM' text with
+    no timezone info in this schema, so events are created in the calendar's default timezone
+    rather than guessing one; a meeting with no time becomes an all-day event on meeting_date."""
+    summary = meeting['title']
+    description = meeting['notes'] or ''
+    location = meeting['location'] or ''
+    if meeting['meeting_time']:
+        start_dt = f"{meeting['meeting_date']}T{meeting['meeting_time']}:00"
+        start_hour, start_min = (int(x) for x in meeting['meeting_time'].split(':')[:2])
+        end_total_minutes = start_hour * 60 + start_min + 30
+        end_dt = f"{meeting['meeting_date']}T{(end_total_minutes // 60) % 24:02d}:{end_total_minutes % 60:02d}:00"
+        return {
+            "summary": summary, "description": description, "location": location,
+            "start": {"dateTime": start_dt}, "end": {"dateTime": end_dt},
+        }
+    return {
+        "summary": summary, "description": description, "location": location,
+        "start": {"date": meeting['meeting_date']}, "end": {"date": meeting['meeting_date']},
+    }
+
+@app.post("/api/meetings/{meeting_id}/sync-to-google-calendar", response_model=CalendarSyncResponse)
+async def sync_meeting_to_google_calendar(meeting_id: int, token: str = Query(None)):
+    """Creates (or, on a re-sync, updates) a real Google Calendar event for this meeting on
+    the connected Google account's primary calendar. Idempotent via the stored
+    google_calendar_event_id - syncing the same meeting twice updates the existing event
+    instead of creating a duplicate."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        access_token = _get_valid_google_access_token(cursor, current_user['user_id'])
+        conn.commit()
+        if not access_token:
+            return CalendarSyncResponse(configured=False, message="Google Calendar is not connected. Connect your Google account first from Integrations.")
+
+        cursor.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,))
+        meeting = cursor.fetchone()
+        if not meeting:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        meeting = dict(meeting)
+
+        event_body = _meeting_calendar_event_body(meeting)
+
+        import requests
+        if meeting['google_calendar_event_id']:
+            resp = requests.patch(
+                f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{meeting['google_calendar_event_id']}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json=event_body, timeout=15
+            )
+        else:
+            resp = requests.post(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json=event_body, timeout=15
+            )
+
+        if resp.status_code >= 400:
+            return CalendarSyncResponse(configured=True, message=f"Calendar sync failed: {resp.text[:300]}")
+
+        event_data = resp.json()
+        cursor.execute(
+            "UPDATE meetings SET google_calendar_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (event_data['id'], meeting_id)
+        )
+        conn.commit()
+
+    return CalendarSyncResponse(configured=True, message="Meeting synced to Google Calendar.", event_link=event_data.get('htmlLink'))
 
 # ============= AI CONTENT STUDIO (MARKETING TAB) =============
 #

@@ -476,6 +476,11 @@ def init_db():
             pass
 
         try:
+            cursor.execute("ALTER TABLE meetings ADD COLUMN google_calendar_event_id TEXT")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
             cursor.execute("ALTER TABLE meetings ADD COLUMN call_id INTEGER REFERENCES calls(id)")
         except sqlite3.OperationalError:
             pass
