@@ -82,10 +82,14 @@ def synthesize(
     elif working_capital.label == "Deteriorating":
         red_candidates.append(f"Working capital: {working_capital.reasons[-1] if working_capital.reasons else 'cash conversion cycle deteriorating'}")
 
+    # moat.label is decided by the ROCE check, which is always the last reason
+    # appended in moat_strength_test (after the margin lines) -- use reasons[-1],
+    # not reasons[0], so the displayed explanation actually matches the verdict
+    # instead of surfacing an unrelated (and possibly contradictory) margin note.
     if moat.label == "Signals of a durable moat":
-        bull_candidates.append(f"Moat: {moat.reasons[0] if moat.reasons else 'margin/ROCE trend supportive'}")
+        bull_candidates.append(f"Moat: {moat.reasons[-1] if moat.reasons else 'margin/ROCE trend supportive'}")
     elif moat.label == "Weak/no moat signal":
-        red_candidates.append(f"Moat: {moat.reasons[0] if moat.reasons else 'margin/ROCE trend weak'}")
+        red_candidates.append(f"Moat: {moat.reasons[-1] if moat.reasons else 'margin/ROCE trend weak'}")
 
     if capital_allocation.label == "Shareholder-friendly / disciplined":
         bull_candidates.append(f"Capital allocation: {capital_allocation.reasons[0] if capital_allocation.reasons else 'disciplined capex vs. cash flow'}")
