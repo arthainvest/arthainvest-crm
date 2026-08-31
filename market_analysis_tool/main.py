@@ -31,6 +31,7 @@ from src.deep_analysis import (
     capital_allocation_audit,
     moat_strength_test,
     multibagger_criteria_check,
+    roce_series,
     valuation_reality_check,
     working_capital_audit,
 )
@@ -50,11 +51,12 @@ def _run_deep_dive(symbol: str, fin: dict, tech, fund) -> DeepDiveResult:
     info = get_info(symbol)
     price_5y = get_price_history(symbol, period="5y")
 
+    roce = roce_series(fin["income"], fin["balance"])
     working_capital = working_capital_audit(fin["balance"], fin["income"])
-    moat = moat_strength_test(fin["income"], fin["balance"])
+    moat = moat_strength_test(fin["income"], fin["balance"], roce=roce)
     capital_allocation = capital_allocation_audit(fin["cashflow"])
     valuation = valuation_reality_check(fin["income"], fin["cashflow"], info, price_5y)
-    multibagger = multibagger_criteria_check(fin["income"], fin["balance"], info)
+    multibagger = multibagger_criteria_check(fin["income"], fin["balance"], info, roce=roce)
 
     synthesis = synthesize(tech, fund, working_capital, moat, capital_allocation, valuation, multibagger)
 
@@ -96,7 +98,10 @@ def run(skip_fundamentals: bool = False) -> None:
             if v.alert:
                 fin = financials_by_symbol.get(v.symbol)
                 if fin is not None:
-                    v.deep_dive = _run_deep_dive(v.symbol, fin, v.technical, v.fundamental)
+                    try:
+                        v.deep_dive = _run_deep_dive(v.symbol, fin, v.technical, v.fundamental)
+                    except Exception as exc:  # noqa: BLE001 - one bad stock must not sink the whole run
+                        log.warning("Deep dive failed for %s, skipping it for today's report: %s", v.symbol, exc)
 
     report = render_markdown(date.today(), market_snapshot, verdicts)
     path = save_report(report, date.today(), REPORTS_DIR)

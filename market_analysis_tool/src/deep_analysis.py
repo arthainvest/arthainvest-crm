@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from src.statement_utils import find_row, year_label
+from src.statement_utils import common_years, find_row, year_label
 
 
 # ---------------------------------------------------------------------------
@@ -113,16 +113,19 @@ class MoatVerdict:
     )
 
 
-def _roce_series(income: pd.DataFrame, balance: pd.DataFrame) -> dict:
+def roce_series(income: pd.DataFrame, balance: pd.DataFrame) -> dict:
+    """Year -> ROCE% (EBIT / (total assets - current liabilities)).
+
+    Shared by moat_strength_test() and multibagger_criteria_check() -- callers
+    that need both can compute this once and pass it to each via the `roce`
+    parameter instead of triggering the computation twice.
+    """
     ebit = find_row(income, ["ebit", "operating income"])
     total_assets = find_row(balance, ["total assets"])
     current_liab = find_row(balance, ["current liabilities", "total current liabilities"])
     if ebit is None or total_assets is None or current_liab is None:
         return {}
-    years = sorted(
-        set(ebit.dropna().index) & set(total_assets.dropna().index) & set(current_liab.dropna().index),
-        reverse=True,
-    )[:5]
+    years = common_years(ebit, total_assets, current_liab, limit=5)
     out = {}
     for y in years:
         capital_employed = float(total_assets[y]) - float(current_liab[y])
@@ -131,7 +134,7 @@ def _roce_series(income: pd.DataFrame, balance: pd.DataFrame) -> dict:
     return out
 
 
-def moat_strength_test(income: pd.DataFrame, balance: pd.DataFrame) -> MoatVerdict:
+def moat_strength_test(income: pd.DataFrame, balance: pd.DataFrame, roce: dict | None = None) -> MoatVerdict:
     v = MoatVerdict()
 
     revenue = find_row(income, ["total revenue", "operating revenue"])
@@ -145,15 +148,18 @@ def moat_strength_test(income: pd.DataFrame, balance: pd.DataFrame) -> MoatVerdi
             direction = "expanded" if latest > oldest else "compressed" if latest < oldest else "held steady"
             v.reasons.append(f"Gross margin {direction}, {oldest:.1f}% -> {latest:.1f}% over the period reviewed")
 
-            infl_years = [y for y in ys if hasattr(y, "year") and y.year in (2022, 2023)]
-            if infl_years:
-                infl_vals = [margins[y] for y in infl_years]
-                if min(infl_vals) >= oldest - 2:
-                    v.reasons.append("Margins broadly held up through the 2022-23 inflation cycle")
+            if len(margins) >= 3:
+                worst_year = min(margins, key=margins.get)
+                worst_margin = margins[worst_year]
+                if worst_margin >= min(oldest, latest) - 2:
+                    v.reasons.append("Margins stayed resilient across the whole period reviewed, without a sharp dip in any year")
                 else:
-                    v.reasons.append("Margins dipped noticeably during the 2022-23 inflation cycle")
+                    v.reasons.append(
+                        f"Margins dipped noticeably in {year_label(worst_year)} (to {worst_margin:.1f}%) "
+                        f"before {'recovering' if latest > worst_margin else 'staying pressured'}"
+                    )
 
-    roce = _roce_series(income, balance)
+    roce = roce if roce is not None else roce_series(income, balance)
     if len(roce) >= 2:
         ys = sorted(roce.keys(), reverse=True)
         latest, oldest = roce[ys[0]], roce[ys[-1]]
@@ -197,7 +203,7 @@ def capital_allocation_audit(cashflow: pd.DataFrame) -> CapitalAllocationVerdict
         v.reasons.append("Cash flow statement data unavailable from the free data source")
         return v
 
-    years = sorted(set(capex.dropna().index) & set(cfo.dropna().index), reverse=True)[:5]
+    years = common_years(capex, cfo, limit=5)
     if not years:
         v.reasons.append("Not enough overlapping capex / operating cash flow history")
         return v
@@ -261,6 +267,12 @@ def valuation_reality_check(
                 v.current_eps = eps
 
         if price_history_5y is not None and not price_history_5y.empty:
+            # yfinance's price history index is tz-aware (exchange timezone) while
+            # its financial-statement period columns are tz-naive -- comparing them
+            # directly raises TypeError, so normalize to tz-naive before the lookup.
+            if price_history_5y.index.tz is not None:
+                price_history_5y = price_history_5y.tz_localize(None)
+
             years = sorted(net_income.dropna().index, reverse=True)[:5]
             historical_pe = {}
             for y in years:
@@ -299,7 +311,7 @@ def valuation_reality_check(
     capex = find_row(cashflow, ["capital expenditure"])
     market_cap = info.get("marketCap")
     if cfo is not None and capex is not None and market_cap:
-        years = sorted(set(cfo.dropna().index) & set(capex.dropna().index), reverse=True)[:1]
+        years = common_years(cfo, capex, limit=1)
         if years:
             fcf = float(cfo[years[0]]) - abs(float(capex[years[0]]))
             if fcf > 0:
@@ -323,10 +335,10 @@ class MultibaggerVerdict:
     reasons: list[str] = field(default_factory=list)
 
 
-def multibagger_criteria_check(income: pd.DataFrame, balance: pd.DataFrame, info: dict) -> MultibaggerVerdict:
+def multibagger_criteria_check(income: pd.DataFrame, balance: pd.DataFrame, info: dict, roce: dict | None = None) -> MultibaggerVerdict:
     v = MultibaggerVerdict()
 
-    roce = _roce_series(income, balance)
+    roce = roce if roce is not None else roce_series(income, balance)
     if len(roce) >= 2:
         ys = sorted(roce.keys(), reverse=True)
         latest, oldest = roce[ys[0]], roce[ys[-1]]
