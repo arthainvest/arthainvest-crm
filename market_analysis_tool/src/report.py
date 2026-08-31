@@ -52,9 +52,48 @@ def _render_stock(v: Verdict) -> str:
         f"**Technical ({v.technical.label}, score {v.technical.score}):**",
     ]
     out += [f"- {r}" for r in v.technical.reasons] or ["- No specific technical trigger"]
-    out.append(f"**Fundamentals ({v.fundamental.label}):** {v.fundamental.cfo_vs_pat_note}")
+    out.append(f"**Fundamentals - CFO vs PAT audit ({v.fundamental.label}):** {v.fundamental.cfo_vs_pat_note}")
     out += [f"- {r}" for r in v.fundamental.reasons]
+
+    if v.deep_dive is not None:
+        out.append("")
+        out.append(_render_deep_dive(v.deep_dive))
     out.append("")
+    return "\n".join(out)
+
+
+def _render_deep_dive(dd) -> str:
+    out = ["#### Deep dive"]
+
+    out.append(f"**Working capital ({dd.working_capital.label}):**")
+    out += [f"- {r}" for r in dd.working_capital.reasons] or ["- No data"]
+
+    out.append(f"**Moat strength ({dd.moat.label}):**")
+    out += [f"- {r}" for r in dd.moat.reasons] or ["- No data"]
+    out.append(f"- _{dd.moat.note}_")
+
+    out.append(f"**Capital allocation ({dd.capital_allocation.label}):**")
+    out += [f"- {r}" for r in dd.capital_allocation.reasons] or ["- No data"]
+    out.append(f"- _{dd.capital_allocation.note}_")
+
+    out.append(f"**Valuation reality check ({dd.valuation.label}):**")
+    out += [f"- {r}" for r in dd.valuation.reasons] or ["- No data"]
+
+    mb = dd.multibagger
+    out.append(f"**Multibagger criteria: {mb.score:.1f}/{mb.max_scored:.0f} on computable criteria:**")
+    out += [f"- {r}" for r in mb.reasons]
+
+    s = dd.synthesis
+    out.append("**Master synthesis:**")
+    out.append("- Top bullish points:")
+    out += [f"  - {p}" for p in s.bull_points]
+    out.append("- Top red flags:")
+    out += [f"  - {p}" for p in s.red_flags]
+    out.append(f"- Rough fair-value range: {s.fair_value_range}")
+    out.append(f"- Most important question for next earnings call: {s.key_question}")
+    out.append("- Not assessed from free data (verify manually):")
+    out += [f"  - {n}" for n in s.uncertain_notes]
+
     return "\n".join(out)
 
 

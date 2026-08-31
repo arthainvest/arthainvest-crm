@@ -42,6 +42,19 @@ def get_financials(symbol: str) -> dict[str, pd.DataFrame]:
     return out
 
 
+def get_info(symbol: str) -> dict:
+    """Snapshot fields (P/E, market cap, insider holding %, analyst count, ...).
+
+    Only fetched for stocks that already triggered an alert (see main.py) --
+    this call is slower and less reliable than the statement fetches above.
+    """
+    try:
+        return yf.Ticker(symbol).info or {}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("info fetch failed for %s: %s", symbol, exc)
+        return {}
+
+
 def get_market_index_snapshot(symbol: str) -> dict | None:
     df = get_price_history(symbol, period="5d")
     if df is None or len(df) < 2:

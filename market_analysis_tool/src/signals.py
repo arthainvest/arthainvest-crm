@@ -4,8 +4,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from config import THRESHOLDS
+from src.deep_analysis import (
+    CapitalAllocationVerdict,
+    MoatVerdict,
+    MultibaggerVerdict,
+    ValuationVerdict,
+    WorkingCapitalVerdict,
+)
 from src.fundamental import FundamentalVerdict
+from src.synthesis import SynthesisVerdict
 from src.technical import TechnicalVerdict
+
+
+@dataclass
+class DeepDiveResult:
+    """Prompts 2, 4, 6, 7, 9 and the Prompt 10 synthesis, for flagged stocks only."""
+    working_capital: WorkingCapitalVerdict
+    moat: MoatVerdict
+    capital_allocation: CapitalAllocationVerdict
+    valuation: ValuationVerdict
+    multibagger: MultibaggerVerdict
+    synthesis: SynthesisVerdict
 
 
 @dataclass
@@ -16,6 +35,7 @@ class Verdict:
     fundamental: FundamentalVerdict
     call: str
     alert: bool
+    deep_dive: DeepDiveResult | None = None
 
 
 def combine(symbol: str, market: str, tech: TechnicalVerdict, fund: FundamentalVerdict) -> Verdict:

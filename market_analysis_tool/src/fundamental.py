@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from config import THRESHOLDS
+from src.statement_utils import find_row, year_label
 
 
 @dataclass
@@ -25,23 +26,9 @@ class FundamentalVerdict:
     data_years: int = 0
 
 
-def _find_row(df: pd.DataFrame, candidates: list[str]) -> pd.Series | None:
-    if df is None or df.empty:
-        return None
-    for idx in df.index:
-        low = str(idx).lower()
-        if any(c in low for c in candidates):
-            return df.loc[idx]
-    return None
-
-
-def _year_label(period) -> str:
-    return str(period.year) if hasattr(period, "year") else str(period)
-
-
 def _cfo_pat_audit(cashflow: pd.DataFrame, income: pd.DataFrame) -> tuple[str, list[str]]:
-    cfo_row = _find_row(cashflow, ["cash flow from operating", "operating cash flow", "total cash from operating"])
-    pat_row = _find_row(income, ["net income", "net income common stockholders"])
+    cfo_row = find_row(cashflow, ["cash flow from operating", "operating cash flow", "total cash from operating"])
+    pat_row = find_row(income, ["net income", "net income common stockholders"])
 
     if cfo_row is None or pat_row is None:
         return "Not enough data", ["Cash flow / net income data unavailable from the free data source"]
@@ -60,13 +47,13 @@ def _cfo_pat_audit(cashflow: pd.DataFrame, income: pd.DataFrame) -> tuple[str, l
         if cfo < pat:
             weak_years += 1
         if cfo < 0 and pat > 0:
-            notes.append(f"{_year_label(y)}: cash flow from operations was negative despite a positive reported profit")
+            notes.append(f"{year_label(y)}: cash flow from operations was negative despite a positive reported profit")
 
     for i in range(len(gaps) - 1):
         y_now, _gap_now, cfo_now, pat_now = gaps[i]
         _y_prev, _gap_prev, cfo_prev, pat_prev = gaps[i + 1]
         if pat_now > pat_prev and cfo_now < cfo_prev:
-            notes.append(f"{_year_label(y_now)}: reported profit grew year-on-year while operating cash flow fell")
+            notes.append(f"{year_label(y_now)}: reported profit grew year-on-year while operating cash flow fell")
 
     if len(gaps) >= 2:
         trend = "narrowing" if abs(gaps[0][1]) < abs(gaps[-1][1]) else "widening"
@@ -91,7 +78,7 @@ def analyse(cashflow: pd.DataFrame, income: pd.DataFrame, balance: pd.DataFrame)
     v.cfo_vs_pat_note = cfo_verdict
     v.reasons.extend(cfo_notes)
 
-    pat_row = _find_row(income, ["net income", "net income common stockholders"])
+    pat_row = find_row(income, ["net income", "net income common stockholders"])
     if pat_row is not None and len(pat_row.dropna()) >= 2:
         years = sorted(pat_row.dropna().index, reverse=True)[:2]
         latest, prior = float(pat_row[years[0]]), float(pat_row[years[1]])
@@ -99,8 +86,8 @@ def analyse(cashflow: pd.DataFrame, income: pd.DataFrame, balance: pd.DataFrame)
             growth = (latest - prior) / abs(prior) * 100
             v.reasons.append(f"Net profit {'grew' if growth >= 0 else 'declined'} {growth:+.0f}% year-on-year")
 
-    debt_row = _find_row(balance, ["total debt", "long term debt"])
-    equity_row = _find_row(balance, ["total stockholder equity", "common stock equity", "stockholders equity"])
+    debt_row = find_row(balance, ["total debt", "long term debt"])
+    equity_row = find_row(balance, ["total stockholder equity", "common stock equity", "stockholders equity"])
     if debt_row is not None and equity_row is not None:
         years = sorted(set(debt_row.dropna().index) & set(equity_row.dropna().index), reverse=True)[:2]
         if len(years) == 2 and equity_row[years[0]] and equity_row[years[1]]:

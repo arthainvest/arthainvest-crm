@@ -35,6 +35,44 @@ threshold (`config.py` -> `min_technical_score_alert`); the fundamental
 read is shown alongside it for context/conviction, not as a separate
 trigger.
 
+**Deep dive on flagged stocks only** -- once a stock is flagged, the tool
+runs a second, deeper layer modeled on a "forensic equity analyst"
+checklist (`src/deep_analysis.py`, synthesised in `src/synthesis.py`).
+This only runs on flagged names, not the whole watchlist, since it needs
+extra API calls per stock:
+- **Working capital trend** -- debtor / inventory / creditor days and the
+  cash conversion cycle over the last available years: is the business
+  getting more efficient or slowly consuming more cash?
+- **Moat strength** -- gross margin trend, whether margins held up through
+  the 2022-23 inflation cycle, and ROCE trend. (Peer-relative ROCE and a
+  competitor count need an industry peer set this tool doesn't have --
+  flagged as not scored rather than guessed.)
+- **Capital allocation** -- how much of operating cash flow went to capex
+  vs. dividends/buybacks over the last available years. (Whether specific
+  acquisitions created or destroyed value, and loans to promoter entities,
+  need deal-level disclosures not in free statement data -- flagged as
+  not scored.)
+- **Valuation reality check** -- current P/E vs. its own historical P/E
+  range (built from historical EPS and price on each fiscal year-end),
+  current EV/EBITDA, and P/FCF for the latest year.
+- **Multibagger criteria** -- scores the 3 of 5 classic criteria that are
+  computable from free data (ROCE >15% and improving, promoter/insider
+  holding >50%, low analyst coverage as a proxy for "under-the-radar");
+  TAM expansion and core-vs-unrelated reinvestment are explicitly left
+  unscored (qualitative / covered by the capital allocation section).
+- **Master synthesis** -- rolls all of the above (plus the technical read
+  and the CFO-vs-PAT audit) into top bullish points, top red flags, a
+  rough fair-value range (latest EPS x its own historical P/E range -- a
+  quick anchor, not a DCF), and the single most important question to
+  put to management next.
+
+Three checks from the original checklist genuinely can't be built from a
+free market-data API and are reported as explicit "verify manually"
+notes rather than fabricated: **customer/segment revenue concentration**,
+**promoter pledging % and related-party transactions**, and **management
+credibility scored from earnings-call transcripts**. All three need data
+(company disclosures, transcript text) that yfinance doesn't expose.
+
 ## Setup
 
 ```bash
