@@ -85,16 +85,9 @@ async def lifespan(app: FastAPI):
     # Startup
     try:
         init_db()
-        print("[OK] SQLite database ready!")
+        print("[OK] Database ready!")
     except Exception as e:
         print(f"[ERROR] Database error: {e}")
-    try:
-        # The DB is fully reset on every startup, so clear stale recordings that
-        # no note in the fresh DB references, keeping the two in sync.
-        for f in os.listdir(UPLOADS_DIR):
-            os.remove(os.path.join(UPLOADS_DIR, f))
-    except Exception as e:
-        print(f"[WARN] Could not clear uploads directory: {e}")
     yield
     # Shutdown
     print("[OK] Server shutting down")
