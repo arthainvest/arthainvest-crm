@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# WhatsApp Flow RSA keypair - never commit the private half
+*.pem
+
 # Virtual Environment
 venv/
 env/

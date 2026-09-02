@@ -20,7 +20,18 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from database_sqlite import get_db, init_db
+import db_compat
+
+# DATABASE_URL is set in production (MySQL, e.g. Hostinger's Remote MySQL) and unset for
+# local dev - this is the one switch point for the whole app. See backend/database_mysql.py
+# and db_compat.py for why the rest of main.py's ~500 queries need zero further changes to
+# work against either backend (a placeholder/lastrowid compatibility shim + a handful of
+# SQL-fragment helpers for the small number of genuinely-different date functions).
+if os.getenv("DATABASE_URL"):
+    from database_mysql import get_db, init_db, IntegrityError
+else:
+    from database_sqlite import get_db, init_db
+    IntegrityError = sqlite3.IntegrityError
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token,
     LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadCompanyAssign, LeadQuotationAssign, LeadContactAssign, LeadResponse,
@@ -643,7 +654,8 @@ async def register(user: UserCreate):
 
             return UserResponse(**dict(new_user))
 
-        except sqlite3.IntegrityError as e:
+        except IntegrityError as e:
+            conn.rollback()
             raise HTTPException(status_code=400, detail="Username or email already exists")
 
 # ============= LEADS ENDPOINTS =============
@@ -1526,7 +1538,7 @@ async def get_task_deals(task_id: int, token: str = Query(None)):
 # risking exactly the kind of aggregate/drilldown mismatch caught earlier with Calls.
 def _loan_stage_where(label):
     if label == "Deals Closed (This Month)":
-        return "deals.stage = 'closed' AND strftime('%Y-%m', deals.updated_at) = strftime('%Y-%m', 'now')", []
+        return f"deals.stage = 'closed' AND {db_compat.sql_year_month('deals.updated_at')} = {db_compat.sql_year_month(db_compat.sql_now())}", []
     if label == "In Progress":
         return "deals.stage != 'closed'", []
     if label == "Rejected":
@@ -2190,14 +2202,15 @@ async def get_upcoming_renewals(token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        _days_until_renewal = db_compat.sql_days_between("contacts.renewal_date", db_compat.sql_today())
         cursor.execute(
-            """
+            f"""
             SELECT contacts.*, team_members.name as assigned_team_member_name,
-                   CAST(julianday(contacts.renewal_date) - julianday(date('now')) AS INTEGER) as days_until_renewal
+                   CAST({_days_until_renewal} AS INTEGER) as days_until_renewal
             FROM contacts
             LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
             WHERE contacts.renewal_date IS NOT NULL
-              AND julianday(contacts.renewal_date) - julianday(date('now')) <= 30
+              AND {_days_until_renewal} <= 30
             ORDER BY contacts.renewal_date ASC
             """
         )
@@ -2829,7 +2842,7 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
             )
         else:
             cursor.execute(
-                """
+                f"""
                 SELECT tasks.*, team_members.name as assigned_team_member_name,
                        leads.name as lead_name, contacts.name as contact_name,
                        companies.name as company_name,
@@ -2841,7 +2854,7 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
                 LEFT JOIN companies ON companies.id = tasks.company_id
                 LEFT JOIN calls ON calls.id = tasks.call_id
                 LEFT JOIN quotations ON quotations.id = tasks.quotation_id
-                WHERE tasks.due_date = COALESCE(?, date('now'))
+                WHERE tasks.due_date = COALESCE(?, {db_compat.sql_today()})
                 ORDER BY tasks.completed ASC, tasks.created_at ASC
                 """,
                 (date,)
@@ -3143,7 +3156,7 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
             )
         else:
             cursor.execute(
-                """
+                f"""
                 SELECT meetings.*, team_members.name as assigned_team_member_name,
                        leads.name as lead_name, contacts.name as contact_name,
                        companies.name as company_name,
@@ -3162,7 +3175,7 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                 LEFT JOIN calls ON calls.id = meetings.call_id
                 LEFT JOIN tasks ON tasks.id = meetings.task_id
                 LEFT JOIN quotations ON quotations.id = meetings.quotation_id
-                WHERE meetings.meeting_date = COALESCE(?, date('now'))
+                WHERE meetings.meeting_date = COALESCE(?, {db_compat.sql_today()})
                 ORDER BY meetings.meeting_time ASC, meetings.created_at ASC
                 """,
                 (date,)
@@ -3749,9 +3762,9 @@ def _auto_log_dial(dial, user_id):
         team_member_id = member_row['id'] if member_row else None
 
         cursor.execute(
-            """
+            f"""
             INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id)
-            VALUES (?, ?, 0, 'Outbound', NULL, date('now'), ?, ?, ?, ?)
+            VALUES (?, ?, 0, 'Outbound', NULL, {db_compat.sql_today()}, ?, ?, ?, ?)
             """,
             (name, dial.to, user_id, team_member_id, dial.lead_id, dial.contact_id)
         )
@@ -4505,9 +4518,9 @@ async def receive_whatsapp_flow_webhook(request: Request):
                                 cursor.execute("INSERT INTO custom_fields (name, field_type) VALUES (?, 'text')", (field_name,))
                                 field_id = cursor.lastrowid
                             cursor.execute(
-                                """INSERT INTO custom_field_values (custom_field_id, entity_type, entity_id, value)
+                                f"""INSERT INTO custom_field_values (custom_field_id, entity_type, entity_id, value)
                                    VALUES (?, ?, ?, ?)
-                                   ON CONFLICT(custom_field_id, entity_type, entity_id) DO UPDATE SET value = excluded.value""",
+                                   {db_compat.sql_upsert(['custom_field_id', 'entity_type', 'entity_id'], ['value'])}""",
                                 (field_id, entity_type, entity_id, str(field_value))
                             )
             conn.commit()
@@ -5628,7 +5641,8 @@ async def create_tag(tag: TagCreate, token: str = Query(None)):
         try:
             cursor.execute("INSERT INTO tags (name, color) VALUES (?, ?)", (tag.name, tag.color))
             conn.commit()
-        except sqlite3.IntegrityError:
+        except IntegrityError:
+            conn.rollback()
             raise HTTPException(status_code=400, detail="A tag with this name already exists")
         cursor.execute("SELECT * FROM tags WHERE id = ?", (cursor.lastrowid,))
         return dict(cursor.fetchone())
@@ -5656,8 +5670,8 @@ async def assign_tag(payload: EntityTagRequest, token: str = Query(None)):
                 (payload.entity_type, payload.entity_id, payload.tag_id)
             )
             conn.commit()
-        except sqlite3.IntegrityError:
-            pass  # already tagged - not an error
+        except IntegrityError:
+            conn.rollback()  # already tagged - not an error
     return {"message": "Tag assigned"}
 
 @app.post("/api/tags/unassign")
@@ -5700,7 +5714,8 @@ async def create_group(group: GroupCreate, token: str = Query(None)):
         try:
             cursor.execute("INSERT INTO groups (name, description) VALUES (?, ?)", (group.name, group.description))
             conn.commit()
-        except sqlite3.IntegrityError:
+        except IntegrityError:
+            conn.rollback()
             raise HTTPException(status_code=400, detail="A group with this name already exists")
         cursor.execute("SELECT * FROM groups WHERE id = ?", (cursor.lastrowid,))
         return dict(cursor.fetchone())
@@ -5728,8 +5743,8 @@ async def assign_group(payload: EntityGroupRequest, token: str = Query(None)):
                 (payload.entity_type, payload.entity_id, payload.group_id)
             )
             conn.commit()
-        except sqlite3.IntegrityError:
-            pass
+        except IntegrityError:
+            conn.rollback()
     return {"message": "Added to group"}
 
 @app.post("/api/groups/unassign")
@@ -5777,7 +5792,8 @@ async def create_custom_field(field: CustomFieldCreate, token: str = Query(None)
         try:
             cursor.execute("INSERT INTO custom_fields (name, field_type) VALUES (?, ?)", (field.name, field.field_type))
             conn.commit()
-        except sqlite3.IntegrityError:
+        except IntegrityError:
+            conn.rollback()
             raise HTTPException(status_code=400, detail="A custom field with this name already exists")
         cursor.execute("SELECT * FROM custom_fields WHERE id = ?", (cursor.lastrowid,))
         return dict(cursor.fetchone())
@@ -5798,9 +5814,9 @@ async def set_custom_field_value(payload: CustomFieldValueSet, token: str = Quer
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT INTO custom_field_values (custom_field_id, entity_type, entity_id, value)
+            f"""INSERT INTO custom_field_values (custom_field_id, entity_type, entity_id, value)
                VALUES (?, ?, ?, ?)
-               ON CONFLICT(custom_field_id, entity_type, entity_id) DO UPDATE SET value = excluded.value""",
+               {db_compat.sql_upsert(['custom_field_id', 'entity_type', 'entity_id'], ['value'])}""",
             (payload.custom_field_id, payload.entity_type, payload.entity_id, payload.value)
         )
         conn.commit()
@@ -5842,7 +5858,8 @@ async def create_quick_reply(reply: QuickReplyCreate, token: str = Query(None)):
                 (reply.shortcut, reply.message, current_user['user_id'])
             )
             conn.commit()
-        except sqlite3.IntegrityError:
+        except IntegrityError:
+            conn.rollback()
             raise HTTPException(status_code=400, detail="A quick reply with this shortcut already exists")
         cursor.execute("SELECT * FROM quick_replies WHERE id = ?", (cursor.lastrowid,))
         return dict(cursor.fetchone())
@@ -5969,10 +5986,10 @@ async def linkedin_callback(code: str = Query(None), state: str = Query(None), e
             if not cursor.fetchone():
                 cursor.execute("INSERT INTO user_settings (user_id) VALUES (?)", (current_user['user_id'],))
             cursor.execute(
-                """
+                f"""
                 UPDATE user_settings
                 SET linkedin_access_token = ?,
-                    linkedin_token_expires_at = datetime('now', ? || ' seconds'),
+                    linkedin_token_expires_at = {db_compat.sql_now_offset("?")},
                     linkedin_member_urn = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = ?
@@ -6138,16 +6155,14 @@ async def google_callback(code: str = Query(None), state: str = Query(None), err
 
         with get_db() as conn:
             cursor = conn.cursor()
+            _upsert_clause = db_compat.sql_upsert(
+                ['user_id'],
+                ['google_email', 'access_token', 'refresh_token', 'token_expires_at', 'scope']
+            )
             cursor.execute(
-                """INSERT INTO google_oauth_tokens (user_id, google_email, access_token, refresh_token, token_expires_at, scope)
-                   VALUES (?, ?, ?, ?, datetime('now', ? || ' seconds'), ?)
-                   ON CONFLICT(user_id) DO UPDATE SET
-                       google_email = excluded.google_email,
-                       access_token = excluded.access_token,
-                       refresh_token = excluded.refresh_token,
-                       token_expires_at = excluded.token_expires_at,
-                       scope = excluded.scope,
-                       updated_at = CURRENT_TIMESTAMP""",
+                f"""INSERT INTO google_oauth_tokens (user_id, google_email, access_token, refresh_token, token_expires_at, scope)
+                   VALUES (?, ?, ?, ?, {db_compat.sql_now_offset("?")}, ?)
+                   {_upsert_clause}, updated_at = CURRENT_TIMESTAMP""",
                 (current_user['user_id'], google_email, access_token, refresh_token, str(expires_in), GOOGLE_ALL_SCOPES)
             )
             conn.commit()
@@ -6187,7 +6202,13 @@ def _get_valid_google_access_token(cursor, user_id):
         return None
     row = dict(row)
 
-    cursor.execute("SELECT (julianday(?) - julianday('now', '+1 minute')) > 0 as still_valid", (row['token_expires_at'],))
+    # "Is the stored expiry more than a minute in the future" - expressed as a direct
+    # timestamp comparison on MySQL rather than forcing it through sql_days_between,
+    # since this compares a bound value against a now-offset, not two column expressions.
+    if db_compat.IS_MYSQL:
+        cursor.execute("SELECT (? > DATE_ADD(NOW(), INTERVAL 1 MINUTE)) as still_valid", (row['token_expires_at'],))
+    else:
+        cursor.execute("SELECT (julianday(?) - julianday('now', '+1 minute')) > 0 as still_valid", (row['token_expires_at'],))
     still_valid = cursor.fetchone()['still_valid']
     if still_valid:
         return row['access_token']
@@ -6208,8 +6229,9 @@ def _get_valid_google_access_token(cursor, user_id):
     data = resp.json()
     new_access_token = data["access_token"]
     expires_in = data.get("expires_in", 3600)
+    _seconds_offset = db_compat.sql_now_offset("?")
     cursor.execute(
-        "UPDATE google_oauth_tokens SET access_token = ?, token_expires_at = datetime('now', ? || ' seconds'), updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        f"UPDATE google_oauth_tokens SET access_token = ?, token_expires_at = {_seconds_offset}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
         (new_access_token, str(expires_in), user_id)
     )
     return new_access_token
@@ -6700,9 +6722,9 @@ async def voice_agent_webhook(payload: dict):
                 cursor.execute("DELETE FROM voice_call_context WHERE vapi_call_id = ?", (vapi_call_id,))
 
         cursor.execute(
-            """
+            f"""
             INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id)
-            VALUES (?, ?, ?, 'Voice Agent', ?, date('now'), ?, ?, ?, ?)
+            VALUES (?, ?, ?, 'Voice Agent', ?, {db_compat.sql_today()}, ?, ?, ?, ?)
             """,
             (
                 customer.get('name') or 'Unknown',
@@ -6921,9 +6943,9 @@ async def get_contacts_analytics(token: str = Query(None)):
         active_contacts = cursor.fetchone()['count']
 
         # Avg hours between a contact being added and their first logged note
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT AVG(
-                (julianday(first_note.call_datetime) - julianday(c.created_at)) * 24
+                ({db_compat.sql_days_between('first_note.call_datetime', 'c.created_at')}) * 24
             ) as avg_hours
             FROM contacts c
             JOIN (
@@ -6968,9 +6990,9 @@ async def get_calls_analytics(token: str = Query(None)):
         """)
         successful = cursor.fetchone()['count']
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COUNT(*) as count FROM calls
-            WHERE strftime('%Y-%m', call_date) = strftime('%Y-%m', 'now')
+            WHERE {db_compat.sql_year_month('call_date')} = {db_compat.sql_year_month(db_compat.sql_now())}
         """)
         calls_this_month = cursor.fetchone()['count']
 
@@ -7053,9 +7075,10 @@ async def get_calls_by_employee(token: str = Query(None)):
                 r = cursor.fetchone()
                 return r['attempted'] or 0, r['connected'] or 0
 
-            today_attempted, today_connected = counts("call_date = date('now')")
-            week_attempted, week_connected = counts("call_date >= date('now', '-6 days')")
-            month_attempted, month_connected = counts("strftime('%Y-%m', call_date) = strftime('%Y-%m', 'now')")
+            _six_days_ago = db_compat.sql_date_offset("'-6 days'")
+            today_attempted, today_connected = counts(f"call_date = {db_compat.sql_today()}")
+            week_attempted, week_connected = counts(f"call_date >= {_six_days_ago}")
+            month_attempted, month_connected = counts(f"{db_compat.sql_year_month('call_date')} = {db_compat.sql_year_month(db_compat.sql_now())}")
 
             rows.append(EmployeeCallStats(
                 team_member_id=m['id'], name=m['name'],
