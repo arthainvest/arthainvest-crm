@@ -2,11 +2,11 @@ def test_list_integrations_catalog(auth_client):
     resp = auth_client.get("/api/integrations")
     assert resp.status_code == 200
     integrations = resp.json()
-    assert len(integrations) == 25
+    assert len(integrations) == 26
 
     names = {i["name"] for i in integrations}
     assert "Razorpay Payments" not in names  # explicitly removed, must never reappear
-    assert {"Twilio", "Claude AI", "WhatsApp Business API", "Mailchimp", "Google Sheets",
+    assert {"Twilio", "Exotel", "Claude AI", "WhatsApp Business API", "Mailchimp", "Google Sheets",
             "DigiLocker", "Google Analytics", "Priti (AI Voice Caller)", "OpenAI",
             "Facebook Lead Ads", "IndiaMart", "TradeIndia", "Zendesk",
             "QuickBooks", "Aircall", "MSG91", "Apollo.io"}.issubset(names)

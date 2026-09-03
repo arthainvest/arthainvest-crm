@@ -11,7 +11,7 @@ def test_twilio_dial_unconfigured(auth_client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["configured"] is False
-    assert "not configured" in data["message"].lower()
+    assert "not configured" in data["message"].lower() or "no calling provider" in data["message"].lower()
 
 
 def test_twilio_sms_unconfigured(auth_client):

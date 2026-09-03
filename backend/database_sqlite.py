@@ -49,6 +49,7 @@ def _ensure_integrations_catalog(cursor, conn):
         ('Slack', '💬', 'Send notifications to Slack', 0, 'never'),
         ('HubSpot', '🎯', 'Two-way sync with HubSpot', 1, '5 mins ago'),
         ('Twilio', '📞', 'Click-to-call and SMS via Twilio', 0, 'never'),
+        ('Exotel', '📱', 'Multi-agent dialer with call recording via Exotel', 0, 'never'),
         ('Claude AI', '✨', 'AI-drafted follow-ups and note summaries', 0, 'never'),
         ('LinkedIn', '💼', 'Sync leads and posts from LinkedIn', 0, 'never'),
         ('WhatsApp Business API', '💬', 'Send WhatsApp messages via Meta Cloud API', 0, 'never'),
@@ -551,6 +552,10 @@ def init_db():
             "ALTER TABLE calls ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
             "ALTER TABLE calls ADD COLUMN contact_id INTEGER REFERENCES contacts(id)",
             "ALTER TABLE calls ADD COLUMN company_id INTEGER REFERENCES companies(id)",
+            # Set by the Exotel dial/status-callback path (see main.py's dial_call and the
+            # /api/webhooks/exotel/status handler) - Twilio-dialed calls leave both NULL.
+            "ALTER TABLE calls ADD COLUMN recording_url TEXT",
+            "ALTER TABLE calls ADD COLUMN provider_call_sid TEXT",
         ]:
             try:
                 cursor.execute(ddl)

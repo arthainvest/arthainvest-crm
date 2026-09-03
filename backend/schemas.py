@@ -540,6 +540,7 @@ class CallResponse(BaseModel):
     contact_name: Optional[str] = None
     company_id: Optional[int] = None
     company_name: Optional[str] = None
+    recording_url: Optional[str] = None
 
 # Communication Log (Emails/WhatsApp/SMS actually sent - "Emails"/"WhatsApp" tabs alongside
 # Calls, matching how Kylas groups Call Logs/Emails/WhatsApp under one nav item)

@@ -80,6 +80,16 @@ def _create_index_if_missing(cursor, index_name, table, columns):
             raise
 
 
+def _add_column_if_missing(cursor, table, column, ddl_type):
+    """MySQL has no ADD COLUMN IF NOT EXISTS (pre-8.0.29) - this runs on every startup, so it
+    must be idempotent the same way _create_index_if_missing is for indexes."""
+    try:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
+    except pymysql.err.OperationalError as e:
+        if e.args[0] != 1060:  # 1060 = ER_DUP_FIELDNAME, "Duplicate column name"
+            raise
+
+
 def _ensure_integrations_catalog(cursor, conn):
     """Insert any catalog integration that doesn't exist yet, by name. Runs on every startup
     (not just first-run seeding) so an integration added after a database was already seeded
@@ -91,6 +101,7 @@ def _ensure_integrations_catalog(cursor, conn):
         ('Slack', '💬', 'Send notifications to Slack', 0, 'never'),
         ('HubSpot', '🎯', 'Two-way sync with HubSpot', 1, '5 mins ago'),
         ('Twilio', '📞', 'Click-to-call and SMS via Twilio', 0, 'never'),
+        ('Exotel', '📱', 'Multi-agent dialer with call recording via Exotel', 0, 'never'),
         ('Claude AI', '✨', 'AI-drafted follow-ups and note summaries', 0, 'never'),
         ('LinkedIn', '💼', 'Sync leads and posts from LinkedIn', 0, 'never'),
         ('WhatsApp Business API', '💬', 'Send WhatsApp messages via Meta Cloud API', 0, 'never'),
@@ -209,6 +220,11 @@ def init_db():
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # Set by the Exotel dial/status-callback path (see main.py's dial_call and the
+        # /api/webhooks/exotel/status handler) - Twilio-dialed calls leave both NULL. Added
+        # after the table above already existed in production, so ADD COLUMN not CREATE.
+        _add_column_if_missing(cursor, "calls", "recording_url", "TEXT")
+        _add_column_if_missing(cursor, "calls", "provider_call_sid", "VARCHAR(255)")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
