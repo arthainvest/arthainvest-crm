@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, PlainTextResponse
@@ -13,7 +13,7 @@ import secrets
 import smtplib
 import hashlib
 import hmac
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
 from cryptography.hazmat.primitives import hashes, serialization
@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 import db_compat
+import storage
 
 # DATABASE_URL is set in production (MySQL, e.g. Hostinger's Remote MySQL) and unset for
 # local dev - this is the one switch point for the whole app. See backend/database_mysql.py
@@ -73,7 +74,9 @@ from schemas import (
     TagCreate, TagResponse, EntityTagRequest,
     GroupCreate, GroupResponse, EntityGroupRequest,
     CustomFieldCreate, CustomFieldResponse, CustomFieldValueSet,
-    QuickReplyCreate, QuickReplyUpdate, QuickReplyResponse
+    QuickReplyCreate, QuickReplyUpdate, QuickReplyResponse,
+    ApiKeyCreate, ApiKeyResponse, ApiKeyCreateResponse, PublicLeadCreate,
+    AutomationCreate, AutomationUpdate, AutomationResponse, AutomationEnrollRequest, AutomationEnrollmentResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
 
@@ -114,9 +117,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve uploaded voice-note audio files
-UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "uploads", "notes")
-os.makedirs(UPLOADS_DIR, exist_ok=True)
+# Serve uploaded voice-note audio files (only used when storage.py's local-disk
+# fallback is active - i.e. S3_BUCKET_NAME isn't set; see storage.py)
 app.mount("/uploads", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "uploads")), name="uploads")
 
 # ============= HELPER FUNCTIONS =============
@@ -150,6 +152,28 @@ def require_admin(token: str = None):
         raise HTTPException(status_code=403, detail="Admin access required")
 
     return current_user
+
+def get_user_from_api_key(x_api_key: str = Header(None)):
+    """Auth for POST /api/public/leads - a website contact form, a click-to-WhatsApp ad
+    landing page, a Zapier/webhook integration, none of which can carry a logged-in user's
+    JWT. Looks up the key by its stored SHA-256 hash (the raw key is never persisted, only
+    shown once at creation - see create_api_key below) and records last_used_at on every
+    successful call. A revoked key (revoked_at set) is rejected the same as an unrecognized
+    one, so revoking takes effect immediately."""
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Missing X-API-Key header")
+
+    key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL", (key_hash,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid or revoked API key")
+        cursor.execute("UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?", (row['id'],))
+        conn.commit()
+
+    return dict(row)
 
 def fetch_deal_with_member_name(cursor, deal_id):
     """Read one deal back out joined against team_members, so the frontend gets the assigned
@@ -2447,13 +2471,7 @@ async def upload_note_audio(contact_id: int, note_id: int, token: str = Query(No
     if existing['audio_url']:
         _delete_audio_file(existing['audio_url'])
 
-    ext = os.path.splitext(audio.filename or '')[1] or '.webm'
-    filename = f"{uuid.uuid4().hex}{ext}"
-    file_path = os.path.join(UPLOADS_DIR, filename)
-    with open(file_path, 'wb') as f:
-        f.write(await audio.read())
-
-    audio_url = f"/uploads/notes/{filename}"
+    audio_url = storage.save_audio_bytes(audio.filename, await audio.read())
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -2491,13 +2509,7 @@ async def ai_suggest_contact_followup(contact_id: int, token: str = Query(None))
 
 def _delete_audio_file(audio_url):
     """Best-effort removal of a previously uploaded note recording"""
-    try:
-        filename = os.path.basename(audio_url)
-        file_path = os.path.join(UPLOADS_DIR, filename)
-        if os.path.isfile(file_path):
-            os.remove(file_path)
-    except OSError as e:
-        print(f"[WARN] Could not remove audio file {audio_url}: {e}")
+    storage.delete_audio_file(audio_url)
 
 def _ai_configured():
     """Whether at least one text-generation AI provider is set up on this server."""
@@ -2742,13 +2754,7 @@ async def upload_lead_note_audio(lead_id: int, note_id: int, token: str = Query(
     if existing['audio_url']:
         _delete_audio_file(existing['audio_url'])
 
-    ext = os.path.splitext(audio.filename or '')[1] or '.webm'
-    filename = f"{uuid.uuid4().hex}{ext}"
-    file_path = os.path.join(UPLOADS_DIR, filename)
-    with open(file_path, 'wb') as f:
-        f.write(await audio.read())
-
-    audio_url = f"/uploads/notes/{filename}"
+    audio_url = storage.save_audio_bytes(audio.filename, await audio.read())
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -5766,6 +5772,276 @@ async def get_groups_for_entity(entity_type: str, entity_id: int, token: str = Q
             (entity_type, entity_id)
         )
         return [dict(row) for row in cursor.fetchall()]
+
+# ============= DEVELOPER API KEYS =============
+
+@app.get("/api/api-keys", response_model=list[ApiKeyResponse])
+async def get_api_keys(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM api_keys ORDER BY created_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/api-keys", response_model=ApiKeyCreateResponse)
+async def create_api_key(payload: ApiKeyCreate, token: str = Query(None)):
+    """Creates a new developer API key for an external system (a website contact form, a
+    click-to-WhatsApp ad landing page, a Zapier/webhook integration) to call
+    POST /api/public/leads. The raw key is returned exactly once, here - only its SHA-256
+    hash is stored, so save it now: it can never be shown again. If it's lost, revoke it and
+    create a new one."""
+    current_user = get_current_user(token)
+    raw_key = f"ai_{secrets.token_urlsafe(32)}"
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    key_prefix = raw_key[:10]
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO api_keys (name, key_prefix, key_hash, created_by) VALUES (?, ?, ?, ?)",
+            (payload.name, key_prefix, key_hash, current_user['user_id'])
+        )
+        conn.commit()
+        key_id = cursor.lastrowid
+
+    return ApiKeyCreateResponse(id=key_id, name=payload.name, api_key=raw_key)
+
+@app.delete("/api/api-keys/{key_id}")
+async def revoke_api_key(key_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?", (key_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="API key not found")
+    return {"message": "API key revoked"}
+
+@app.post("/api/public/leads", response_model=LeadResponse)
+async def create_lead_via_api_key(lead: PublicLeadCreate, x_api_key: str = Header(None)):
+    """Public (no user login) endpoint for external systems - a website contact form, a
+    click-to-WhatsApp ad landing page, a Zapier/webhook integration - to push a new lead in,
+    authenticated with an API key (X-API-Key header) instead of a JWT. The lead is recorded as
+    created_by whichever user created the API key, so it shows up attributed to a real account
+    rather than floating ownerless. Reuses the exact same leads-table insert and
+    fetch_lead_with_member_name response shape as POST /api/leads, rather than a parallel
+    code path. Field lengths are capped by PublicLeadCreate itself, since this is a public
+    write endpoint reachable by anything holding a key."""
+    api_key_row = get_user_from_api_key(x_api_key)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO leads (name, company, email, phone, product, source, created_by, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (lead.name, lead.company, lead.email, lead.phone, lead.product,
+             lead.source or 'API', api_key_row['created_by'], 'New')
+        )
+        conn.commit()
+        lead_id = cursor.lastrowid
+
+        new_lead = fetch_lead_with_member_name(cursor, lead_id)
+
+    return new_lead
+
+# ============= AUTOMATIONS (drip sequences) =============
+#
+# A named flow of ordered steps (automation_steps), each firing wait_minutes after the one
+# before it. A lead/contact is enrolled either one at a time or in bulk via a group, and its
+# live progress is tracked in automation_enrollments using the same entity_type/entity_id
+# polymorphic pointer tags/groups already use. This is the CRUD + enrollment bookkeeping
+# layer only - actually sending each step's message on schedule (a background scheduler tick
+# wired to the existing WhatsApp send helpers) is a separate, deliberately out-of-scope piece
+# of work, not something to run unsupervised against production yet.
+
+def _automation_row_to_response(cursor, row):
+    a = dict(row)
+    cursor.execute("SELECT * FROM automation_steps WHERE automation_id = ? ORDER BY step_order", (a['id'],))
+    a['steps'] = [dict(s) for s in cursor.fetchall()]
+    return a
+
+def _group_member_entities(cursor, group_id):
+    """Every lead/contact currently in this group - the audience 'enroll group' expands to."""
+    cursor.execute(
+        "SELECT entity_type, entity_id FROM entity_groups WHERE group_id = ? AND entity_type IN ('lead', 'contact')",
+        (group_id,)
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+@app.get("/api/automations", response_model=list[AutomationResponse])
+async def get_automations(token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM automations ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        return [_automation_row_to_response(cursor, r) for r in rows]
+
+@app.post("/api/automations", response_model=AutomationResponse)
+async def create_automation(automation: AutomationCreate, token: str = Query(None)):
+    current_user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO automations (name, trigger_type, group_id, created_by) VALUES (?, ?, ?, ?)",
+            (automation.name, automation.trigger_type, automation.group_id, current_user['user_id'])
+        )
+        automation_id = cursor.lastrowid
+        for i, step in enumerate(automation.steps):
+            cursor.execute(
+                """INSERT INTO automation_steps (automation_id, step_order, wait_minutes, message_type, template_name, body)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (automation_id, i, step.wait_minutes, step.message_type, step.template_name, step.body)
+            )
+        conn.commit()
+        cursor.execute("SELECT * FROM automations WHERE id = ?", (automation_id,))
+        return _automation_row_to_response(cursor, cursor.fetchone())
+
+@app.put("/api/automations/{automation_id}", response_model=AutomationResponse)
+async def update_automation(automation_id: int, automation: AutomationUpdate, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM automations WHERE id = ?", (automation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Automation not found")
+
+        updates, values = [], []
+        if automation.name is not None:
+            updates.append("name = ?"); values.append(automation.name)
+        if automation.status is not None:
+            if automation.status not in ('active', 'paused'):
+                raise HTTPException(status_code=400, detail="status must be 'active' or 'paused'")
+            updates.append("status = ?"); values.append(automation.status)
+        if updates:
+            updates.append("updated_at = CURRENT_TIMESTAMP")
+            values.append(automation_id)
+            cursor.execute(f"UPDATE automations SET {', '.join(updates)} WHERE id = ?", values)
+
+        if automation.steps is not None:
+            cursor.execute("DELETE FROM automation_steps WHERE automation_id = ?", (automation_id,))
+            for i, step in enumerate(automation.steps):
+                cursor.execute(
+                    """INSERT INTO automation_steps (automation_id, step_order, wait_minutes, message_type, template_name, body)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (automation_id, i, step.wait_minutes, step.message_type, step.template_name, step.body)
+                )
+
+        conn.commit()
+        cursor.execute("SELECT * FROM automations WHERE id = ?", (automation_id,))
+        return _automation_row_to_response(cursor, cursor.fetchone())
+
+@app.delete("/api/automations/{automation_id}")
+async def delete_automation(automation_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM automations WHERE id = ?", (automation_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Automation not found")
+        cursor.execute("DELETE FROM automation_enrollments WHERE automation_id = ?", (automation_id,))
+        cursor.execute("DELETE FROM automation_steps WHERE automation_id = ?", (automation_id,))
+        cursor.execute("DELETE FROM automations WHERE id = ?", (automation_id,))
+        conn.commit()
+    return {"message": "Automation deleted"}
+
+@app.get("/api/automations/{automation_id}/enrollments", response_model=list[AutomationEnrollmentResponse])
+async def get_automation_enrollments(automation_id: int, token: str = Query(None)):
+    """Who's currently running through this automation, and where they're up to - the
+    'who's in this drip sequence' view for the Automations screen."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as n FROM automation_steps WHERE automation_id = ?", (automation_id,))
+        total_steps = cursor.fetchone()['n']
+
+        cursor.execute(
+            """SELECT ae.*, l.name as lead_name, l.phone as lead_phone, c.name as contact_name, c.phone as contact_phone
+               FROM automation_enrollments ae
+               LEFT JOIN leads l ON ae.entity_type = 'lead' AND l.id = ae.entity_id
+               LEFT JOIN contacts c ON ae.entity_type = 'contact' AND c.id = ae.entity_id
+               WHERE ae.automation_id = ?
+               ORDER BY ae.created_at DESC""",
+            (automation_id,)
+        )
+        enrollments = []
+        for row in cursor.fetchall():
+            e = dict(row)
+            e['total_steps'] = total_steps
+            name = e.pop('lead_name', None) or e.pop('contact_name', None)
+            phone = e.pop('lead_phone', None) or e.pop('contact_phone', None)
+            e['entity_name'] = name or phone
+            enrollments.append(e)
+    return enrollments
+
+@app.post("/api/automations/{automation_id}/enroll")
+async def enroll_entity(automation_id: int, payload: AutomationEnrollRequest, token: str = Query(None)):
+    """Start a single lead/contact on this automation now (its first step fires as soon as
+    a scheduler processes it, honoring that step's wait_minutes)."""
+    get_current_user(token)
+    if payload.entity_type not in ('contact', 'lead'):
+        raise HTTPException(status_code=400, detail="entity_type must be 'contact' or 'lead'")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT wait_minutes FROM automation_steps WHERE automation_id = ? ORDER BY step_order LIMIT 1", (automation_id,))
+        first_step = cursor.fetchone()
+        if not first_step:
+            raise HTTPException(status_code=400, detail="This automation has no steps yet")
+        next_run_at = (datetime.utcnow() + timedelta(minutes=first_step['wait_minutes'])).isoformat()
+        try:
+            cursor.execute(
+                """INSERT INTO automation_enrollments (automation_id, entity_type, entity_id, current_step, status, next_run_at)
+                   VALUES (?, ?, ?, 0, 'active', ?)""",
+                (automation_id, payload.entity_type, payload.entity_id, next_run_at)
+            )
+            conn.commit()
+        except IntegrityError:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="This lead/contact is already enrolled in this automation")
+    return {"message": "Enrolled"}
+
+@app.post("/api/automations/{automation_id}/enroll-group/{group_id}")
+async def enroll_group(automation_id: int, group_id: int, token: str = Query(None)):
+    """Enroll every lead/contact in a group at once - the broadcast/drip-campaign entry point
+    (e.g. 'start the Diwali sequence for the SIP Clients group')."""
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT wait_minutes FROM automation_steps WHERE automation_id = ? ORDER BY step_order LIMIT 1", (automation_id,))
+        first_step = cursor.fetchone()
+        if not first_step:
+            raise HTTPException(status_code=400, detail="This automation has no steps yet")
+        next_run_at = (datetime.utcnow() + timedelta(minutes=first_step['wait_minutes'])).isoformat()
+
+        members = _group_member_entities(cursor, group_id)
+        enrolled = 0
+        for member in members:
+            try:
+                cursor.execute(
+                    """INSERT INTO automation_enrollments (automation_id, entity_type, entity_id, current_step, status, next_run_at)
+                       VALUES (?, ?, ?, 0, 'active', ?)""",
+                    (automation_id, member['entity_type'], member['entity_id'], next_run_at)
+                )
+                enrolled += 1
+            except IntegrityError:
+                conn.rollback()
+                continue  # already enrolled
+        conn.commit()
+    return {"message": f"Enrolled {enrolled} lead(s)/contact(s)"}
+
+@app.post("/api/automations/enrollments/{enrollment_id}/stop")
+async def stop_enrollment(enrollment_id: int, token: str = Query(None)):
+    get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM automation_enrollments WHERE id = ?", (enrollment_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Enrollment not found")
+        cursor.execute("UPDATE automation_enrollments SET status = 'stopped', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (enrollment_id,))
+        conn.commit()
+    return {"message": "Enrollment stopped"}
 
 # ============= CUSTOM FIELDS =============
 

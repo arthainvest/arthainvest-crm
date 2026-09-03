@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -1081,6 +1081,58 @@ class QuickReplyResponse(BaseModel):
     message: str
     created_at: datetime
 
+# Automations (drip sequences - a named flow of ordered steps, enrolled per lead/contact
+# via the same entity_type/entity_id pointer tags/groups use, or in bulk via a group)
+class AutomationStepInput(BaseModel):
+    wait_minutes: int = 0
+    message_type: str = "text"  # 'text' or 'template'
+    template_name: Optional[str] = None
+    body: Optional[str] = None
+
+class AutomationCreate(BaseModel):
+    name: str
+    trigger_type: str = "manual"  # manual, new_lead, group_join
+    group_id: Optional[int] = None
+    steps: List[AutomationStepInput] = []
+
+class AutomationUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None  # active, paused
+    steps: Optional[List[AutomationStepInput]] = None
+
+class AutomationStepResponse(BaseModel):
+    id: int
+    step_order: int
+    wait_minutes: int
+    message_type: str
+    template_name: Optional[str]
+    body: Optional[str]
+
+class AutomationResponse(BaseModel):
+    id: int
+    name: str
+    trigger_type: str
+    group_id: Optional[int]
+    status: str
+    created_at: datetime
+    steps: List[AutomationStepResponse] = []
+
+class AutomationEnrollRequest(BaseModel):
+    entity_type: str  # 'lead' or 'contact'
+    entity_id: int
+
+class AutomationEnrollmentResponse(BaseModel):
+    id: int
+    automation_id: int
+    entity_type: str
+    entity_id: int
+    entity_name: Optional[str] = None
+    current_step: int
+    total_steps: int
+    status: str
+    next_run_at: Optional[datetime]
+    created_at: datetime
+
 # Token
 class Token(BaseModel):
     access_token: str
@@ -1088,3 +1140,35 @@ class Token(BaseModel):
     user_id: int
     username: str
     role: str
+
+# Developer API keys - let an external system (a website contact form, a click-to-WhatsApp ad
+# landing page, a Zapier/webhook integration) call POST /api/public/leads to create leads
+# without a user login. Only the SHA-256 hash of the key is ever persisted (see main.py's
+# get_user_from_api_key()) - the raw value is returned exactly once, at creation time.
+class ApiKeyCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+class ApiKeyResponse(BaseModel):
+    id: int
+    name: str
+    key_prefix: str
+    created_at: datetime
+    last_used_at: Optional[str] = None
+    revoked_at: Optional[str] = None
+
+class ApiKeyCreateResponse(BaseModel):
+    id: int
+    name: str
+    api_key: str  # the raw key - shown once, here, never retrievable again
+
+# Body for POST /api/public/leads. Deliberately its own schema (not LeadCreate) with tight
+# length limits on every field - this endpoint is authenticated by API key rather than a JWT,
+# reachable by any external system that has a key, so it must not become a way to write
+# arbitrary/oversized data into the leads table.
+class PublicLeadCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    company: Optional[str] = Field(None, max_length=255)
+    email: Optional[str] = Field(None, max_length=255)
+    phone: Optional[str] = Field(None, max_length=50)
+    product: Optional[str] = Field(None, max_length=100)
+    source: Optional[str] = Field(None, max_length=100)

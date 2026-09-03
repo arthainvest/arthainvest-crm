@@ -691,6 +691,72 @@ def init_db():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
+        # Developer API keys - let an external system (a website contact form, a
+        # click-to-WhatsApp ad landing page, a Zapier/webhook integration) call
+        # POST /api/public/leads without a user login. Only key_hash (SHA-256 of the raw key)
+        # is ever stored, never the raw value - see main.py's get_user_from_api_key().
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                key_prefix VARCHAR(20) NOT NULL,
+                key_hash VARCHAR(64) NOT NULL,
+                created_by INT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_used_at DATETIME,
+                revoked_at DATETIME
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_api_keys_key_hash", "api_keys", "key_hash")
+
+        # Automations: a simple linear drip sequence. automations is the flow itself,
+        # automation_steps are its ordered messages (each fires wait_minutes after the
+        # previous one), and automation_enrollments tracks each lead/contact's live progress
+        # through it - entity_type/entity_id is the same polymorphic pointer entity_tags/
+        # entity_groups already use, rather than a WhatsApp-conversation-specific column, so
+        # an automation can enroll either a lead or a contact directly. Sending the actual
+        # steps on a schedule is a separate piece of work (see main.py's AUTOMATIONS section);
+        # this is the CRUD + enrollment bookkeeping layer only.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS automations (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                trigger_type VARCHAR(50) NOT NULL DEFAULT 'manual',
+                group_id INT,
+                status VARCHAR(20) DEFAULT 'active',
+                created_by INT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS automation_steps (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                automation_id INT NOT NULL,
+                step_order INT NOT NULL,
+                wait_minutes INT DEFAULT 0,
+                message_type VARCHAR(20) DEFAULT 'text',
+                template_name VARCHAR(255),
+                body TEXT
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS automation_enrollments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                automation_id INT NOT NULL,
+                entity_type VARCHAR(50) NOT NULL,
+                entity_id INT NOT NULL,
+                current_step INT DEFAULT 0,
+                status VARCHAR(20) DEFAULT 'active',
+                next_run_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(automation_id, entity_type, entity_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_automation_enrollments_automation", "automation_enrollments", "automation_id")
+        _create_index_if_missing(cursor, "idx_automation_enrollments_next_run", "automation_enrollments", "next_run_at, status")
+
         conn.commit()
 
         _ensure_integrations_catalog(cursor, conn)

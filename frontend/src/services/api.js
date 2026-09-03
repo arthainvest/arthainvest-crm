@@ -449,6 +449,40 @@ export const sendWhatsApp = async (token, to, message, { leadId, contactId } = {
   return response.data;
 };
 
+// WhatsApp Inbox (conversations)
+export const getWhatsAppConversations = async (token, status = null) => {
+  const params = new URLSearchParams({ token });
+  if (status) params.append('status', status);
+
+  const response = await api.get(`/api/whatsapp/conversations?${params.toString()}`);
+  return response.data;
+};
+
+export const getWhatsAppMessages = async (token, conversationId) => {
+  const response = await api.get(`/api/whatsapp/conversations/${conversationId}/messages?token=${token}`);
+  return response.data;
+};
+
+export const sendWhatsAppReply = async (token, conversationId, message) => {
+  const response = await api.post(`/api/whatsapp/conversations/${conversationId}/reply?token=${token}`, { message });
+  return response.data;
+};
+
+export const assignWhatsAppConversation = async (token, conversationId, userId) => {
+  const response = await api.put(`/api/whatsapp/conversations/${conversationId}/assign?token=${token}`, { user_id: userId });
+  return response.data;
+};
+
+export const updateWhatsAppConversationStatus = async (token, conversationId, status) => {
+  const response = await api.put(`/api/whatsapp/conversations/${conversationId}/status?token=${token}`, { status });
+  return response.data;
+};
+
+export const optOutWhatsAppConversation = async (token, conversationId) => {
+  const response = await api.post(`/api/whatsapp/conversations/${conversationId}/opt-out?token=${token}`);
+  return response.data;
+};
+
 // Email service (SMTP)
 export const sendEmailReal = async (token, to, subject, body, { leadId, contactId } = {}) => {
   const response = await api.post(`/api/email/send?token=${token}`, { to, subject, body, lead_id: leadId, contact_id: contactId });
@@ -781,6 +815,64 @@ export const getCustomFieldValuesForEntity = async (token, entityType, entityId)
 
 export const setCustomFieldValue = async (token, payload) => {
   const response = await api.put(`/api/custom-fields/value?token=${token}`, payload);
+  return response.data;
+};
+
+// Developer API keys - let an external system (a website contact form, a click-to-WhatsApp
+// ad landing page, a Zapier/webhook integration) call POST /api/public/leads without a user
+// login. The raw key is only ever returned once, by createApiKey, right after creation.
+export const getApiKeys = async (token) => {
+  const response = await api.get(`/api/api-keys?token=${token}`);
+  return response.data;
+};
+
+export const createApiKey = async (token, name) => {
+  const response = await api.post(`/api/api-keys?token=${token}`, { name });
+  return response.data;
+};
+
+export const revokeApiKey = async (token, keyId) => {
+  await api.delete(`/api/api-keys/${keyId}?token=${token}`);
+};
+
+// Automations (drip sequences - enroll a lead/contact, or a whole group, into an ordered
+// sequence of steps)
+export const getAutomations = async (token) => {
+  const response = await api.get(`/api/automations?token=${token}`);
+  return response.data;
+};
+
+export const createAutomation = async (token, automationData) => {
+  const response = await api.post(`/api/automations?token=${token}`, automationData);
+  return response.data;
+};
+
+export const updateAutomation = async (token, automationId, automationData) => {
+  const response = await api.put(`/api/automations/${automationId}?token=${token}`, automationData);
+  return response.data;
+};
+
+export const deleteAutomation = async (token, automationId) => {
+  await api.delete(`/api/automations/${automationId}?token=${token}`);
+};
+
+export const getAutomationEnrollments = async (token, automationId) => {
+  const response = await api.get(`/api/automations/${automationId}/enrollments?token=${token}`);
+  return response.data;
+};
+
+export const enrollInAutomation = async (token, automationId, entityType, entityId) => {
+  const response = await api.post(`/api/automations/${automationId}/enroll?token=${token}`, { entity_type: entityType, entity_id: entityId });
+  return response.data;
+};
+
+export const enrollGroupInAutomation = async (token, automationId, groupId) => {
+  const response = await api.post(`/api/automations/${automationId}/enroll-group/${groupId}?token=${token}`);
+  return response.data;
+};
+
+export const stopAutomationEnrollment = async (token, enrollmentId) => {
+  const response = await api.post(`/api/automations/enrollments/${enrollmentId}/stop?token=${token}`);
   return response.data;
 };
 

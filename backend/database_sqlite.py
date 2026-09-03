@@ -931,6 +931,77 @@ def init_db():
             )
         """)
 
+        # Developer API keys - let an external system (a website contact form, a
+        # click-to-WhatsApp ad landing page, a Zapier/webhook integration) call
+        # POST /api/public/leads without a user login. Only key_hash (SHA-256 of the raw key)
+        # is ever stored, never the raw value - see main.py's get_user_from_api_key().
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                key_prefix TEXT NOT NULL,
+                key_hash TEXT NOT NULL,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMP,
+                revoked_at TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash)")
+
+        # Automations: a simple linear drip sequence. automations is the flow itself,
+        # automation_steps are its ordered messages (each fires wait_minutes after the
+        # previous one), and automation_enrollments tracks each lead/contact's live progress
+        # through it - entity_type/entity_id is the same polymorphic pointer entity_tags/
+        # entity_groups already use, rather than a WhatsApp-conversation-specific column, so
+        # an automation can enroll either a lead or a contact directly. Sending the actual
+        # steps on a schedule is a separate piece of work (see main.py's AUTOMATIONS section);
+        # this is the CRUD + enrollment bookkeeping layer only.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS automations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                trigger_type TEXT NOT NULL DEFAULT 'manual',
+                group_id INTEGER,
+                status TEXT DEFAULT 'active',
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES groups(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS automation_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                automation_id INTEGER NOT NULL,
+                step_order INTEGER NOT NULL,
+                wait_minutes INTEGER DEFAULT 0,
+                message_type TEXT DEFAULT 'text',
+                template_name TEXT,
+                body TEXT,
+                FOREIGN KEY (automation_id) REFERENCES automations(id)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS automation_enrollments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                automation_id INTEGER NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                current_step INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'active',
+                next_run_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (automation_id) REFERENCES automations(id),
+                UNIQUE(automation_id, entity_type, entity_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_automation_enrollments_automation ON automation_enrollments(automation_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_automation_enrollments_next_run ON automation_enrollments(next_run_at, status)")
+
         conn.commit()
 
         # Runs on every startup regardless of seed state (unlike the demo-data block below),

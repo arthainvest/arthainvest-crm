@@ -13,6 +13,9 @@ import Marketing from './components/Marketing';
 import Team from './components/Team';
 import Reports from './components/Reports';
 import Integrations from './components/Integrations';
+import WhatsAppInbox from './components/WhatsAppInbox';
+import Automations from './components/Automations';
+import ApiKeys from './components/ApiKeys';
 import Settings from './components/Settings';
 import Navigation from './components/Navigation';
 import ChatbotWidget from './components/ChatbotWidget';
@@ -76,6 +79,9 @@ function App() {
               <Route path="/team" element={<Team />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/integrations" element={<Integrations />} />
+              <Route path="/inbox" element={<WhatsAppInbox />} />
+              <Route path="/automations" element={<Automations />} />
+              <Route path="/api-keys" element={<ApiKeys />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
