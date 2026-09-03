@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, PlainTextResponse
 from contextlib import asynccontextmanager
 import sqlite3
+import asyncio
 from typing import List, Optional
 import os
 import json
@@ -22,6 +23,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 import db_compat
 import storage
+import automations_scheduler
 
 # DATABASE_URL is set in production (MySQL, e.g. Hostinger's Remote MySQL) and unset for
 # local dev - this is the one switch point for the whole app. See backend/database_mysql.py
@@ -91,8 +93,17 @@ async def lifespan(app: FastAPI):
         print("[OK] Database ready!")
     except Exception as e:
         print(f"[ERROR] Database error: {e}")
+
+    scheduler_task = None
+    if automations_scheduler.SCHEDULER_ENABLED:
+        scheduler_task = asyncio.create_task(automations_scheduler.run_scheduler_loop())
+    else:
+        print("[automations] scheduler disabled (set AUTOMATIONS_SCHEDULER_ENABLED=true to turn it on)")
+
     yield
     # Shutdown
+    if scheduler_task:
+        scheduler_task.cancel()
     print("[OK] Server shutting down")
 
 # Create FastAPI app
