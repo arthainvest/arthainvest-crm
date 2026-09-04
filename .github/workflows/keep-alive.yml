@@ -15,4 +15,4 @@ jobs:
     steps:
       - name: Ping /api/health
         run: |
-          curl -sf --max-time 55 https://arthainvest-crm.onrender.com/api/health
+          curl -sf --max-time 90 https://arthainvest-crm.onrender.com/api/health
