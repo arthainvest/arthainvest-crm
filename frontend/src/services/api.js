@@ -20,7 +20,10 @@ api.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
     const url = error.config?.url || '';
-    const isAuthEndpoint = url.includes('/api/auth/login') || url.includes('/api/auth/register');
+    // change-password legitimately 401s for "current password is wrong" - a business-logic
+    // error the form should show inline, not a reason to nuke the whole session.
+    const isAuthEndpoint = url.includes('/api/auth/login') || url.includes('/api/auth/register')
+      || url.includes('/api/auth/change-password');
     if (status === 401 && !isAuthEndpoint && localStorage.getItem('token')) {
       localStorage.clear();
       window.location.href = '/login?expired=1';
