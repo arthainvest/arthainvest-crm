@@ -36,7 +36,7 @@ else:
     from database_sqlite import get_db, init_db
     IntegrityError = sqlite3.IntegrityError
 from schemas import (
-    UserLogin, UserCreate, UserResponse, Token,
+    UserLogin, UserCreate, UserResponse, Token, ChangePasswordRequest, AdminResetPasswordRequest,
     LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadCompanyAssign, LeadQuotationAssign, LeadContactAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealTaskAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
@@ -685,6 +685,47 @@ async def register(user: UserCreate):
         except IntegrityError as e:
             conn.rollback()
             raise HTTPException(status_code=400, detail="Username or email already exists")
+
+@app.put("/api/auth/change-password")
+async def change_password(payload: ChangePasswordRequest, token: str = Query(None)):
+    """Self-service reset - any logged-in user can change their own password, proving they
+    know the current one first. No 'forgot password' email flow exists (no SMTP-verified
+    identity to send a reset link to), so this is the only reset path: log in, then change it."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT password FROM users WHERE id = ?", (current_user['user_id'],))
+        row = cursor.fetchone()
+
+        if not row or not verify_password(payload.old_password, row['password']):
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+        cursor.execute(
+            "UPDATE users SET password = ? WHERE id = ?",
+            (hash_password(payload.new_password), current_user['user_id'])
+        )
+        conn.commit()
+
+    return {"message": "Password updated"}
+
+@app.put("/api/auth/admin-reset-password")
+async def admin_reset_password(payload: AdminResetPasswordRequest, token: str = Query(None)):
+    """Lets an admin reset any team member's password without knowing their current one -
+    e.g. after handing out a shared initial password, or when someone is locked out."""
+    require_admin(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET password = ? WHERE username = ?",
+            (hash_password(payload.new_password), payload.username)
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        conn.commit()
+
+    return {"message": f"Password reset for {payload.username}"}
 
 # ============= LEADS ENDPOINTS =============
 

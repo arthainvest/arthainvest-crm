@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSettings, updateSettings, getTeam, getMyTeamMember } from '../services/api';
+import { getSettings, updateSettings, getTeam, getMyTeamMember, changePassword } from '../services/api';
 import { applyTheme } from '../utils/theme';
 import '../styles/Settings.css';
 
@@ -59,6 +59,9 @@ export default function Settings() {
   const [teamMembers, setTeamMembers] = useState([]);
   const [myTeamMember, setMyTeamMember] = useState(null);
   const [myTeamMemberLoaded, setMyTeamMemberLoaded] = useState(false);
+  const [pwForm, setPwForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwStatus, setPwStatus] = useState(null); // { type: 'success' | 'error', message }
+  const [pwSaving, setPwSaving] = useState(false);
   const token = localStorage.getItem('token');
   const isAdmin = (localStorage.getItem('role') || '').toLowerCase() === 'admin';
   const navigate = useNavigate();
@@ -139,6 +142,36 @@ export default function Settings() {
     setSaved(false);
   };
 
+  const handlePasswordFieldChange = (e) => {
+    const { name, value } = e.target;
+    setPwForm({ ...pwForm, [name]: value });
+    setPwStatus(null);
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      setPwStatus({ type: 'error', message: 'New password and confirmation do not match.' });
+      return;
+    }
+    if (pwForm.newPassword.length < 4) {
+      setPwStatus({ type: 'error', message: 'New password must be at least 4 characters.' });
+      return;
+    }
+    setPwSaving(true);
+    setPwStatus(null);
+    try {
+      await changePassword(token, pwForm.oldPassword, pwForm.newPassword);
+      setPwForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+      setPwStatus({ type: 'success', message: 'Password updated. Use it next time you log in.' });
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      setPwStatus({ type: 'error', message: detail || 'Failed to update password. Please try again.' });
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
   return (
     <div className="settings-container">
       <div className="settings-header">
@@ -201,6 +234,53 @@ export default function Settings() {
               placeholder="Your company name"
             />
           </div>
+        </div>
+
+        <div className="settings-section">
+          <h2>Change Password</h2>
+          <form onSubmit={handleChangePassword}>
+            <div className="form-group">
+              <label>Current Password</label>
+              <input
+                type="password"
+                name="oldPassword"
+                value={pwForm.oldPassword}
+                onChange={handlePasswordFieldChange}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>New Password</label>
+              <input
+                type="password"
+                name="newPassword"
+                value={pwForm.newPassword}
+                onChange={handlePasswordFieldChange}
+                autoComplete="new-password"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Confirm New Password</label>
+              <input
+                type="password"
+                name="confirmPassword"
+                value={pwForm.confirmPassword}
+                onChange={handlePasswordFieldChange}
+                autoComplete="new-password"
+                required
+              />
+            </div>
+            {pwStatus && (
+              <p className={pwStatus.type === 'success' ? 'save-message' : 'settings-section-hint settings-error'}>
+                {pwStatus.type === 'success' ? '✓ ' : ''}{pwStatus.message}
+              </p>
+            )}
+            <button type="submit" className="btn-primary" disabled={pwSaving}>
+              {pwSaving ? 'Updating...' : '🔒 Update Password'}
+            </button>
+          </form>
         </div>
 
         <div className="settings-section">

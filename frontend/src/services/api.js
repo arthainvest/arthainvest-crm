@@ -315,6 +315,22 @@ export const updateSettings = async (token, settingsData) => {
   return response.data;
 };
 
+export const changePassword = async (token, oldPassword, newPassword) => {
+  const response = await api.put(`/api/auth/change-password?token=${token}`, {
+    old_password: oldPassword,
+    new_password: newPassword,
+  });
+  return response.data;
+};
+
+export const adminResetPassword = async (token, username, newPassword) => {
+  const response = await api.put(`/api/auth/admin-reset-password?token=${token}`, {
+    username,
+    new_password: newPassword,
+  });
+  return response.data;
+};
+
 // Contacts
 export const getContactsList = async (token, { assignedTeamMemberId } = {}) => {
   const params = new URLSearchParams({ token });

@@ -14,6 +14,14 @@ class UserCreate(BaseModel):
     full_name: str
     role: str = "employee"
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str = Field(..., min_length=4)
+
+class AdminResetPasswordRequest(BaseModel):
+    username: str
+    new_password: str = Field(..., min_length=4)
+
 class UserResponse(BaseModel):
     id: int
     username: str

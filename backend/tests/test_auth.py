@@ -31,3 +31,65 @@ def test_protected_endpoint_without_token_is_rejected(client):
 def test_protected_endpoint_with_invalid_token_is_rejected(client):
     resp = client.get("/api/leads?token=not-a-real-token")
     assert resp.status_code == 401
+
+
+def test_change_password_success(auth_client, client):
+    resp = auth_client.put("/api/auth/change-password", json={
+        "old_password": "12345", "new_password": "newpass1"
+    })
+    assert resp.status_code == 200
+
+    # Old password no longer works, new one does.
+    assert client.post("/api/auth/login", json={"username": "testuser", "password": "12345"}).status_code == 401
+    assert client.post("/api/auth/login", json={"username": "testuser", "password": "newpass1"}).status_code == 200
+
+
+def test_change_password_wrong_old_password_rejected(auth_client):
+    resp = auth_client.put("/api/auth/change-password", json={
+        "old_password": "wrong", "new_password": "newpass1"
+    })
+    assert resp.status_code == 401
+
+
+def test_change_password_requires_auth(client):
+    resp = client.put("/api/auth/change-password", json={
+        "old_password": "12345", "new_password": "newpass1"
+    })
+    assert resp.status_code == 401
+
+
+def test_admin_reset_password_success(auth_client, client):
+    client.post("/api/auth/register", json={
+        "username": "junior", "email": "junior@example.com", "password": "orig1234",
+        "full_name": "Junior", "role": "employee"
+    })
+
+    resp = auth_client.put("/api/auth/admin-reset-password", json={
+        "username": "junior", "new_password": "reset5678"
+    })
+    assert resp.status_code == 200
+
+    assert client.post("/api/auth/login", json={"username": "junior", "password": "orig1234"}).status_code == 401
+    assert client.post("/api/auth/login", json={"username": "junior", "password": "reset5678"}).status_code == 200
+
+
+def test_admin_reset_password_unknown_user(auth_client):
+    resp = auth_client.put("/api/auth/admin-reset-password", json={
+        "username": "nobody", "new_password": "reset5678"
+    })
+    assert resp.status_code == 404
+
+
+def test_admin_reset_password_requires_admin(client):
+    client.post("/api/auth/register", json={
+        "username": "plainuser", "email": "plain@example.com", "password": "plainpass1",
+        "full_name": "Plain User", "role": "employee"
+    })
+    plain_token = client.post("/api/auth/login", json={
+        "username": "plainuser", "password": "plainpass1"
+    }).json()["access_token"]
+
+    resp = client.put(f"/api/auth/admin-reset-password?token={plain_token}", json={
+        "username": "testuser", "new_password": "hijacked1"
+    })
+    assert resp.status_code == 403
