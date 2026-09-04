@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { loginUser } from '../services/api';
 import '../styles/Login.css';
 
@@ -83,6 +83,10 @@ export default function Login({ onLoginSuccess }) {
           >
             {loading ? 'Logging in...' : 'Login'}
           </button>
+
+          <p style={{ textAlign: 'center', marginTop: 16 }}>
+            <Link to="/forgot-password" style={{ color: '#667eea', fontSize: 14 }}>Forgot password?</Link>
+          </p>
         </form>
 
         {process.env.NODE_ENV === 'development' && (

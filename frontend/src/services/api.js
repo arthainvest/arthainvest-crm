@@ -43,6 +43,19 @@ export const registerUser = async (userData) => {
   return response.data;
 };
 
+export const forgotPassword = async (username) => {
+  const response = await api.post('/api/auth/forgot-password', { username });
+  return response.data;
+};
+
+export const resetPasswordWithToken = async (resetToken, newPassword) => {
+  const response = await api.post('/api/auth/reset-password', {
+    reset_token: resetToken,
+    new_password: newPassword,
+  });
+  return response.data;
+};
+
 // Leads
 export const getLeads = async (token, status = null, { source, assignedTeamMemberId } = {}) => {
   const params = new URLSearchParams();

@@ -22,6 +22,13 @@ class AdminResetPasswordRequest(BaseModel):
     username: str
     new_password: str = Field(..., min_length=4)
 
+class ForgotPasswordRequest(BaseModel):
+    username: str  # username or email - whichever the person remembers
+
+class ResetPasswordRequest(BaseModel):
+    reset_token: str
+    new_password: str = Field(..., min_length=4)
+
 class UserResponse(BaseModel):
     id: int
     username: str

@@ -37,6 +37,7 @@ else:
     IntegrityError = sqlite3.IntegrityError
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token, ChangePasswordRequest, AdminResetPasswordRequest,
+    ForgotPasswordRequest, ResetPasswordRequest,
     LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadCompanyAssign, LeadQuotationAssign, LeadContactAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealTaskAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
@@ -688,9 +689,8 @@ async def register(user: UserCreate):
 
 @app.put("/api/auth/change-password")
 async def change_password(payload: ChangePasswordRequest, token: str = Query(None)):
-    """Self-service reset - any logged-in user can change their own password, proving they
-    know the current one first. No 'forgot password' email flow exists (no SMTP-verified
-    identity to send a reset link to), so this is the only reset path: log in, then change it."""
+    """Self-service reset for someone who IS logged in and knows their current password.
+    See forgot_password() below for the locked-out case."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
@@ -726,6 +726,104 @@ async def admin_reset_password(payload: AdminResetPasswordRequest, token: str = 
         conn.commit()
 
     return {"message": f"Password reset for {payload.username}"}
+
+def _send_password_reset_email(to_email, full_name, reset_link):
+    """Best-effort - a failed send here shouldn't surface to the caller (forgot_password's
+    response is deliberately generic either way, see below), just gets logged server-side."""
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = os.getenv("SMTP_PORT")
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_from = os.getenv("SMTP_FROM") or smtp_user
+
+    if not (smtp_host and smtp_port and smtp_user and smtp_password):
+        print(f"[forgot-password] SMTP not configured - reset link for {to_email}: {reset_link}")
+        return
+
+    try:
+        body = (
+            f"Hi {full_name},\n\n"
+            f"Someone (hopefully you) requested a password reset for your ArthaInvest CRM account.\n\n"
+            f"Reset your password here (link expires in 30 minutes):\n{reset_link}\n\n"
+            f"If you didn't request this, you can ignore this email - your password won't change."
+        )
+        msg = MIMEText(body)
+        msg["Subject"] = "Reset your ArthaInvest CRM password"
+        msg["From"] = smtp_from
+        msg["To"] = to_email
+
+        with smtplib.SMTP(smtp_host, int(smtp_port), timeout=10) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_from, [to_email], msg.as_string())
+    except Exception as e:
+        print(f"[forgot-password] Failed to email reset link to {to_email}: {e}")
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordRequest):
+    """Locked-out case: no login, no known current password. Emails a one-time reset link
+    (30 min expiry) to the account's registered email. Always returns the same generic
+    message regardless of whether the username/email matched anything, so this can't be used
+    to enumerate valid usernames."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, email, full_name FROM users WHERE username = ? OR email = ?",
+            (payload.username, payload.username)
+        )
+        user = cursor.fetchone()
+
+        if user:
+            raw_token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+            seconds_offset = db_compat.sql_now_offset("?")
+            cursor.execute(
+                f"INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, {seconds_offset})",
+                (user['id'], token_hash, "1800")
+            )
+            conn.commit()
+
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            reset_link = f"{frontend_url}/reset-password?token={raw_token}"
+            _send_password_reset_email(user['email'], user['full_name'], reset_link)
+
+    return {"message": "If an account exists for that username, a password reset link has been emailed."}
+
+@app.post("/api/auth/reset-password")
+async def reset_password_with_token(payload: ResetPasswordRequest):
+    """Completes the forgot_password() flow - the raw token from the emailed link, exchanged
+    for a new password. One-time use: used_at gets set the moment it's redeemed."""
+    token_hash = hashlib.sha256(payload.reset_token.encode()).hexdigest()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, user_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = ?",
+            (token_hash,)
+        )
+        row = cursor.fetchone()
+
+        if not row or row['used_at']:
+            raise HTTPException(status_code=400, detail="This reset link is invalid or has already been used.")
+
+        if db_compat.IS_MYSQL:
+            cursor.execute("SELECT (? > NOW()) as still_valid", (row['expires_at'],))
+        else:
+            cursor.execute("SELECT (julianday(?) - julianday('now')) > 0 as still_valid", (row['expires_at'],))
+        if not cursor.fetchone()['still_valid']:
+            raise HTTPException(status_code=400, detail="This reset link has expired. Request a new one.")
+
+        cursor.execute(
+            "UPDATE users SET password = ? WHERE id = ?",
+            (hash_password(payload.new_password), row['user_id'])
+        )
+        cursor.execute(
+            "UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (row['id'],)
+        )
+        conn.commit()
+
+    return {"message": "Password updated. You can log in with your new password now."}
 
 # ============= LEADS ENDPOINTS =============
 

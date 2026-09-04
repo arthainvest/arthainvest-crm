@@ -731,6 +731,20 @@ def init_db():
         """)
         _create_index_if_missing(cursor, "idx_api_keys_key_hash", "api_keys", "key_hash")
 
+        # "Forgot password" email flow - see database_sqlite.py's matching table for the full
+        # rationale (only token_hash is ever persisted, never the raw token).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                token_hash VARCHAR(64) NOT NULL,
+                expires_at DATETIME NOT NULL,
+                used_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_password_reset_tokens_token_hash", "password_reset_tokens", "token_hash")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress
