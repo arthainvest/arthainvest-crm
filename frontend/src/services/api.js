@@ -850,6 +850,62 @@ export const setCustomFieldValue = async (token, payload) => {
   return response.data;
 };
 
+// Mutual fund holdings - one row per fund a client holds
+export const getMfHoldings = async (token, { contactId, status } = {}) => {
+  const params = new URLSearchParams({ token });
+  if (contactId) params.append('contact_id', contactId);
+  if (status) params.append('status', status);
+  const response = await api.get(`/api/mf-holdings?${params.toString()}`);
+  return response.data;
+};
+
+export const getMfHoldingsDueSoon = async (token) => {
+  const response = await api.get(`/api/mf-holdings/due-soon?token=${token}`);
+  return response.data;
+};
+
+export const createMfHolding = async (token, holdingData) => {
+  const response = await api.post(`/api/mf-holdings?token=${token}`, holdingData);
+  return response.data;
+};
+
+export const updateMfHolding = async (token, id, holdingData) => {
+  const response = await api.put(`/api/mf-holdings/${id}?token=${token}`, holdingData);
+  return response.data;
+};
+
+export const deleteMfHolding = async (token, id) => {
+  await api.delete(`/api/mf-holdings/${id}?token=${token}`);
+};
+
+// Insurance policies - one row per policy a client holds
+export const getInsurancePolicies = async (token, { contactId, status } = {}) => {
+  const params = new URLSearchParams({ token });
+  if (contactId) params.append('contact_id', contactId);
+  if (status) params.append('status', status);
+  const response = await api.get(`/api/insurance-policies?${params.toString()}`);
+  return response.data;
+};
+
+export const getInsurancePoliciesDueSoon = async (token) => {
+  const response = await api.get(`/api/insurance-policies/due-soon?token=${token}`);
+  return response.data;
+};
+
+export const createInsurancePolicy = async (token, policyData) => {
+  const response = await api.post(`/api/insurance-policies?token=${token}`, policyData);
+  return response.data;
+};
+
+export const updateInsurancePolicy = async (token, id, policyData) => {
+  const response = await api.put(`/api/insurance-policies/${id}?token=${token}`, policyData);
+  return response.data;
+};
+
+export const deleteInsurancePolicy = async (token, id) => {
+  await api.delete(`/api/insurance-policies/${id}?token=${token}`);
+};
+
 // Developer API keys - let an external system (a website contact form, a click-to-WhatsApp
 // ad landing page, a Zapier/webhook integration) call POST /api/public/leads without a user
 // login. The raw key is only ever returned once, by createApiKey, right after creation.

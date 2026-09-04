@@ -13,6 +13,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["ai-crm-server.js"],
       "port": 3333
+    },
+    {
+      "name": "ArthaInvest Frontend Build Preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "serve", "-s", "frontend/build", "-l", "4173"],
+      "port": 4173
     }
   ]
 }

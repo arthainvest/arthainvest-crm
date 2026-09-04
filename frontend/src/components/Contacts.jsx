@@ -10,6 +10,8 @@ import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import EntityTags from './EntityTags';
 import EntityGroups from './EntityGroups';
 import EntityCustomFields from './EntityCustomFields';
+import ContactMfHoldings from './ContactMfHoldings';
+import ContactInsurancePolicies from './ContactInsurancePolicies';
 import '../styles/Contacts.css';
 
 const STATUS_OPTIONS = ['Active', 'Renewal Due', 'Lapsed', 'Inactive'];
@@ -828,6 +830,8 @@ export default function Contacts() {
                   <EntityTags token={token} entityType="contact" entityId={contact.id} />
                   <EntityGroups token={token} entityType="contact" entityId={contact.id} />
                   <EntityCustomFields token={token} entityType="contact" entityId={contact.id} />
+                  <ContactMfHoldings token={token} contactId={contact.id} />
+                  <ContactInsurancePolicies token={token} contactId={contact.id} />
                 </div>
               )}
             </div>

@@ -1,0 +1,155 @@
+/* MF Holdings / Insurance Policies blocks embedded in the Contacts expanded row, alongside
+   Tags/Groups/Custom Fields (see EntityTagsFields.css for the shared ".entity-row-extra"
+   wrapper these sit inside). */
+
+.portfolio-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.portfolio-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.portfolio-block-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.portfolio-add-btn {
+  border: 1px dashed var(--border-neutral);
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.portfolio-add-btn:hover {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.portfolio-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.portfolio-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg-subtle-alt);
+  border: 1px solid var(--border-neutral-alt);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.portfolio-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.portfolio-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.portfolio-row-tag {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-neutral-alt);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.portfolio-status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.portfolio-status-badge.status-active { background: #e3f5e9; color: #1e7d43; }
+.portfolio-status-badge.status-paused,
+.portfolio-status-badge.status-lapsed { background: #fdecea; color: #b3261e; }
+.portfolio-status-badge.status-stopped,
+.portfolio-status-badge.status-cancelled { background: var(--bg-surface); color: var(--text-muted); }
+.portfolio-status-badge.status-redeemed,
+.portfolio-status-badge.status-matured,
+.portfolio-status-badge.status-claimed,
+.portfolio-status-badge.status-renewed { background: #e8eefd; color: #3452b4; }
+
+.portfolio-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.portfolio-row-actions {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.portfolio-row-actions button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  opacity: 0.7;
+  padding: 0;
+}
+
+.portfolio-row-actions button:hover {
+  opacity: 1;
+}
+
+.portfolio-form {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-neutral);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.portfolio-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.portfolio-form-grid input,
+.portfolio-form-grid select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-neutral);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.portfolio-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
