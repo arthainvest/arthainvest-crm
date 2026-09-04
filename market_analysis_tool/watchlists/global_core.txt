@@ -1,0 +1,43 @@
+# Core global large-cap watchlist (yfinance symbols, used as-is).
+# A deliberately broad but tractable default across sectors -- add more
+# via custom.txt, or replace this file with your own list.
+AAPL
+MSFT
+GOOGL
+AMZN
+NVDA
+META
+TSLA
+BRK-B
+JPM
+JNJ
+V
+PG
+XOM
+UNH
+HD
+MA
+CVX
+MRK
+ABBV
+PEP
+KO
+COST
+WMT
+BAC
+ADBE
+CRM
+NFLX
+AMD
+INTC
+DIS
+PFE
+TMO
+CSCO
+ORCL
+NKE
+MCD
+TXN
+LIN
+ABT
+AVGO
