@@ -15,17 +15,22 @@ Check whether the person is admin (Nimita/Yogesh/owner) or a regular employee (S
 
 **For admin:**
 1. `ceo-dashboard` - company-wide health check, what needs a decision this week.
-2. `loan-sales` - which deals are stuck vs. moving, near-disbursement deals to watch.
-3. `loan-documents` - for any deal `ceo-dashboard`/`loan-sales` flagged as stuck in Document Collection, pull the specific checklist gap.
-4. `loan-prospecting` - fresh prospects ranked for today, if there's calling capacity left after chasing existing pipeline.
-5. Close with: here's what needs your attention, here's who to call, here's what's blocked and on whom.
+2. `insurance-lapse-prevention` - anyone `overdue` on renewal outranks everything else, since that's active revenue loss, not just an opportunity.
+3. `loan-sales` - which deals are stuck vs. moving, near-disbursement deals to watch.
+4. `loan-documents` - for any deal flagged as stuck in Document Collection, pull the specific checklist gap.
+5. `cross-sell-radar` - one pass across all three product lines; higher-yield than fresh prospecting since these are warm relationships.
+6. `loan-prospecting` - fresh prospects ranked for today, only if there's calling capacity left after the above.
+7. If it's Nimita asking, offer `commission-tracking`'s summary too - not part of the default sequence for anyone else.
+8. Close with: here's what needs your attention, here's who to call, here's what's blocked and on whom.
 
 **For an employee:**
 1. `sales-intelligence` - their own numbers, what's working, what to change.
-2. `loan-sales` filtered to their own deals - which of their deals need a push today.
-3. `loan-documents` for anything of theirs stuck in Document Collection.
-4. `loan-prospecting` - their next call list.
-5. Close with: here's your day, in the order to work it.
+2. `insurance-lapse-prevention` for their own clients - overdue renewals first.
+3. `loan-sales` filtered to their own deals - which of their deals need a push today.
+4. `loan-documents` for anything of theirs stuck in Document Collection.
+5. `cross-sell-radar` for their own client list.
+6. `loan-prospecting` - their next call list.
+7. Close with: here's your day, in the order to work it.
 
 ## What it does NOT do
 

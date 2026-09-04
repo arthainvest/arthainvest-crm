@@ -972,6 +972,33 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token_hash ON password_reset_tokens(token_hash)")
 
+        # Commission/revenue ledger across all three product lines this business sells
+        # (mutual_fund/insurance/loan) - a repeatable log of earnings, not a single current-
+        # state attribute, so this can't live in custom_field_values (one value per field per
+        # entity, no history). Gated to a specific admin account (see require_nimita in
+        # main.py), not the whole admin role.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS commission_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_type TEXT NOT NULL,
+                description TEXT NOT NULL,
+                amount REAL NOT NULL,
+                received_date TEXT NOT NULL,
+                contact_id INTEGER,
+                lead_id INTEGER,
+                deal_id INTEGER,
+                notes TEXT,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (lead_id) REFERENCES leads(id),
+                FOREIGN KEY (deal_id) REFERENCES deals(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_commission_records_product_type ON commission_records(product_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_commission_records_received_date ON commission_records(received_date)")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress

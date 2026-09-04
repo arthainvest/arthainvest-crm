@@ -745,6 +745,27 @@ def init_db():
         """)
         _create_index_if_missing(cursor, "idx_password_reset_tokens_token_hash", "password_reset_tokens", "token_hash")
 
+        # Commission/revenue ledger - see database_sqlite.py's matching table for the full
+        # rationale (a repeatable log, not a single current-state value, so it can't live in
+        # custom_field_values).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS commission_records (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                product_type VARCHAR(20) NOT NULL,
+                description VARCHAR(255) NOT NULL,
+                amount DECIMAL(12,2) NOT NULL,
+                received_date DATE NOT NULL,
+                contact_id INT,
+                lead_id INT,
+                deal_id INT,
+                notes TEXT,
+                created_by INT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_commission_records_product_type", "commission_records", "product_type")
+        _create_index_if_missing(cursor, "idx_commission_records_received_date", "commission_records", "received_date")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress

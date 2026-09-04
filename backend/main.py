@@ -37,7 +37,7 @@ else:
     IntegrityError = sqlite3.IntegrityError
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token, ChangePasswordRequest, AdminResetPasswordRequest,
-    ForgotPasswordRequest, ResetPasswordRequest,
+    ForgotPasswordRequest, ResetPasswordRequest, CommissionRecordCreate, CommissionRecordResponse, CommissionSummaryRow,
     LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadCompanyAssign, LeadQuotationAssign, LeadContactAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealTaskAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
@@ -162,6 +162,18 @@ def require_admin(token: str = None):
 
     if not row or row['role'] != 'admin':
         raise HTTPException(status_code=403, detail="Admin access required")
+
+    return current_user
+
+def require_nimita(token: str = None):
+    """Like require_admin, but scoped to one specific admin account rather than the whole
+    admin role - used for the commission/revenue ledger, which the business owner asked to
+    keep visible to her account specifically, not to every admin (e.g. not Yogesh's admin
+    login). Checked by username, not role, since 'admin' alone is deliberately too broad here."""
+    current_user = get_current_user(token)
+
+    if (current_user.get('username') or '').lower() != 'nimita':
+        raise HTTPException(status_code=403, detail="This is restricted to the Nimita account")
 
     return current_user
 
@@ -731,6 +743,30 @@ async def admin_reset_password(payload: AdminResetPasswordRequest, token: str = 
         conn.commit()
 
     return {"message": f"Password reset for {payload.username}"}
+
+@app.delete("/api/auth/users/{username}")
+async def delete_user(username: str, token: str = Query(None)):
+    """Remove a login account - admin only, and can't delete your own account. That second
+    rule alone already guarantees the system can never end up with zero admins: the only
+    account that could ever delete the sole remaining admin is that admin themselves, and
+    they're blocked from doing it - so there's no separate "don't delete the last admin"
+    check needed here, it would never be reachable."""
+    current_user = require_admin(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+        target = cursor.fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if target['id'] == current_user['user_id']:
+            raise HTTPException(status_code=400, detail="You can't delete your own account while logged in as it.")
+
+        cursor.execute("DELETE FROM users WHERE username = ?", (username,))
+        conn.commit()
+
+    return {"message": f"Deleted user {username}"}
 
 def _send_password_reset_email(to_email, full_name, reset_link):
     """Best-effort - a failed send here shouldn't surface to the caller (forgot_password's
@@ -1877,6 +1913,106 @@ async def get_sales_analytics(token: str = Query(None)):
         "win_rate": win_rate,
         "avg_deal_value": round(avg_deal_value)
     }
+
+# ============= COMMISSION/REVENUE LEDGER (Nimita-only) =============
+# Tracks real earnings across all three product lines this business sells - mutual fund
+# trail, insurance commission, loan payout - which nothing else in the CRM captures
+# (deals.deal_value is the loan amount/premium/investment size, not what was actually earned
+# on it). Every endpoint here is gated to one specific admin account, not the admin role in
+# general - see require_nimita()'s docstring for why.
+
+_VALID_COMMISSION_PRODUCT_TYPES = ('mutual_fund', 'insurance', 'loan')
+
+def _fetch_commission_record(cursor, record_id):
+    cursor.execute(
+        """
+        SELECT cr.*, c.name as contact_name, l.name as lead_name
+        FROM commission_records cr
+        LEFT JOIN contacts c ON c.id = cr.contact_id
+        LEFT JOIN leads l ON l.id = cr.lead_id
+        WHERE cr.id = ?
+        """,
+        (record_id,)
+    )
+    return dict(cursor.fetchone())
+
+@app.get("/api/commissions", response_model=list[CommissionRecordResponse])
+async def get_commission_records(token: str = Query(None), product_type: str = Query(None)):
+    require_nimita(token)
+
+    query = """
+        SELECT cr.*, c.name as contact_name, l.name as lead_name
+        FROM commission_records cr
+        LEFT JOIN contacts c ON c.id = cr.contact_id
+        LEFT JOIN leads l ON l.id = cr.lead_id
+        WHERE 1=1
+    """
+    params = []
+    if product_type:
+        query += " AND cr.product_type = ?"
+        params.append(product_type)
+    query += " ORDER BY cr.received_date DESC, cr.id DESC"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/commissions", response_model=CommissionRecordResponse)
+async def create_commission_record(payload: CommissionRecordCreate, token: str = Query(None)):
+    current_user = require_nimita(token)
+
+    if payload.product_type not in _VALID_COMMISSION_PRODUCT_TYPES:
+        raise HTTPException(status_code=400, detail=f"product_type must be one of {_VALID_COMMISSION_PRODUCT_TYPES}")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO commission_records
+                (product_type, description, amount, received_date, contact_id, lead_id, deal_id, notes, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (payload.product_type, payload.description, payload.amount, payload.received_date,
+             payload.contact_id, payload.lead_id, payload.deal_id, payload.notes, current_user['user_id'])
+        )
+        conn.commit()
+        return _fetch_commission_record(cursor, cursor.lastrowid)
+
+@app.delete("/api/commissions/{record_id}")
+async def delete_commission_record(record_id: int, token: str = Query(None)):
+    require_nimita(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM commission_records WHERE id = ?", (record_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Commission record not found")
+
+    return {"message": "Commission record deleted"}
+
+@app.get("/api/commissions/summary", response_model=list[CommissionSummaryRow])
+async def get_commission_summary(token: str = Query(None), start_date: str = Query(None), end_date: str = Query(None)):
+    """Total earned per product line, optionally scoped to a date range - the numbers
+    ceo-dashboard's revenue section actually needs, computed here rather than in the skill so
+    the rollup logic lives in one place."""
+    require_nimita(token)
+
+    query = "SELECT product_type, COALESCE(SUM(amount), 0) as total_amount, COUNT(*) as record_count FROM commission_records WHERE 1=1"
+    params = []
+    if start_date:
+        query += " AND received_date >= ?"
+        params.append(start_date)
+    if end_date:
+        query += " AND received_date <= ?"
+        params.append(end_date)
+    query += " GROUP BY product_type"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
 
 # ============= CAMPAIGNS ENDPOINTS =============
 

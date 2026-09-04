@@ -131,3 +131,53 @@ def test_admin_reset_password_requires_admin(client, auth_client):
         "username": "testuser", "new_password": "hijacked1"
     })
     assert resp.status_code == 403
+
+
+def test_admin_can_delete_user(auth_client, client):
+    auth_client.post("/api/auth/register", json={
+        "username": "temp_hire", "email": "temp_hire@example.com", "password": "temp12345",
+        "full_name": "Temp Hire", "role": "employee"
+    })
+    assert client.post("/api/auth/login", json={"username": "temp_hire", "password": "temp12345"}).status_code == 200
+
+    resp = auth_client.delete("/api/auth/users/temp_hire")
+    assert resp.status_code == 200
+
+    assert client.post("/api/auth/login", json={"username": "temp_hire", "password": "temp12345"}).status_code == 401
+
+
+def test_delete_user_requires_admin(client, auth_client):
+    auth_client.post("/api/auth/register", json={
+        "username": "plainer2", "email": "plainer2@example.com", "password": "plainer123",
+        "full_name": "Plainer2", "role": "employee"
+    })
+    plain_token = client.post("/api/auth/login", json={
+        "username": "plainer2", "password": "plainer123"
+    }).json()["access_token"]
+
+    resp = client.delete(f"/api/auth/users/testuser?token={plain_token}")
+    assert resp.status_code == 403
+
+
+def test_delete_unknown_user_404s(auth_client):
+    resp = auth_client.delete("/api/auth/users/nobody-at-all")
+    assert resp.status_code == 404
+
+
+def test_admin_cannot_delete_own_account(auth_client):
+    resp = auth_client.delete("/api/auth/users/testuser")
+    assert resp.status_code == 400
+    assert "own account" in resp.json()["detail"]
+
+
+def test_admin_can_delete_another_admin(auth_client, client):
+    # Deleting a fellow admin (not yourself) is fine - the self-delete rule is what actually
+    # keeps the system from ever reaching zero admins, see delete_user()'s docstring.
+    auth_client.post("/api/auth/register", json={
+        "username": "otheradmin", "email": "otheradmin@example.com", "password": "otheradmin1",
+        "full_name": "Other Admin", "role": "admin"
+    })
+
+    resp = auth_client.delete("/api/auth/users/otheradmin")
+    assert resp.status_code == 200
+    assert client.post("/api/auth/login", json={"username": "otheradmin", "password": "otheradmin1"}).status_code == 401

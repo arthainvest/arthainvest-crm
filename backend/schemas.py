@@ -1177,6 +1177,37 @@ class ApiKeyCreateResponse(BaseModel):
     name: str
     api_key: str  # the raw key - shown once, here, never retrievable again
 
+# Commission/revenue ledger - across all three product lines this business sells. Restricted
+# to one specific admin account (see main.py's require_nimita), not the whole admin role.
+class CommissionRecordCreate(BaseModel):
+    product_type: str  # 'mutual_fund', 'insurance', or 'loan'
+    description: str
+    amount: float
+    received_date: str  # ISO "YYYY-MM-DD"
+    contact_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    deal_id: Optional[int] = None
+    notes: Optional[str] = None
+
+class CommissionRecordResponse(BaseModel):
+    id: int
+    product_type: str
+    description: str
+    amount: float
+    received_date: date
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
+    lead_id: Optional[int] = None
+    lead_name: Optional[str] = None
+    deal_id: Optional[int] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+class CommissionSummaryRow(BaseModel):
+    product_type: str
+    total_amount: float
+    record_count: int
+
 # Body for POST /api/public/leads. Deliberately its own schema (not LeadCreate) with tight
 # length limits on every field - this endpoint is authenticated by API key rather than a JWT,
 # reachable by any external system that has a key, so it must not become a way to write

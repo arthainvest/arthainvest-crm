@@ -22,6 +22,7 @@ This is a policy the assistant enforces, not something the CRM's backend enforce
 - `GET /api/analytics/calls/by-employee` - who called how many people today/this week/this month, and how many actually connected.
 - `GET /api/analytics/lead-sources` - which sources are producing real pipeline value, not just lead count.
 - Business context: the `arthainvest-business-profile.md` memory (capacity constraint, current products/licenses) - the numbers mean nothing without knowing this is a solo/part-time operation where capacity, not lead volume, is usually the real constraint.
+- **Real revenue across all three product lines** (mutual fund trail, insurance commission, loan payout) lives in `commission-tracking`, not the endpoints above - but that skill is restricted to the Nimita account specifically, stricter than this skill's own admin-general access. Only pull it in if the person running this dashboard is confirmed to be Nimita; for Yogesh or any other admin, this dashboard's revenue picture stays limited to `deal_value`/win-rate, and say so plainly rather than silently omitting it.
 
 ## Workflow
 
