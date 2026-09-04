@@ -8,9 +8,9 @@ def test_get_my_team_member_returns_linked_roster_entry(auth_client):
     assert member["role"] == "admin"
 
 
-def test_get_my_team_member_null_when_unlinked(client):
+def test_get_my_team_member_null_when_unlinked(client, auth_client):
     """A brand-new login has no roster entry pointing at it yet - must return null, not 404."""
-    client.post("/api/auth/register", json={
+    auth_client.post("/api/auth/register", json={
         "username": "unlinked_user", "email": "unlinked@example.com", "password": "pw12345",
         "full_name": "Unlinked User", "role": "employee"
     })
@@ -51,9 +51,9 @@ def test_saving_settings_without_profile_fields_does_not_touch_roster(auth_clien
     assert after["phone"] == before["phone"]
 
 
-def test_saving_profile_settings_for_unlinked_login_does_not_error(client):
+def test_saving_profile_settings_for_unlinked_login_does_not_error(client, auth_client):
     """No roster entry to sync into - the UPDATE just matches zero rows, no crash."""
-    client.post("/api/auth/register", json={
+    auth_client.post("/api/auth/register", json={
         "username": "solo_user", "email": "solo@example.com", "password": "pw12345",
         "full_name": "Solo User", "role": "employee"
     })

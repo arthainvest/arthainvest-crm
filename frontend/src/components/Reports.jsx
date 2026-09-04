@@ -26,6 +26,10 @@ export default function Reports() {
   const [showSettings, setShowSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const token = localStorage.getItem('token');
+  // Team Productivity shows each person's individual calls/deals/revenue by name - that's
+  // company-wide performance visibility, which stays with admin (same boundary as Contacts/
+  // Leads' Export button and Settings' Team & Access section), not every logged-in employee.
+  const isAdmin = (localStorage.getItem('role') || '').toLowerCase() === 'admin';
 
   // Drill-down: Lead Source ROI row -> the actual leads from that source
   const [expandedSource, setExpandedSource] = useState(null);
@@ -55,16 +59,18 @@ export default function Reports() {
     getCampaigns(token)
       .then((data) => setCampaigns(Array.isArray(data) ? data : []))
       .catch((error) => console.error('Error fetching campaigns:', error));
-    getTeamAnalytics(token)
-      .then((data) => setTeamStats(Array.isArray(data) ? data : []))
-      .catch((error) => console.error('Error fetching team analytics:', error));
+    if (isAdmin) {
+      getTeamAnalytics(token)
+        .then((data) => setTeamStats(Array.isArray(data) ? data : []))
+        .catch((error) => console.error('Error fetching team analytics:', error));
+    }
     getLeadSourceROI(token)
       .then((data) => setLeadSources(Array.isArray(data) ? data : []))
       .catch((error) => console.error('Error fetching lead source ROI:', error));
     getSettings(token)
       .then((data) => { if (data.default_report_period) setReportPeriod(data.default_report_period); })
       .catch((error) => console.error('Error fetching settings:', error));
-  }, [token]);
+  }, [token, isAdmin]);
 
   const handleSaveReportPeriod = async () => {
     setSavingSettings(true);
@@ -363,7 +369,9 @@ export default function Reports() {
 
       <div className="chart-container">
         <h3>Team Productivity</h3>
-        {teamStats.length === 0 ? (
+        {!isAdmin ? (
+          <p className="placeholder">Only Admin can see individual team members' productivity. Use Sales Intelligence for your own numbers.</p>
+        ) : teamStats.length === 0 ? (
           <p className="placeholder">No team members yet - add some in Team to see productivity here.</p>
         ) : (
           <div className="team-productivity-table-wrapper">

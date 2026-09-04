@@ -34,10 +34,10 @@ def test_delete_nonexistent_team_member_404s(auth_client):
     assert resp.status_code == 404
 
 
-def test_non_admin_cannot_manage_team(client):
+def test_non_admin_cannot_manage_team(client, auth_client):
     """Creating/editing/removing team roster entries affects everyone, not just the person
     doing it - only an admin account may do it."""
-    client.post("/api/auth/register", json={
+    auth_client.post("/api/auth/register", json={
         "username": "fieldemployee", "email": "field@example.com", "password": "pw12345",
         "full_name": "Field Employee", "role": "employee"
     })

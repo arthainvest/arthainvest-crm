@@ -33,6 +33,44 @@ def test_protected_endpoint_with_invalid_token_is_rejected(client):
     assert resp.status_code == 401
 
 
+def test_register_requires_admin_token(client):
+    """Registration used to be wide open - anyone who found the URL could create their own
+    account with role='admin'. Now it's gated the same as team-roster management."""
+    resp = client.post("/api/auth/register", json={
+        "username": "walkin", "email": "walkin@example.com", "password": "walkin123",
+        "full_name": "Walk In", "role": "employee"
+    })
+    assert resp.status_code == 401
+
+
+def test_register_rejects_non_admin_token(auth_client, client):
+    # Bootstrap a non-admin account the only way now possible - via an admin.
+    auth_client.post("/api/auth/register", json={
+        "username": "plainer", "email": "plainer@example.com", "password": "plainer123",
+        "full_name": "Plainer", "role": "employee"
+    })
+    plain_token = client.post("/api/auth/login", json={
+        "username": "plainer", "password": "plainer123"
+    }).json()["access_token"]
+
+    resp = client.post(f"/api/auth/register?token={plain_token}", json={
+        "username": "shouldnotexist", "email": "shouldnotexist@example.com",
+        "password": "whatever12", "full_name": "Should Not Exist", "role": "employee"
+    })
+    assert resp.status_code == 403
+
+
+def test_admin_can_register_new_user(auth_client, client):
+    resp = auth_client.post("/api/auth/register", json={
+        "username": "newhire", "email": "newhire@example.com", "password": "newhire123",
+        "full_name": "New Hire", "role": "employee"
+    })
+    assert resp.status_code == 200
+    assert resp.json()["username"] == "newhire"
+
+    assert client.post("/api/auth/login", json={"username": "newhire", "password": "newhire123"}).status_code == 200
+
+
 def test_change_password_success(auth_client, client):
     resp = auth_client.put("/api/auth/change-password", json={
         "old_password": "12345", "new_password": "newpass1"
@@ -59,7 +97,7 @@ def test_change_password_requires_auth(client):
 
 
 def test_admin_reset_password_success(auth_client, client):
-    client.post("/api/auth/register", json={
+    auth_client.post("/api/auth/register", json={
         "username": "junior", "email": "junior@example.com", "password": "orig1234",
         "full_name": "Junior", "role": "employee"
     })
@@ -80,8 +118,8 @@ def test_admin_reset_password_unknown_user(auth_client):
     assert resp.status_code == 404
 
 
-def test_admin_reset_password_requires_admin(client):
-    client.post("/api/auth/register", json={
+def test_admin_reset_password_requires_admin(client, auth_client):
+    auth_client.post("/api/auth/register", json={
         "username": "plainuser", "email": "plain@example.com", "password": "plainpass1",
         "full_name": "Plain User", "role": "employee"
     })

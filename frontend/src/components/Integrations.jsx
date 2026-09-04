@@ -40,6 +40,9 @@ export default function Integrations() {
   const [slackEventType, setSlackEventType] = useState('all');
   const [slackBusy, setSlackBusy] = useState(false);
   const token = localStorage.getItem('token');
+  // Same export boundary as Contacts/Leads' own Export button - bulk data leaving the CRM
+  // stays admin-only, whether it's a CSV download or a push to an external Google Sheet.
+  const isAdmin = (localStorage.getItem('role') || '').toLowerCase() === 'admin';
 
   useEffect(() => {
     fetchIntegrations();
@@ -345,12 +348,16 @@ export default function Integrations() {
                     onChange={(e) => setSheetsSpreadsheetId(e.target.value)}
                   />
                   <div className="integration-sheets-sync-actions">
-                    <button className="btn-secondary small" onClick={() => handleSheetsExport('contacts')} disabled={sheetsBusy}>
-                      Export Contacts
-                    </button>
-                    <button className="btn-secondary small" onClick={() => handleSheetsExport('leads')} disabled={sheetsBusy}>
-                      Export Leads
-                    </button>
+                    {isAdmin && (
+                      <>
+                        <button className="btn-secondary small" onClick={() => handleSheetsExport('contacts')} disabled={sheetsBusy}>
+                          Export Contacts
+                        </button>
+                        <button className="btn-secondary small" onClick={() => handleSheetsExport('leads')} disabled={sheetsBusy}>
+                          Export Leads
+                        </button>
+                      </>
+                    )}
                     <button className="btn-secondary small" onClick={handleSheetsImport} disabled={sheetsBusy}>
                       Import Leads
                     </button>

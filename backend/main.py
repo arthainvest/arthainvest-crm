@@ -661,8 +661,13 @@ async def login(credentials: UserLogin):
     }
 
 @app.post("/api/auth/register", response_model=UserResponse)
-async def register(user: UserCreate):
-    """Register new user"""
+async def register(user: UserCreate, token: str = Query(None)):
+    """Register new user - admin-only. This used to be wide open (no auth at all), meaning
+    anyone who found the URL could create their own account with role='admin' - a real hole
+    now that real staff accounts with real admin access exist. The seed data always includes
+    an admin account (testuser), so there's no bootstrap problem requiring this to stay open."""
+    require_admin(token)
+
     with get_db() as conn:
         cursor = conn.cursor()
 
