@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 
 # User Schemas
 class UserLogin(BaseModel):
@@ -351,7 +351,7 @@ class ContactResponse(BaseModel):
     amount: Optional[float] = None
     bank: Optional[str] = None
     status: Optional[str] = None
-    renewal_date: Optional[str] = None
+    renewal_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
     assigned_team_member_id: Optional[int] = None
@@ -371,7 +371,7 @@ class RenewalContact(BaseModel):
     email: Optional[str] = None
     bank: Optional[str] = None
     amount: Optional[float] = None
-    renewal_date: str
+    renewal_date: date
     days_until_renewal: int
     urgency: str  # "overdue", "due_soon" (<=7 days), "upcoming" (<=30 days)
     assigned_team_member_name: Optional[str] = None
@@ -439,7 +439,7 @@ class TaskUpdate(BaseModel):
 class TaskResponse(BaseModel):
     id: int
     title: str
-    due_date: str
+    due_date: date
     completed: bool
     priority: str = "Normal"
     assigned_team_member_id: Optional[int] = None
@@ -482,7 +482,7 @@ class MeetingUpdate(BaseModel):
 class MeetingResponse(BaseModel):
     id: int
     title: str
-    meeting_date: str
+    meeting_date: date
     meeting_time: Optional[str] = None
     lead_id: Optional[int] = None
     lead_name: Optional[str] = None
@@ -530,7 +530,7 @@ class CallResponse(BaseModel):
     duration: str
     type: str
     outcome: Optional[str]
-    call_date: Optional[str]
+    call_date: Optional[date]
     created_at: datetime
     team_member_id: Optional[int] = None
     team_member_name: Optional[str] = None
@@ -656,9 +656,9 @@ class WhatsAppConversationResponse(BaseModel):
     wa_number: str
     status: str
     assigned_user_id: Optional[int] = None
-    opted_out_at: Optional[str] = None
+    opted_out_at: Optional[datetime] = None
     opt_out_reason: Optional[str] = None
-    last_message_at: Optional[str] = None
+    last_message_at: Optional[datetime] = None
     last_message: Optional[str] = None
     last_message_type: Optional[str] = None
     created_at: datetime
@@ -832,7 +832,7 @@ class ZapierWebhookResponse(BaseModel):
     url: str
     event_type: str
     created_at: datetime
-    last_triggered_at: Optional[str] = None
+    last_triggered_at: Optional[datetime] = None
     last_status: Optional[str] = None
 
 # Slack outbound notifications - same shape as Zapier's webhooks, but POSTs a formatted
@@ -846,7 +846,7 @@ class SlackWebhookResponse(BaseModel):
     url: str
     event_type: str
     created_at: datetime
-    last_triggered_at: Optional[str] = None
+    last_triggered_at: Optional[datetime] = None
     last_status: Optional[str] = None
 
 # Priti - AI Voice Caller (Vapi)
@@ -1012,7 +1012,7 @@ class QuotationResponse(BaseModel):
     call_name: Optional[str] = None
     title: str
     status: str
-    valid_until: Optional[str] = None
+    valid_until: Optional[date] = None
     notes: Optional[str] = None
     grand_total: float
     items: List[QuotationItemResponse] = []
@@ -1154,8 +1154,8 @@ class ApiKeyResponse(BaseModel):
     name: str
     key_prefix: str
     created_at: datetime
-    last_used_at: Optional[str] = None
-    revoked_at: Optional[str] = None
+    last_used_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
 
 class ApiKeyCreateResponse(BaseModel):
     id: int

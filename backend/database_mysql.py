@@ -36,9 +36,15 @@ def _convert_placeholders(query):
 class _MySQLCursor(pymysql.cursors.DictCursor):
     def execute(self, query, params=None):
         # Zero-param queries pass through untouched - avoids PyMySQL choking on a stray
-        # literal '%' character (e.g. a LIKE pattern) the way plain %-style substitution would.
+        # literal '%' character (e.g. a LIKE pattern, or DATE_FORMAT's '%Y-%m') the way
+        # plain %-style substitution would. `params` can be falsy as either None or an empty
+        # list/tuple (call sites build up a params list conditionally) - either way must reach
+        # PyMySQL as None, since PyMySQL itself only skips its own %-substitution when args
+        # `is None`, not merely falsy - passing along an empty list would still trigger it.
         if params:
             query = _convert_placeholders(query)
+        else:
+            params = None
         return super().execute(query, params)
 
 
