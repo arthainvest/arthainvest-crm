@@ -1,0 +1,18 @@
+name: Keep backend warm
+
+# Render's free web-service tier spins the backend down after ~15 minutes of no
+# traffic; the next real request then pays a 30-50s cold-start penalty. Pinging
+# a cheap, unauthenticated endpoint on a schedule keeps it from ever going fully
+# idle, so real users hit a warm process instead.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/health
+        run: |
+          curl -sf --max-time 55 https://arthainvest-crm.onrender.com/api/health
