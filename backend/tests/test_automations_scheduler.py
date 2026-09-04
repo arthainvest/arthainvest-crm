@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 
 import automations_scheduler
@@ -15,7 +15,7 @@ def _due_now(cursor, automation_id, entity_type, entity_id):
     enroll() always schedules relative to 'now', which a test can't otherwise backdate."""
     cursor.execute(
         "UPDATE automation_enrollments SET next_run_at = ? WHERE automation_id = ? AND entity_type = ? AND entity_id = ?",
-        ((datetime.utcnow() - timedelta(minutes=1)).isoformat(), automation_id, entity_type, entity_id)
+        ((datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)).isoformat(), automation_id, entity_type, entity_id)
     )
 
 
@@ -65,7 +65,7 @@ def test_scheduler_sends_due_step_and_advances_to_next(auth_client, monkeypatch)
     assert enrollment["status"] == "active"
     # Next step waits 30 minutes - next_run_at should be roughly 30 minutes out, not immediate.
     next_run = datetime.fromisoformat(enrollment["next_run_at"])
-    assert next_run > datetime.utcnow() + timedelta(minutes=25)
+    assert next_run > datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=25)
 
 
 def test_scheduler_completes_enrollment_after_last_step(auth_client, monkeypatch):

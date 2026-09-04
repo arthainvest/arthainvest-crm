@@ -164,6 +164,34 @@ def test_delete_unknown_user_404s(auth_client):
     assert resp.status_code == 404
 
 
+def test_admin_can_list_users(auth_client):
+    auth_client.post("/api/auth/register", json={
+        "username": "roster_check", "email": "roster_check@example.com", "password": "roster12345",
+        "full_name": "Roster Check", "role": "employee"
+    })
+
+    resp = auth_client.get("/api/auth/users")
+    assert resp.status_code == 200
+    usernames = [u["username"] for u in resp.json()]
+    assert "testuser" in usernames
+    assert "roster_check" in usernames
+    for user in resp.json():
+        assert "password" not in user
+
+
+def test_list_users_requires_admin(client, auth_client):
+    auth_client.post("/api/auth/register", json={
+        "username": "plainer3", "email": "plainer3@example.com", "password": "plainer123",
+        "full_name": "Plainer3", "role": "employee"
+    })
+    plain_token = client.post("/api/auth/login", json={
+        "username": "plainer3", "password": "plainer123"
+    }).json()["access_token"]
+
+    resp = client.get(f"/api/auth/users?token={plain_token}")
+    assert resp.status_code == 403
+
+
 def test_admin_cannot_delete_own_account(auth_client):
     resp = auth_client.delete("/api/auth/users/testuser")
     assert resp.status_code == 400

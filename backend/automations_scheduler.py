@@ -9,7 +9,7 @@ due, and advances or completes each enrollment.
 """
 import os
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 if os.getenv("DATABASE_URL"):
     from database_mysql import get_db
@@ -46,7 +46,7 @@ def _process_due_enrollments():
         cursor = conn.cursor()
         cursor.execute(
             "SELECT * FROM automation_enrollments WHERE status = 'active' AND next_run_at <= ?",
-            (datetime.utcnow().isoformat(),)
+            (datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),)
         )
         due = [dict(row) for row in cursor.fetchall()]
 
@@ -92,7 +92,7 @@ def _process_due_enrollments():
 
             next_index = enrollment["current_step"] + 1
             if next_index < len(steps):
-                next_run_at = (datetime.utcnow() + timedelta(minutes=steps[next_index]["wait_minutes"])).isoformat()
+                next_run_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=steps[next_index]["wait_minutes"])).isoformat()
                 cursor.execute(
                     "UPDATE automation_enrollments SET current_step = ?, next_run_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (next_index, next_run_at, enrollment["id"])

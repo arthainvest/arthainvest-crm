@@ -14,7 +14,7 @@ import secrets
 import smtplib
 import hashlib
 import hmac
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
 from cryptography.hazmat.primitives import hashes, serialization
@@ -704,6 +704,17 @@ async def register(user: UserCreate, token: str = Query(None)):
         except IntegrityError as e:
             conn.rollback()
             raise HTTPException(status_code=400, detail="Username or email already exists")
+
+@app.get("/api/auth/users", response_model=list[UserResponse])
+async def list_users(token: str = Query(None)):
+    """Admin-only directory of login accounts - who exists and what role they have (never
+    returns password hashes)."""
+    require_admin(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, email, full_name, role, is_active FROM users ORDER BY username")
+        return [UserResponse(**dict(row)) for row in cursor.fetchall()]
 
 @app.put("/api/auth/change-password")
 async def change_password(payload: ChangePasswordRequest, token: str = Query(None)):
@@ -4434,7 +4445,7 @@ def _fire_zapier_webhooks(event_type, payload):
             return
 
         import requests
-        body = {"event": event_type, "timestamp": datetime.utcnow().isoformat() + "Z", "data": payload}
+        body = {"event": event_type, "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z", "data": payload}
         for hook in hooks:
             try:
                 resp = requests.post(hook['url'], json=body, timeout=5)
@@ -5124,7 +5135,7 @@ async def receive_whatsapp_flow_webhook(request: Request):
                 cursor.execute(
                     "UPDATE whatsapp_flow_session SET current_screen = ?, submission_json = ?, status = ?, completed_at = ? WHERE flow_token = ?",
                     (screen, json.dumps(merged), 'completed' if is_terminal else 'in_progress',
-                     datetime.utcnow().isoformat() if is_terminal else None, flow_token)
+                     datetime.now(timezone.utc).replace(tzinfo=None).isoformat() if is_terminal else None, flow_token)
                 )
 
                 # Map the completed submission onto the existing lead/contact/custom-field
@@ -6625,7 +6636,7 @@ async def enroll_entity(automation_id: int, payload: AutomationEnrollRequest, to
         first_step = cursor.fetchone()
         if not first_step:
             raise HTTPException(status_code=400, detail="This automation has no steps yet")
-        next_run_at = (datetime.utcnow() + timedelta(minutes=first_step['wait_minutes'])).isoformat()
+        next_run_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=first_step['wait_minutes'])).isoformat()
         try:
             cursor.execute(
                 """INSERT INTO automation_enrollments (automation_id, entity_type, entity_id, current_step, status, next_run_at)
@@ -6649,7 +6660,7 @@ async def enroll_group(automation_id: int, group_id: int, token: str = Query(Non
         first_step = cursor.fetchone()
         if not first_step:
             raise HTTPException(status_code=400, detail="This automation has no steps yet")
-        next_run_at = (datetime.utcnow() + timedelta(minutes=first_step['wait_minutes'])).isoformat()
+        next_run_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=first_step['wait_minutes'])).isoformat()
 
         members = _group_member_entities(cursor, group_id)
         enrolled = 0
