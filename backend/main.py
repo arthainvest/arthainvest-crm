@@ -38,6 +38,7 @@ else:
 from schemas import (
     UserLogin, UserCreate, UserResponse, Token, ChangePasswordRequest, AdminResetPasswordRequest,
     ForgotPasswordRequest, ResetPasswordRequest, CommissionRecordCreate, CommissionRecordResponse, CommissionSummaryRow,
+    MfHoldingCreate, MfHoldingUpdate, MfHoldingResponse, InsurancePolicyCreate, InsurancePolicyUpdate, InsurancePolicyResponse,
     LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadCompanyAssign, LeadQuotationAssign, LeadContactAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealTaskAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
@@ -2013,6 +2014,237 @@ async def get_commission_summary(token: str = Query(None), start_date: str = Que
         cursor = conn.cursor()
         cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
+
+# ============= MUTUAL FUND HOLDINGS =============
+# One row per fund a client holds - open to every logged-in user (the sip-tracking/
+# folio-review skills are for the whole team, unlike the Nimita-only commission ledger above).
+
+def _fetch_mf_holding(cursor, holding_id):
+    cursor.execute(
+        """
+        SELECT mh.*, c.name as contact_name
+        FROM mf_holdings mh
+        LEFT JOIN contacts c ON c.id = mh.contact_id
+        WHERE mh.id = ?
+        """,
+        (holding_id,)
+    )
+    return dict(cursor.fetchone())
+
+@app.get("/api/mf-holdings", response_model=list[MfHoldingResponse])
+async def get_mf_holdings(token: str = Query(None), contact_id: int = Query(None), status: str = Query(None)):
+    get_current_user(token)
+
+    query = """
+        SELECT mh.*, c.name as contact_name
+        FROM mf_holdings mh
+        LEFT JOIN contacts c ON c.id = mh.contact_id
+        WHERE 1=1
+    """
+    params = []
+    if contact_id:
+        query += " AND mh.contact_id = ?"
+        params.append(contact_id)
+    if status:
+        query += " AND mh.status = ?"
+        params.append(status)
+    query += " ORDER BY mh.next_due_date ASC, mh.id DESC"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.get("/api/mf-holdings/due-soon", response_model=list[MfHoldingResponse])
+async def get_mf_holdings_due_soon(token: str = Query(None)):
+    """Active SIPs whose next_due_date is overdue or within the next 7 days - what
+    sip-tracking actually needs, computed here instead of client-side date math."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        _days_until = db_compat.sql_days_between("mh.next_due_date", db_compat.sql_today())
+        cursor.execute(
+            f"""
+            SELECT mh.*, c.name as contact_name
+            FROM mf_holdings mh
+            LEFT JOIN contacts c ON c.id = mh.contact_id
+            WHERE mh.status = 'Active'
+              AND mh.next_due_date IS NOT NULL
+              AND {_days_until} <= 7
+            ORDER BY mh.next_due_date ASC
+            """
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/mf-holdings", response_model=MfHoldingResponse)
+async def create_mf_holding(payload: MfHoldingCreate, token: str = Query(None)):
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO mf_holdings
+                (contact_id, folio_number, fund_name, fund_category, investment_type, amount,
+                 frequency, next_due_date, status, start_date, goal, notes, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (payload.contact_id, payload.folio_number, payload.fund_name, payload.fund_category,
+             payload.investment_type, payload.amount, payload.frequency, payload.next_due_date,
+             payload.status, payload.start_date, payload.goal, payload.notes, current_user['user_id'])
+        )
+        conn.commit()
+        return _fetch_mf_holding(cursor, cursor.lastrowid)
+
+@app.put("/api/mf-holdings/{holding_id}", response_model=MfHoldingResponse)
+async def update_mf_holding(holding_id: int, payload: MfHoldingUpdate, token: str = Query(None)):
+    get_current_user(token)
+
+    fields = payload.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        cursor.execute(
+            f"UPDATE mf_holdings SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (*fields.values(), holding_id)
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="MF holding not found")
+        conn.commit()
+        return _fetch_mf_holding(cursor, holding_id)
+
+@app.delete("/api/mf-holdings/{holding_id}")
+async def delete_mf_holding(holding_id: int, token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM mf_holdings WHERE id = ?", (holding_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="MF holding not found")
+
+    return {"message": "MF holding deleted"}
+
+# ============= INSURANCE POLICIES =============
+# One row per policy a client holds - a client with health + life + motor is 3 rows, not
+# squeezed into contacts.renewal_date/amount (which only ever modeled one policy per contact
+# and stay untouched here - the Dashboard's Upcoming Renewals widget still reads those).
+
+def _fetch_insurance_policy(cursor, policy_id):
+    cursor.execute(
+        """
+        SELECT ip.*, c.name as contact_name
+        FROM insurance_policies ip
+        LEFT JOIN contacts c ON c.id = ip.contact_id
+        WHERE ip.id = ?
+        """,
+        (policy_id,)
+    )
+    return dict(cursor.fetchone())
+
+@app.get("/api/insurance-policies", response_model=list[InsurancePolicyResponse])
+async def get_insurance_policies(token: str = Query(None), contact_id: int = Query(None), status: str = Query(None)):
+    get_current_user(token)
+
+    query = """
+        SELECT ip.*, c.name as contact_name
+        FROM insurance_policies ip
+        LEFT JOIN contacts c ON c.id = ip.contact_id
+        WHERE 1=1
+    """
+    params = []
+    if contact_id:
+        query += " AND ip.contact_id = ?"
+        params.append(contact_id)
+    if status:
+        query += " AND ip.status = ?"
+        params.append(status)
+    query += " ORDER BY ip.renewal_date ASC, ip.id DESC"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.get("/api/insurance-policies/due-soon", response_model=list[InsurancePolicyResponse])
+async def get_insurance_policies_due_soon(token: str = Query(None)):
+    """Active policies whose renewal_date is overdue or within the next 30 days - the
+    multi-policy-aware version of /api/contacts/renewals, for insurance-lapse-prevention."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        _days_until = db_compat.sql_days_between("ip.renewal_date", db_compat.sql_today())
+        cursor.execute(
+            f"""
+            SELECT ip.*, c.name as contact_name
+            FROM insurance_policies ip
+            LEFT JOIN contacts c ON c.id = ip.contact_id
+            WHERE ip.status = 'Active'
+              AND ip.renewal_date IS NOT NULL
+              AND {_days_until} <= 30
+            ORDER BY ip.renewal_date ASC
+            """
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/api/insurance-policies", response_model=InsurancePolicyResponse)
+async def create_insurance_policy(payload: InsurancePolicyCreate, token: str = Query(None)):
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO insurance_policies
+                (contact_id, policy_number, insurer, policy_type, sum_assured, premium_amount,
+                 premium_frequency, start_date, renewal_date, status, notes, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (payload.contact_id, payload.policy_number, payload.insurer, payload.policy_type,
+             payload.sum_assured, payload.premium_amount, payload.premium_frequency,
+             payload.start_date, payload.renewal_date, payload.status, payload.notes, current_user['user_id'])
+        )
+        conn.commit()
+        return _fetch_insurance_policy(cursor, cursor.lastrowid)
+
+@app.put("/api/insurance-policies/{policy_id}", response_model=InsurancePolicyResponse)
+async def update_insurance_policy(policy_id: int, payload: InsurancePolicyUpdate, token: str = Query(None)):
+    get_current_user(token)
+
+    fields = payload.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        cursor.execute(
+            f"UPDATE insurance_policies SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (*fields.values(), policy_id)
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Insurance policy not found")
+        conn.commit()
+        return _fetch_insurance_policy(cursor, policy_id)
+
+@app.delete("/api/insurance-policies/{policy_id}")
+async def delete_insurance_policy(policy_id: int, token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM insurance_policies WHERE id = ?", (policy_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Insurance policy not found")
+
+    return {"message": "Insurance policy deleted"}
 
 # ============= CAMPAIGNS ENDPOINTS =============
 

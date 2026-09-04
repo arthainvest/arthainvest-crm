@@ -999,6 +999,67 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_commission_records_product_type ON commission_records(product_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_commission_records_received_date ON commission_records(received_date)")
 
+        # Mutual fund holdings - one row per fund a client holds, replacing the earlier
+        # custom-fields stopgap (which could only hold one value per field per contact, so
+        # couldn't represent a client with more than one fund). A client with 3 funds is 3
+        # rows here, not 3 differently-named custom fields.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mf_holdings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER NOT NULL,
+                folio_number TEXT,
+                fund_name TEXT NOT NULL,
+                fund_category TEXT,
+                investment_type TEXT NOT NULL DEFAULT 'SIP',
+                amount REAL,
+                frequency TEXT DEFAULT 'Monthly',
+                next_due_date DATE,
+                status TEXT NOT NULL DEFAULT 'Active',
+                start_date DATE,
+                goal TEXT,
+                notes TEXT,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mf_holdings_contact_id ON mf_holdings(contact_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mf_holdings_next_due_date ON mf_holdings(next_due_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mf_holdings_status ON mf_holdings(status)")
+
+        # Insurance policies - one row per policy, same reasoning as mf_holdings: a client
+        # with health + life + motor policies is 3 rows here, not squeezed into the single
+        # renewal_date/amount pair on contacts (which only ever modeled one policy per
+        # contact). contacts.renewal_date/amount are left untouched - the Dashboard's
+        # existing Upcoming Renewals widget still reads those - this table is the fuller
+        # multi-policy picture for anything built against it going forward.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS insurance_policies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER NOT NULL,
+                policy_number TEXT,
+                insurer TEXT,
+                policy_type TEXT NOT NULL DEFAULT 'Health',
+                sum_assured REAL,
+                premium_amount REAL,
+                premium_frequency TEXT DEFAULT 'Annual',
+                start_date DATE,
+                renewal_date DATE,
+                status TEXT NOT NULL DEFAULT 'Active',
+                notes TEXT,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_insurance_policies_contact_id ON insurance_policies(contact_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_insurance_policies_renewal_date ON insurance_policies(renewal_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_insurance_policies_status ON insurance_policies(status)")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress

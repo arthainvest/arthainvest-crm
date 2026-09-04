@@ -1208,6 +1208,101 @@ class CommissionSummaryRow(BaseModel):
     total_amount: float
     record_count: int
 
+# Mutual fund holdings - one row per fund a client holds (replaces the earlier custom-fields
+# stopgap, which could only hold a single value per field per contact - see sip-tracking's
+# original design note). investment_type is 'SIP', 'Lumpsum', or 'SWP'; status is 'Active',
+# 'Paused', 'Stopped', or 'Redeemed'.
+class MfHoldingCreate(BaseModel):
+    contact_id: int
+    folio_number: Optional[str] = None
+    fund_name: str
+    fund_category: Optional[str] = None  # Equity, Debt, Hybrid, Liquid, ELSS, Other
+    investment_type: str = "SIP"
+    amount: Optional[float] = None
+    frequency: Optional[str] = "Monthly"  # Monthly, Quarterly, One-time
+    next_due_date: Optional[str] = None  # ISO "YYYY-MM-DD"
+    status: str = "Active"
+    start_date: Optional[str] = None
+    goal: Optional[str] = None
+    notes: Optional[str] = None
+
+class MfHoldingUpdate(BaseModel):
+    folio_number: Optional[str] = None
+    fund_name: Optional[str] = None
+    fund_category: Optional[str] = None
+    investment_type: Optional[str] = None
+    amount: Optional[float] = None
+    frequency: Optional[str] = None
+    next_due_date: Optional[str] = None
+    status: Optional[str] = None
+    start_date: Optional[str] = None
+    goal: Optional[str] = None
+    notes: Optional[str] = None
+
+class MfHoldingResponse(BaseModel):
+    id: int
+    contact_id: int
+    contact_name: Optional[str] = None
+    folio_number: Optional[str] = None
+    fund_name: str
+    fund_category: Optional[str] = None
+    investment_type: str
+    amount: Optional[float] = None
+    frequency: Optional[str] = None
+    next_due_date: Optional[date] = None
+    status: str
+    start_date: Optional[date] = None
+    goal: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+# Insurance policies - one row per policy a client holds (a client with health + life + motor
+# is 3 rows, not squeezed into contacts.renewal_date/amount, which only ever modeled one
+# policy per contact and stay untouched for the existing Dashboard widget). policy_type is
+# free text (Health/Life/Motor/Term/ULIP/Other); status is Active/Lapsed/Renewed/Cancelled/Matured/Claimed.
+class InsurancePolicyCreate(BaseModel):
+    contact_id: int
+    policy_number: Optional[str] = None
+    insurer: Optional[str] = None
+    policy_type: str = "Health"
+    sum_assured: Optional[float] = None
+    premium_amount: Optional[float] = None
+    premium_frequency: Optional[str] = "Annual"  # Monthly, Quarterly, Half-Yearly, Annual, One-time
+    start_date: Optional[str] = None
+    renewal_date: Optional[str] = None
+    status: str = "Active"
+    notes: Optional[str] = None
+
+class InsurancePolicyUpdate(BaseModel):
+    policy_number: Optional[str] = None
+    insurer: Optional[str] = None
+    policy_type: Optional[str] = None
+    sum_assured: Optional[float] = None
+    premium_amount: Optional[float] = None
+    premium_frequency: Optional[str] = None
+    start_date: Optional[str] = None
+    renewal_date: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+class InsurancePolicyResponse(BaseModel):
+    id: int
+    contact_id: int
+    contact_name: Optional[str] = None
+    policy_number: Optional[str] = None
+    insurer: Optional[str] = None
+    policy_type: str
+    sum_assured: Optional[float] = None
+    premium_amount: Optional[float] = None
+    premium_frequency: Optional[str] = None
+    start_date: Optional[date] = None
+    renewal_date: Optional[date] = None
+    status: str
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
 # Body for POST /api/public/leads. Deliberately its own schema (not LeadCreate) with tight
 # length limits on every field - this endpoint is authenticated by API key rather than a JWT,
 # reachable by any external system that has a key, so it must not become a way to write

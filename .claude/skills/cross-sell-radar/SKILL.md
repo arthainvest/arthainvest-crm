@@ -10,8 +10,8 @@ The same person is often a candidate for more than one of Mutual Funds, Insuranc
 ## How each vertical shows up in the CRM (there's no single "product" field spanning all three)
 
 - **Loans**: `GET /api/deals` - `loan_product` (LAP/Home/Business/Project/OD/CC) tells you someone has an active or past loan relationship.
-- **Insurance**: `GET /api/contacts` - a contact with a `renewal_date` and `amount` set is very likely an insurance policyholder (that's what those fields were built for - see the field's own description). A `bank` value on an insurance-flavored contact is often the premium-payment bank, not a loan detail.
-- **Mutual Funds**: no dedicated field exists yet - check `GET /api/custom-fields/for/contact/{id}` for anything MF-flavored (folio number, SIP amount, AUM) that's been recorded there. If nothing's been tracked for a client yet, that's itself useful information (either they're not an MF client, or their MF relationship simply hasn't been logged) - say which, don't assume.
+- **Insurance**: `GET /api/insurance-policies?contact_id=` - the real per-policy table now; a contact with any `status = 'Active'` row is a current policyholder, and `policy_type` tells you which lines they're covered on (a Health policy but no Life policy is itself a flaggable gap). Cross-check `GET /api/contacts/renewals` too, since older data may only exist in the legacy `contacts.renewal_date`/`amount` fields if it predates this table.
+- **Mutual Funds**: `GET /api/mf-holdings?contact_id=` - any row with `status = 'Active'` means a current MF relationship; `fund_category`/`goal` tell you what kind. If nothing's recorded for a client, that's itself useful information (either they're not an MF client, or the relationship simply hasn't been logged yet via `client-portfolio-entry`) - say which, don't assume "no MF investment."
 
 ## Workflow
 

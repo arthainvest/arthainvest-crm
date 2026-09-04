@@ -766,6 +766,59 @@ def init_db():
         _create_index_if_missing(cursor, "idx_commission_records_product_type", "commission_records", "product_type")
         _create_index_if_missing(cursor, "idx_commission_records_received_date", "commission_records", "received_date")
 
+        # Mutual fund holdings - see database_sqlite.py's matching table for the full
+        # rationale (one row per fund, replacing the earlier custom-fields stopgap that could
+        # only hold a single value per field per contact).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mf_holdings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                contact_id INT NOT NULL,
+                folio_number VARCHAR(100),
+                fund_name VARCHAR(255) NOT NULL,
+                fund_category VARCHAR(50),
+                investment_type VARCHAR(20) NOT NULL DEFAULT 'SIP',
+                amount DECIMAL(12,2),
+                frequency VARCHAR(20) DEFAULT 'Monthly',
+                next_due_date DATE,
+                status VARCHAR(20) NOT NULL DEFAULT 'Active',
+                start_date DATE,
+                goal VARCHAR(255),
+                notes TEXT,
+                created_by INT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_mf_holdings_contact_id", "mf_holdings", "contact_id")
+        _create_index_if_missing(cursor, "idx_mf_holdings_next_due_date", "mf_holdings", "next_due_date")
+        _create_index_if_missing(cursor, "idx_mf_holdings_status", "mf_holdings", "status")
+
+        # Insurance policies - see database_sqlite.py's matching table for the full rationale
+        # (one row per policy; contacts.renewal_date/amount are left untouched for the
+        # Dashboard's existing Upcoming Renewals widget, this is the fuller multi-policy view).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS insurance_policies (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                contact_id INT NOT NULL,
+                policy_number VARCHAR(100),
+                insurer VARCHAR(100),
+                policy_type VARCHAR(20) NOT NULL DEFAULT 'Health',
+                sum_assured DECIMAL(14,2),
+                premium_amount DECIMAL(12,2),
+                premium_frequency VARCHAR(20) DEFAULT 'Annual',
+                start_date DATE,
+                renewal_date DATE,
+                status VARCHAR(20) NOT NULL DEFAULT 'Active',
+                notes TEXT,
+                created_by INT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_insurance_policies_contact_id", "insurance_policies", "contact_id")
+        _create_index_if_missing(cursor, "idx_insurance_policies_renewal_date", "insurance_policies", "renewal_date")
+        _create_index_if_missing(cursor, "idx_insurance_policies_status", "insurance_policies", "status")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress
