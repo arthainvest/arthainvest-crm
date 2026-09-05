@@ -834,6 +834,12 @@ def init_db():
         """)
         _create_index_if_missing(cursor, "idx_contact_documents_contact_id", "contact_documents", "contact_id")
 
+        # file_data/content_type - see database_sqlite.py's matching columns for the full
+        # rationale (stores the document as a blob in the database itself when no S3-compatible
+        # storage is configured, since Render's free tier has no persistent disk).
+        _add_column_if_missing(cursor, "contact_documents", "file_data", "LONGBLOB")
+        _add_column_if_missing(cursor, "contact_documents", "content_type", "VARCHAR(100)")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress

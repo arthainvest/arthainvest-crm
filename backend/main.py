@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Request, Header
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Request, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, PlainTextResponse
@@ -2260,14 +2260,19 @@ async def delete_insurance_policy(policy_id: int, token: str = Query(None)):
 
 # ============= CONTACT DOCUMENTS (real per-client document storage) =============
 # Replaces the old "DigiLocker" modal on the Contacts page, which was UI-only - hardcoded
-# checkboxes and buttons with no click handlers, nothing ever actually saved anywhere. These
-# three endpoints are the real thing: upload/list/delete a client's PAN, Aadhar, CIBIL report,
-# bank statements, signed forms, etc. Storage goes through storage.py's save_document_bytes,
-# which uses S3-compatible object storage when configured and otherwise falls back to local
-# disk - the same convention voice notes already use.
+# checkboxes and buttons with no click handlers, nothing ever actually saved anywhere. Real
+# storage has two modes: S3-compatible object storage when configured (storage.py), or - since
+# this deployment has neither S3 nor a persistent disk (Render's free tier wipes local disk on
+# every redeploy) - the document bytes are stored directly in the database itself via the
+# file_data column, with file_url pointing at the /content endpoint below that streams it back.
+# The database already lives on Hostinger's paid, persistent MySQL, so this trades a bit of
+# database bloat for zero new infrastructure and zero risk of silently losing a client's KYC
+# documents on the next deploy.
 
 _CONTACT_DOCUMENT_SELECT_SQL = """
-    SELECT contact_documents.*, users.username as uploaded_by_name
+    SELECT contact_documents.id, contact_documents.contact_id, contact_documents.document_type,
+           contact_documents.file_name, contact_documents.file_url, contact_documents.uploaded_by,
+           contact_documents.created_at, users.username as uploaded_by_name
     FROM contact_documents
     LEFT JOIN users ON users.id = contact_documents.uploaded_by
 """
@@ -2296,20 +2301,55 @@ async def upload_contact_document(
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Contact not found")
 
-    file_url = storage.save_document_bytes(file.filename, await file.read())
+    data = await file.read()
+    use_db_storage = not os.getenv("S3_BUCKET_NAME")
+    file_url = None if use_db_storage else storage.save_document_bytes(file.filename, data)
 
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT INTO contact_documents (contact_id, document_type, file_name, file_url, uploaded_by)
-               VALUES (?, ?, ?, ?, ?)""",
-            (contact_id, document_type, file.filename, file_url, current_user['user_id'])
+            """INSERT INTO contact_documents (contact_id, document_type, file_name, file_url, uploaded_by, file_data, content_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (contact_id, document_type, file.filename, file_url or '', current_user['user_id'],
+             data if use_db_storage else None, file.content_type if use_db_storage else None)
         )
         conn.commit()
         new_id = cursor.lastrowid
 
+        if use_db_storage:
+            cursor.execute(
+                "UPDATE contact_documents SET file_url = ? WHERE id = ?",
+                (f"/api/contacts/{contact_id}/documents/{new_id}/content", new_id)
+            )
+            conn.commit()
+
         cursor.execute(_CONTACT_DOCUMENT_SELECT_SQL + " WHERE contact_documents.id = ?", (new_id,))
         return ContactDocumentResponse(**dict(cursor.fetchone()))
+
+@app.get("/api/contacts/{contact_id}/documents/{document_id}/content")
+async def get_contact_document_content(contact_id: int, document_id: int, token: str = Query(None)):
+    """Streams a database-stored document's bytes back - only reached for documents saved
+    without S3 configured (see upload_contact_document above); an S3-backed document's file_url
+    already points directly at the object storage URL and never hits this route."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT file_name, file_data, content_type FROM contact_documents WHERE id = ? AND contact_id = ?",
+            (document_id, contact_id)
+        )
+        doc = cursor.fetchone()
+
+    if not doc or doc['file_data'] is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_data = bytes(doc['file_data'])
+    return Response(
+        content=file_data,
+        media_type=doc['content_type'] or 'application/octet-stream',
+        headers={"Content-Disposition": f'inline; filename="{doc["file_name"]}"'}
+    )
 
 @app.delete("/api/contacts/{contact_id}/documents/{document_id}")
 async def delete_contact_document(contact_id: int, document_id: int, token: str = Query(None)):
@@ -2327,7 +2367,8 @@ async def delete_contact_document(contact_id: int, document_id: int, token: str 
         cursor.execute("DELETE FROM contact_documents WHERE id = ?", (document_id,))
         conn.commit()
 
-    storage.delete_document_file(existing['file_url'])
+    if not existing['file_url'].startswith('/api/contacts/'):
+        storage.delete_document_file(existing['file_url'])
     return {"message": "Document deleted"}
 
 # ============= CAMPAIGNS ENDPOINTS =============

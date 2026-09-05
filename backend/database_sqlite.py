@@ -1079,6 +1079,20 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_contact_documents_contact_id ON contact_documents(contact_id)")
 
+        # file_data/content_type: added so a document can be stored as a blob directly in the
+        # database instead of on disk, for deployments with no S3-compatible storage configured
+        # and no persistent disk (e.g. Render's free tier) - avoids the alternative of losing
+        # real client KYC documents on every redeploy. When file_data is set, file_url instead
+        # holds the API path that streams it back (see the /documents/{id}/content endpoint).
+        try:
+            cursor.execute("ALTER TABLE contact_documents ADD COLUMN file_data BLOB")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE contact_documents ADD COLUMN content_type TEXT")
+        except sqlite3.OperationalError:
+            pass
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress

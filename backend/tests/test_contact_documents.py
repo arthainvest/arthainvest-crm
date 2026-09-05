@@ -20,7 +20,10 @@ def test_upload_list_and_delete_document(auth_client):
     assert data["contact_id"] == contact_id
     assert data["document_type"] == "PAN"
     assert data["file_name"] == "pan_card.pdf"
-    assert data["file_url"].startswith("/uploads/documents/")
+    # No S3 configured in tests, so this falls back to database-blob storage (see
+    # upload_contact_document in main.py) - file_url points at the /content endpoint below
+    # rather than a static file path.
+    assert data["file_url"] == f"/api/contacts/{contact_id}/documents/{data['id']}/content"
     assert data["uploaded_by_name"] == "testuser"
 
     resp = auth_client.get(f"/api/contacts/{contact_id}/documents")
@@ -29,11 +32,19 @@ def test_upload_list_and_delete_document(auth_client):
     assert len(docs) == 1
     assert docs[0]["document_type"] == "PAN"
 
+    resp = auth_client.get(data["file_url"])
+    assert resp.status_code == 200
+    assert resp.content == b"%PDF-1.4 fake pan card bytes"
+    assert resp.headers["content-type"] == "application/pdf"
+
     resp = auth_client.delete(f"/api/contacts/{contact_id}/documents/{data['id']}")
     assert resp.status_code == 200
 
     resp = auth_client.get(f"/api/contacts/{contact_id}/documents")
     assert resp.json() == []
+
+    resp = auth_client.get(data["file_url"])
+    assert resp.status_code == 404
 
 
 def test_upload_multiple_document_types_for_same_contact(auth_client):

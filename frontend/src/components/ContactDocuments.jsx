@@ -52,7 +52,11 @@ export default function ContactDocuments({ token, contact, onClose }) {
     }
   };
 
-  const fileUrl = (doc) => (doc.file_url.startsWith('http') ? doc.file_url : `${API_URL}${doc.file_url}`);
+  const fileUrl = (doc) => {
+    if (doc.file_url.startsWith('http')) return doc.file_url;
+    const sep = doc.file_url.includes('?') ? '&' : '?';
+    return `${API_URL}${doc.file_url}${sep}token=${token}`;
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
