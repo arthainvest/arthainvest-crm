@@ -17,6 +17,9 @@ import uuid
 UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "uploads", "notes")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
+DOCUMENTS_DIR = os.path.join(os.path.dirname(__file__), "uploads", "documents")
+os.makedirs(DOCUMENTS_DIR, exist_ok=True)
+
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 
 _s3_client = None
@@ -64,6 +67,48 @@ def save_audio_bytes(original_filename: str, data: bytes) -> str:
     with open(file_path, "wb") as f:
         f.write(data)
     return f"/uploads/notes/{filename}"
+
+
+def save_document_bytes(original_filename: str, data: bytes) -> str:
+    """Save a client document (PAN, Aadhar, CIBIL report, bank statement, etc.) and return the
+    URL it can be fetched from. Same S3-or-local convention as save_audio_bytes, but keeps the
+    original extension verbatim (documents can be pdf/docx/jpg/png, not just one audio format)
+    and uses a separate folder/prefix so notes and documents don't collide."""
+    ext = os.path.splitext(original_filename or "")[1] or ".bin"
+    filename = f"{uuid.uuid4().hex}{ext}"
+
+    if S3_BUCKET_NAME:
+        client = _get_s3_client()
+        key = f"documents/{filename}"
+        client.put_object(Bucket=S3_BUCKET_NAME, Key=key, Body=data)
+        public_url_base = os.getenv("S3_PUBLIC_URL_BASE").rstrip("/")
+        return f"{public_url_base}/{key}"
+
+    file_path = os.path.join(DOCUMENTS_DIR, filename)
+    with open(file_path, "wb") as f:
+        f.write(data)
+    return f"/uploads/documents/{filename}"
+
+
+def delete_document_file(file_url: str):
+    """Best-effort removal of a previously uploaded client document."""
+    if not file_url:
+        return
+    if S3_BUCKET_NAME and not file_url.startswith("/uploads/documents/"):
+        try:
+            key = "documents/" + file_url.rsplit("/documents/", 1)[-1]
+            _get_s3_client().delete_object(Bucket=S3_BUCKET_NAME, Key=key)
+        except Exception as e:
+            print(f"[WARN] Could not remove document object {file_url}: {e}")
+        return
+
+    try:
+        filename = os.path.basename(file_url)
+        file_path = os.path.join(DOCUMENTS_DIR, filename)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+    except OSError as e:
+        print(f"[WARN] Could not remove document file {file_url}: {e}")
 
 
 def delete_audio_file(audio_url: str):

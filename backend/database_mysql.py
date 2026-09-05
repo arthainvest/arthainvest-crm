@@ -819,6 +819,21 @@ def init_db():
         _create_index_if_missing(cursor, "idx_insurance_policies_renewal_date", "insurance_policies", "renewal_date")
         _create_index_if_missing(cursor, "idx_insurance_policies_status", "insurance_policies", "status")
 
+        # Client documents - see database_sqlite.py's matching table for the full rationale
+        # (replaces the old "DigiLocker" modal, which was UI-only and never stored anything).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS contact_documents (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                contact_id INT NOT NULL,
+                document_type VARCHAR(50) NOT NULL DEFAULT 'Other',
+                file_name VARCHAR(255) NOT NULL,
+                file_url VARCHAR(500) NOT NULL,
+                uploaded_by INT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_contact_documents_contact_id", "contact_documents", "contact_id")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress

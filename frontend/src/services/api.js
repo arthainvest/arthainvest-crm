@@ -399,6 +399,27 @@ export const deleteContactNote = async (token, contactId, noteId) => {
   await api.delete(`/api/contacts/${contactId}/notes/${noteId}?token=${token}`);
 };
 
+export const getContactDocuments = async (token, contactId) => {
+  const response = await api.get(`/api/contacts/${contactId}/documents?token=${token}`);
+  return response.data;
+};
+
+export const uploadContactDocument = async (token, contactId, documentType, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(
+    `/api/contacts/${contactId}/documents?token=${token}&document_type=${encodeURIComponent(documentType)}`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
+};
+
+export const deleteContactDocument = async (token, contactId, documentId) => {
+  const response = await api.delete(`/api/contacts/${contactId}/documents/${documentId}?token=${token}`);
+  return response.data;
+};
+
 export const uploadNoteAudio = async (token, contactId, noteId, audioBlob) => {
   const formData = new FormData();
   formData.append('audio', audioBlob, 'recording.webm');

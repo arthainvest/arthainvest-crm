@@ -1060,6 +1060,25 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_insurance_policies_renewal_date ON insurance_policies(renewal_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_insurance_policies_status ON insurance_policies(status)")
 
+        # Client documents (PAN, Aadhar, CIBIL report, bank statements, signed forms, etc.) -
+        # replaces the old "DigiLocker" modal, which was UI-only and never actually stored
+        # anything (hardcoded checkboxes, no backend, no click handlers). file_url follows the
+        # same S3-or-local-disk convention as voice notes (see storage.py).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS contact_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER NOT NULL,
+                document_type TEXT NOT NULL DEFAULT 'Other',
+                file_name TEXT NOT NULL,
+                file_url TEXT NOT NULL,
+                uploaded_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                FOREIGN KEY (uploaded_by) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_contact_documents_contact_id ON contact_documents(contact_id)")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress

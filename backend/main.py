@@ -39,6 +39,7 @@ from schemas import (
     UserLogin, UserCreate, UserResponse, Token, ChangePasswordRequest, AdminResetPasswordRequest,
     ForgotPasswordRequest, ResetPasswordRequest, CommissionRecordCreate, CommissionRecordResponse, CommissionSummaryRow,
     MfHoldingCreate, MfHoldingUpdate, MfHoldingResponse, InsurancePolicyCreate, InsurancePolicyUpdate, InsurancePolicyResponse,
+    ContactDocumentResponse,
     LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadCompanyAssign, LeadQuotationAssign, LeadContactAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealTaskAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
@@ -2256,6 +2257,78 @@ async def delete_insurance_policy(policy_id: int, token: str = Query(None)):
             raise HTTPException(status_code=404, detail="Insurance policy not found")
 
     return {"message": "Insurance policy deleted"}
+
+# ============= CONTACT DOCUMENTS (real per-client document storage) =============
+# Replaces the old "DigiLocker" modal on the Contacts page, which was UI-only - hardcoded
+# checkboxes and buttons with no click handlers, nothing ever actually saved anywhere. These
+# three endpoints are the real thing: upload/list/delete a client's PAN, Aadhar, CIBIL report,
+# bank statements, signed forms, etc. Storage goes through storage.py's save_document_bytes,
+# which uses S3-compatible object storage when configured and otherwise falls back to local
+# disk - the same convention voice notes already use.
+
+_CONTACT_DOCUMENT_SELECT_SQL = """
+    SELECT contact_documents.*, users.username as uploaded_by_name
+    FROM contact_documents
+    LEFT JOIN users ON users.id = contact_documents.uploaded_by
+"""
+
+@app.get("/api/contacts/{contact_id}/documents", response_model=list[ContactDocumentResponse])
+async def get_contact_documents(contact_id: int, token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _CONTACT_DOCUMENT_SELECT_SQL + " WHERE contact_documents.contact_id = ? ORDER BY contact_documents.created_at DESC",
+            (contact_id,)
+        )
+        return [ContactDocumentResponse(**dict(row)) for row in cursor.fetchall()]
+
+@app.post("/api/contacts/{contact_id}/documents", response_model=ContactDocumentResponse)
+async def upload_contact_document(
+    contact_id: int, token: str = Query(None), document_type: str = Query("Other"), file: UploadFile = File(...)
+):
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+    file_url = storage.save_document_bytes(file.filename, await file.read())
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO contact_documents (contact_id, document_type, file_name, file_url, uploaded_by)
+               VALUES (?, ?, ?, ?, ?)""",
+            (contact_id, document_type, file.filename, file_url, current_user['user_id'])
+        )
+        conn.commit()
+        new_id = cursor.lastrowid
+
+        cursor.execute(_CONTACT_DOCUMENT_SELECT_SQL + " WHERE contact_documents.id = ?", (new_id,))
+        return ContactDocumentResponse(**dict(cursor.fetchone()))
+
+@app.delete("/api/contacts/{contact_id}/documents/{document_id}")
+async def delete_contact_document(contact_id: int, document_id: int, token: str = Query(None)):
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT file_url FROM contact_documents WHERE id = ? AND contact_id = ?", (document_id, contact_id)
+        )
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        cursor.execute("DELETE FROM contact_documents WHERE id = ?", (document_id,))
+        conn.commit()
+
+    storage.delete_document_file(existing['file_url'])
+    return {"message": "Document deleted"}
 
 # ============= CAMPAIGNS ENDPOINTS =============
 

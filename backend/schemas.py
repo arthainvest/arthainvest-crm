@@ -1303,6 +1303,16 @@ class InsurancePolicyResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+class ContactDocumentResponse(BaseModel):
+    id: int
+    contact_id: int
+    document_type: str
+    file_name: str
+    file_url: str
+    uploaded_by: Optional[int] = None
+    uploaded_by_name: Optional[str] = None
+    created_at: datetime
+
 # Body for POST /api/public/leads. Deliberately its own schema (not LeadCreate) with tight
 # length limits on every field - this endpoint is authenticated by API key rather than a JWT,
 # reachable by any external system that has a key, so it must not become a way to write

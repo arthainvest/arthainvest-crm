@@ -12,6 +12,7 @@ import EntityGroups from './EntityGroups';
 import EntityCustomFields from './EntityCustomFields';
 import ContactMfHoldings from './ContactMfHoldings';
 import ContactInsurancePolicies from './ContactInsurancePolicies';
+import ContactDocuments from './ContactDocuments';
 import '../styles/Contacts.css';
 
 const STATUS_OPTIONS = ['Active', 'Renewal Due', 'Lapsed', 'Inactive'];
@@ -746,7 +747,7 @@ export default function Contacts() {
                   <button className="btn-action whatsapp" onClick={() => handleWhatsApp(contact)} title="WhatsApp">
                     <WhatsAppIcon />
                   </button>
-                  <button className="btn-action digilocker" onClick={() => handleDigi(contact)} title="DigiLocker">🔐</button>
+                  <button className="btn-action digilocker" onClick={() => handleDigi(contact)} title="Client Documents">🔐</button>
                   <button className="btn-action notes" onClick={() => handleNotes(contact)} title="Notes & Follow-up">📝</button>
                 </div>
 
@@ -975,56 +976,9 @@ export default function Contacts() {
         </div>
       )}
 
-      {/* DigiLocker Modal */}
+      {/* Client Documents Modal */}
       {showDigi && selectedContact && (
-        <div className="modal-overlay" onClick={() => setShowDigi(false)}>
-          <div className="modal-content digi-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>DigiLocker - Document Management</h2>
-              <button className="btn-close" onClick={() => setShowDigi(false)}>×</button>
-            </div>
-
-            <div className="modal-body">
-              <div className="digi-info">
-                <h3>{selectedContact.name}</h3>
-                <p>{selectedContact.company} | {selectedContact.email} | {selectedContact.phone}</p>
-              </div>
-
-              <div className="digi-section">
-                <h4>Verified Documents</h4>
-                <div className="verified-docs">
-                  <div className="doc-item">
-                    <input type="checkbox" defaultChecked /> PAN Card
-                  </div>
-                  <div className="doc-item">
-                    <input type="checkbox" defaultChecked /> Aadhar Card
-                  </div>
-                  <div className="doc-item">
-                    <input type="checkbox" /> Bank Statement
-                  </div>
-                  <div className="doc-item">
-                    <input type="checkbox" /> ITR (Income Tax Return)
-                  </div>
-                </div>
-              </div>
-
-              <div className="digi-section">
-                <h4>Document Options</h4>
-                <div className="digi-options">
-                  <button className="digi-btn">✓ Request from Aadhar</button>
-                  <button className="digi-btn">✓ Request PAN</button>
-                  <button className="digi-btn">📄 Upload Bank Statement</button>
-                  <button className="digi-btn">📄 Upload ITR</button>
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button className="btn-primary">Submit to DigiLocker</button>
-                <button className="btn-secondary" onClick={() => setShowDigi(false)}>Close</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ContactDocuments token={token} contact={selectedContact} onClose={() => setShowDigi(false)} />
       )}
 
       {/* Notes & Follow-up Modal */}
