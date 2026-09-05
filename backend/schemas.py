@@ -341,6 +341,14 @@ class ContactUpdate(BaseModel):
     status: Optional[str] = None
     renewal_date: Optional[str] = None
 
+class ContactBulkImportRequest(BaseModel):
+    contacts: list[ContactCreate]
+
+class ContactBulkImportResponse(BaseModel):
+    created: int
+    skipped_duplicate: int
+    total: int
+
 class ContactAssign(BaseModel):
     team_member_id: Optional[int] = None  # None unassigns the contact
 

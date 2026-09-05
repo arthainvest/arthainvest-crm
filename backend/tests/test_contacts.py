@@ -22,6 +22,48 @@ def test_create_update_delete_contact(auth_client):
     assert len(resp.json()) == 5
 
 
+def test_bulk_import_contacts(auth_client):
+    resp = auth_client.post("/api/contacts/bulk-import", json={"contacts": [
+        {"name": "Bulk One", "phone": "7000000001"},
+        {"name": "Bulk Two", "phone": "7000000002"},
+        {"name": "Bulk Three", "phone": ""},
+    ]})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["created"] == 3
+    assert data["skipped_duplicate"] == 0
+    assert data["total"] == 3
+
+    resp = auth_client.get("/api/contacts")
+    assert len(resp.json()) == 8
+
+
+def test_bulk_import_skips_duplicates_against_existing_and_within_batch(auth_client):
+    auth_client.post("/api/contacts", json={"name": "Already Here", "phone": "7100000001"})
+
+    resp = auth_client.post("/api/contacts/bulk-import", json={"contacts": [
+        {"name": "Already Here Again", "phone": "7100000001"},  # duplicate of existing contact
+        {"name": "New Person", "phone": "7100000002"},
+        {"name": "New Person Duplicate Entry", "phone": "7100000002"},  # duplicate within this batch
+    ]})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["created"] == 1
+    assert data["skipped_duplicate"] == 2
+    assert data["total"] == 3
+
+
+def test_bulk_import_requires_auth(client):
+    resp = client.post("/api/contacts/bulk-import", json={"contacts": [{"name": "X", "phone": "1"}]})
+    assert resp.status_code == 401
+
+
+def test_bulk_import_empty_list(auth_client):
+    resp = auth_client.post("/api/contacts/bulk-import", json={"contacts": []})
+    assert resp.status_code == 200
+    assert resp.json() == {"created": 0, "skipped_duplicate": 0, "total": 0}
+
+
 def test_upcoming_renewals(auth_client):
     from datetime import date, timedelta
     today = date.today()

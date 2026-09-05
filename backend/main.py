@@ -47,6 +47,7 @@ from schemas import (
     IntegrationToggle, IntegrationResponse, IntegrationStatusItem,
     SettingsUpdate, SettingsResponse,
     ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactQuotationAssign, ContactCallAssign, ContactResponse, RenewalContact,
+    ContactBulkImportRequest, ContactBulkImportResponse,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskCompanyAssign, TaskResponse,
@@ -2916,6 +2917,46 @@ async def create_contact(contact: ContactCreate, token: str = Query(None)):
         new_contact = fetch_contact_with_member_name(cursor, contact_id)
 
     return new_contact
+
+@app.post("/api/contacts/bulk-import", response_model=ContactBulkImportResponse)
+async def bulk_import_contacts(payload: ContactBulkImportRequest, token: str = Query(None)):
+    """Import many contacts in a single request/connection - built after importing a large
+    (2000+ row) phone contacts CSV one-request-per-contact exhausted Hostinger's shared MySQL
+    connection limit and briefly took the whole app down for real users. Opening one connection
+    for the entire batch instead of one per contact avoids that failure mode entirely, and is
+    dramatically faster. Dedupes by phone number, both against contacts that already exist and
+    against repeats within the same batch (a phone contacts export can contain the same number
+    saved under several different names)."""
+    current_user = get_current_user(token)
+
+    created = 0
+    skipped_duplicate = 0
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT phone FROM contacts WHERE phone IS NOT NULL AND phone != ''")
+        existing_phones = {row['phone'] for row in cursor.fetchall()}
+
+        for contact in payload.contacts:
+            if contact.phone and contact.phone in existing_phones:
+                skipped_duplicate += 1
+                continue
+
+            cursor.execute(
+                """
+                INSERT INTO contacts (name, company, company_id, email, phone, city, amount, bank, status, renewal_date, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (contact.name, contact.company, contact.company_id, contact.email, contact.phone, contact.city,
+                 contact.amount, contact.bank, contact.status or 'Active', contact.renewal_date, current_user['user_id'])
+            )
+            created += 1
+            if contact.phone:
+                existing_phones.add(contact.phone)
+
+        conn.commit()
+
+    return ContactBulkImportResponse(created=created, skipped_duplicate=skipped_duplicate, total=len(payload.contacts))
 
 @app.put("/api/contacts/{contact_id}", response_model=ContactResponse)
 async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Query(None)):
