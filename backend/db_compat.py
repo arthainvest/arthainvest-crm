@@ -10,22 +10,39 @@ import os
 
 IS_MYSQL = bool(os.getenv("DATABASE_URL"))
 
+# ArthaInvest is a single-timezone Indian business (Asia/Kolkata, UTC+5:30, no DST), but both
+# DB servers' own clocks are UTC - Hostinger's MySQL defaults to UTC, and SQLite's date('now')/
+# 'now' are hardcoded UTC with no timezone concept at all. Without this offset, every "due
+# today" task/renewal/meeting and every "this month" report silently uses the wrong calendar
+# day/month for the ~5.5 hours between midnight and 5:30am IST, since the DB still thinks it's
+# the previous day in UTC (confirmed live: 00:49 IST on 2026-09-06 was still 2026-09-05 18:49
+# UTC). Using a fixed offset rather than a named zone (MySQL's CONVERT_TZ('Asia/Kolkata') or
+# SQLite's unsupported-natively named zones) avoids depending on the timezone-name tables being
+# loaded on shared hosting, which can't be assumed.
+_IST_OFFSET_MINUTES = 330
+
 
 def sql_today():
-    """CURDATE() vs date('now')."""
-    return "CURDATE()" if IS_MYSQL else "date('now')"
+    """CURDATE() vs date('now'), both shifted to IST."""
+    if IS_MYSQL:
+        return "DATE(CONVERT_TZ(NOW(), '+00:00', '+05:30'))"
+    return f"date('now', '+{_IST_OFFSET_MINUTES} minutes')"
 
 
 def sql_now():
-    """NOW() vs SQLite's magic 'now' string literal - needed when comparing "this month"
-    against the current moment, e.g. sql_year_month(sql_now())."""
-    return "NOW()" if IS_MYSQL else "'now'"
+    """NOW() vs SQLite's magic 'now' string literal, both shifted to IST - needed when
+    comparing "this month" against the current moment, e.g. sql_year_month(sql_now()). The
+    SQLite form is deliberately two comma-separated fragments (a timestring plus a modifier),
+    valid wherever a single 'now' literal was - e.g. strftime('%Y-%m', 'now', '+330 minutes')."""
+    if IS_MYSQL:
+        return "CONVERT_TZ(NOW(), '+00:00', '+05:30')"
+    return f"'now', '+{_IST_OFFSET_MINUTES} minutes'"
 
 
 def sql_date_offset(literal, unit="days"):
-    """A date offset from today, expressed the way the existing SQLite call site already
-    writes it: a quoted SQL string literal like "'-6 days'" (sign + count + unit word),
-    not a bound placeholder - main.py:7089 passes this as a fixed literal, never user data.
+    """An IST-shifted date offset from today, expressed the way the existing SQLite call site
+    already writes it: a quoted SQL string literal like "'-6 days'" (sign + count + unit word),
+    not a bound placeholder - main.py:8149 passes this as a fixed literal, never user data.
     MySQL has no single-string interval literal, so for MySQL this parses the literal at
     Python level (safe - it's a hardcoded string, never runtime input) into DATE_ADD/DATE_SUB
     with a real INTERVAL n UNIT clause."""
@@ -35,8 +52,8 @@ def sql_date_offset(literal, unit="days"):
         amount = int(sign_str)
         unit_sql = unit_word.rstrip('s').upper()
         fn = "DATE_SUB" if amount < 0 else "DATE_ADD"
-        return f"{fn}(CURDATE(), INTERVAL {abs(amount)} {unit_sql})"
-    return f"date('now', {literal})"
+        return f"{fn}(DATE(CONVERT_TZ(NOW(), '+00:00', '+05:30')), INTERVAL {abs(amount)} {unit_sql})"
+    return f"date('now', '+{_IST_OFFSET_MINUTES} minutes', {literal})"
 
 
 def sql_now_offset(placeholder="?"):
