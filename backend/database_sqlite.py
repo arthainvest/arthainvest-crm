@@ -1093,6 +1093,28 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # Loan document checklist per deal - replaces the Pipeline page's old "DigiLocker"
+        # modal, which only toggled checkboxes in local React state (uploadedDocs) with nothing
+        # saved anywhere, so the checklist reset on every page refresh. The frontend already
+        # knows which document names apply to which loan product (LOAN_DOCUMENTS in
+        # Pipeline.jsx) - this table just persists which of those have been marked collected
+        # for a given deal, keyed by document_name so it stays in sync automatically if that
+        # per-product list is ever edited on the frontend without a backend migration.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS deal_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                deal_id INTEGER NOT NULL,
+                document_name TEXT NOT NULL,
+                collected INTEGER NOT NULL DEFAULT 0,
+                collected_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (deal_id) REFERENCES deals(id),
+                UNIQUE(deal_id, document_name)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_deal_documents_deal_id ON deal_documents(deal_id)")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress

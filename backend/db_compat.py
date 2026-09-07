@@ -39,6 +39,15 @@ def sql_now():
     return f"'now', '+{_IST_OFFSET_MINUTES} minutes'"
 
 
+def sql_current_timestamp():
+    """A standalone IST 'now' timestamp expression, usable directly as a value (e.g. in an
+    INSERT ... VALUES list) rather than as an argument fragment - unlike sql_now(), whose
+    SQLite form is only valid nested inside another date function's argument list."""
+    if IS_MYSQL:
+        return "CONVERT_TZ(NOW(), '+00:00', '+05:30')"
+    return f"datetime('now', '+{_IST_OFFSET_MINUTES} minutes')"
+
+
 def sql_date_offset(literal, unit="days"):
     """An IST-shifted date offset from today, expressed the way the existing SQLite call site
     already writes it: a quoted SQL string literal like "'-6 days'" (sign + count + unit word),

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal, updateDealProcessStatus, getDealQuotations, getCompanies, linkDealCompany } from '../services/api';
+import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal, updateDealProcessStatus, getDealQuotations, getCompanies, linkDealCompany, getDealDocuments, updateDealDocument, sendWhatsApp } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Pipeline.css';
 
@@ -25,6 +25,7 @@ export default function Pipeline() {
   const [showDigi, setShowDigi] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [uploadedDocs, setUploadedDocs] = useState({});
+  const [loadingDocChecklist, setLoadingDocChecklist] = useState(false);
   const [showQuotations, setShowQuotations] = useState(false);
   const [quotationsForDeal, setQuotationsForDeal] = useState([]);
   const [loadingDealQuotations, setLoadingDealQuotations] = useState(false);
@@ -210,32 +211,74 @@ export default function Pipeline() {
     }
   };
 
-  const handleDigiLocker = (deal) => {
+  const handleDigiLocker = async (deal) => {
     setSelectedDeal(deal);
-    if (!uploadedDocs[deal.id]) {
-      setUploadedDocs({
-        ...uploadedDocs,
-        [deal.id]: {}
-      });
-    }
     setShowDigi(true);
+    setLoadingDocChecklist(true);
+    try {
+      const data = await getDealDocuments(token, deal.id);
+      const collectedMap = {};
+      (Array.isArray(data) ? data : []).forEach((d) => {
+        if (d.collected) collectedMap[d.document_name] = true;
+      });
+      setUploadedDocs((prev) => ({ ...prev, [deal.id]: collectedMap }));
+    } catch (error) {
+      console.error('Error fetching document checklist:', error);
+      setUploadedDocs((prev) => ({ ...prev, [deal.id]: {} }));
+    } finally {
+      setLoadingDocChecklist(false);
+    }
   };
 
-  const handleDocumentCheck = (dealId, doc) => {
-    setUploadedDocs({
-      ...uploadedDocs,
-      [dealId]: {
-        ...uploadedDocs[dealId],
-        [doc]: !uploadedDocs[dealId]?.[doc]
-      }
-    });
+  const handleDocumentCheck = async (dealId, doc) => {
+    const wasChecked = uploadedDocs[dealId]?.[doc] || false;
+    const nowChecked = !wasChecked;
+    setUploadedDocs((prev) => ({
+      ...prev,
+      [dealId]: { ...prev[dealId], [doc]: nowChecked }
+    }));
+    try {
+      await updateDealDocument(token, dealId, doc, nowChecked);
+    } catch (error) {
+      console.error('Error updating document checklist:', error);
+      setUploadedDocs((prev) => ({
+        ...prev,
+        [dealId]: { ...prev[dealId], [doc]: wasChecked }
+      }));
+      alert('Failed to update checklist. Please try again.');
+    }
+  };
+
+  const handleRequestMissingDocs = async () => {
+    if (!selectedDeal) return;
+    const required = LOAN_DOCUMENTS[selectedDeal.loanProduct] || [];
+    const collected = uploadedDocs[selectedDeal.id] || {};
+    const missing = required.filter((doc) => !collected[doc]);
+
+    if (missing.length === 0) {
+      alert('All required documents are already marked collected.');
+      return;
+    }
+    if (!selectedDeal.phone || selectedDeal.phone === '—') {
+      alert('No phone number on file for this client.');
+      return;
+    }
+
+    const message = `Hi ${selectedDeal.name}, to proceed with your ${getLoanProductInfo(selectedDeal.loanProduct)?.name || selectedDeal.loanProduct} application we still need: ${missing.join(', ')}. Please share these at your earliest convenience.`;
+    try {
+      await sendWhatsApp(token, selectedDeal.phone, message);
+      alert('WhatsApp message sent.');
+    } catch (error) {
+      console.error('Error sending missing-documents WhatsApp message:', error);
+      alert('Failed to send WhatsApp message. Please try again.');
+    }
   };
 
   const getDocumentProgress = (dealId) => {
     const docs = uploadedDocs[dealId] || {};
     const total = (LOAN_DOCUMENTS[selectedDeal.loanProduct] || []).length;
     const completed = Object.values(docs).filter(v => v).length;
-    return { completed, total, percentage: Math.round((completed / total) * 100) };
+    return { completed, total, percentage: total > 0 ? Math.round((completed / total) * 100) : 0 };
   };
 
   const handleProcessStatusChange = async (dealId, newStatus) => {
@@ -323,7 +366,7 @@ export default function Pipeline() {
                           type="button"
                           className="folder-icon-btn"
                           onClick={() => handleDigiLocker(deal)}
-                          title="Open DigiLocker"
+                          title="Loan Document Checklist"
                         >
                           <FolderIcon />
                         </button>
@@ -482,12 +525,12 @@ export default function Pipeline() {
         </div>
       )}
 
-      {/* DigiLocker Modal */}
+      {/* Loan Document Checklist Modal */}
       {showDigi && selectedDeal && (
         <div className="modal-overlay" onClick={() => setShowDigi(false)}>
           <div className="modal-content digi-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>🔐 DigiLocker - Document Management</h2>
+              <h2>📋 Loan Document Checklist</h2>
               <button className="btn-close" onClick={() => setShowDigi(false)}>×</button>
             </div>
 
@@ -499,44 +542,49 @@ export default function Pipeline() {
                 <p><strong>Amount:</strong> ₹{selectedDeal.value}K</p>
               </div>
 
-              <div className="digi-section">
-                <h4>Required Documents ({(LOAN_DOCUMENTS[selectedDeal.loanProduct] || []).length})</h4>
-                <div className="documents-list">
-                  {(LOAN_DOCUMENTS[selectedDeal.loanProduct] || []).map((doc, idx) => (
-                    <div key={idx} className="document-item">
-                      <input
-                        type="checkbox"
-                        checked={uploadedDocs[selectedDeal.id]?.[doc] || false}
-                        onChange={() => handleDocumentCheck(selectedDeal.id, doc)}
-                      />
-                      <span>{doc}</span>
-                      <span className="doc-status">
-                        {uploadedDocs[selectedDeal.id]?.[doc] ? '✓' : '○'}
-                      </span>
+              {loadingDocChecklist ? (
+                <p className="no-data-inline">Loading checklist…</p>
+              ) : (
+                <>
+                  <div className="digi-section">
+                    <h4>Required Documents ({(LOAN_DOCUMENTS[selectedDeal.loanProduct] || []).length})</h4>
+                    <div className="documents-list">
+                      {(LOAN_DOCUMENTS[selectedDeal.loanProduct] || []).map((doc, idx) => (
+                        <div key={idx} className="document-item">
+                          <input
+                            type="checkbox"
+                            checked={uploadedDocs[selectedDeal.id]?.[doc] || false}
+                            onChange={() => handleDocumentCheck(selectedDeal.id, doc)}
+                          />
+                          <span>{doc}</span>
+                          <span className="doc-status">
+                            {uploadedDocs[selectedDeal.id]?.[doc] ? '✓' : '○'}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {selectedDeal.id in uploadedDocs && (
-                <div className="digi-section">
-                  <h4>Progress</h4>
-                  <div className="progress-bar">
-                    <div
-                      className="progress-fill"
-                      style={{ width: `${getDocumentProgress(selectedDeal.id).percentage}%` }}
-                    ></div>
                   </div>
-                  <p className="progress-text">
-                    {getDocumentProgress(selectedDeal.id).completed} of {getDocumentProgress(selectedDeal.id).total} documents
-                    ({getDocumentProgress(selectedDeal.id).percentage}%)
-                  </p>
-                </div>
+
+                  <div className="digi-section">
+                    <h4>Progress</h4>
+                    <div className="progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${getDocumentProgress(selectedDeal.id).percentage}%` }}
+                      ></div>
+                    </div>
+                    <p className="progress-text">
+                      {getDocumentProgress(selectedDeal.id).completed} of {getDocumentProgress(selectedDeal.id).total} documents
+                      ({getDocumentProgress(selectedDeal.id).percentage}%)
+                    </p>
+                  </div>
+                </>
               )}
 
               <div className="modal-actions">
-                <button className="btn-primary">Submit to DigiLocker</button>
-                <button className="btn-secondary">📨 Request Missing Docs</button>
+                <button className="btn-secondary" onClick={handleRequestMissingDocs} disabled={loadingDocChecklist}>
+                  📨 Request Missing Docs
+                </button>
                 <button className="btn-secondary" onClick={() => setShowDigi(false)}>Close</button>
               </div>
             </div>

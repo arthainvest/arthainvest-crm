@@ -39,7 +39,7 @@ from schemas import (
     UserLogin, UserCreate, UserResponse, Token, ChangePasswordRequest, AdminResetPasswordRequest,
     ForgotPasswordRequest, ResetPasswordRequest, CommissionRecordCreate, CommissionRecordResponse, CommissionSummaryRow,
     MfHoldingCreate, MfHoldingUpdate, MfHoldingResponse, InsurancePolicyCreate, InsurancePolicyUpdate, InsurancePolicyResponse,
-    ContactDocumentResponse,
+    ContactDocumentResponse, DealDocumentResponse, DealDocumentUpdate,
     LeadCreate, LeadUpdate, LeadAssign, LeadCallAssign, LeadTaskAssign, LeadDealAssign, LeadCompanyAssign, LeadQuotationAssign, LeadContactAssign, LeadResponse,
     DealCreate, DealMove, DealAssign, DealCompanyAssign, DealContactAssign, DealCallAssign, DealTaskAssign, DealProcessStatusUpdate, DealResponse,
     CampaignCreate, CampaignUpdate, CampaignResponse,
@@ -85,6 +85,7 @@ from schemas import (
     AutomationCreate, AutomationUpdate, AutomationResponse, AutomationEnrollRequest, AutomationEnrollmentResponse
 )
 from auth import hash_password, verify_password, create_access_token, decode_token
+from policy import check_no_transaction_routes
 
 load_dotenv()
 
@@ -92,6 +93,12 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    # JARVIS_MASTER_SPEC.md Section 2: this must never be able to boot with a
+    # transaction-execution route present. Checked here, not just in tests,
+    # so it can't be skipped by forgetting to run the test suite. See
+    # backend/policy.py for why this lives here instead of as an LLM rule.
+    check_no_transaction_routes([route.path for route in app.routes])
+
     try:
         init_db()
         print("[OK] Database ready!")
@@ -1644,6 +1651,48 @@ async def update_deal_process_status(deal_id: int, payload: DealProcessStatusUpd
 
         return fetch_deal_with_member_name(cursor, deal_id)
 
+@app.get("/api/deals/{deal_id}/documents", response_model=list[DealDocumentResponse])
+async def get_deal_documents(deal_id: int, token: str = Query(None)):
+    """The Pipeline page's loan document checklist - which required documents (PAN, Aadhar,
+    property papers, etc., varying by loan product) have actually been collected for this
+    deal. Only returns rows for documents someone has touched; the frontend already knows the
+    full required list per loan product (LOAN_DOCUMENTS in Pipeline.jsx) and merges this
+    against it, so an untouched document simply isn't in this list yet rather than needing a
+    row pre-created for every possible document on every deal."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM deal_documents WHERE deal_id = ?", (deal_id,))
+        return [DealDocumentResponse(**dict(row)) for row in cursor.fetchall()]
+
+@app.put("/api/deals/{deal_id}/documents", response_model=DealDocumentResponse)
+async def update_deal_document(deal_id: int, payload: DealDocumentUpdate, token: str = Query(None)):
+    """Mark one required document collected/not-collected for a deal - replaces the old
+    DigiLocker modal's checkbox, which only toggled local React state and reset on refresh."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        collected_at = db_compat.sql_current_timestamp() if payload.collected else "NULL"
+        cursor.execute(
+            f"""INSERT INTO deal_documents (deal_id, document_name, collected, collected_at)
+               VALUES (?, ?, ?, {collected_at})
+               {db_compat.sql_upsert(['deal_id', 'document_name'], ['collected', 'collected_at'])}""",
+            (deal_id, payload.document_name, int(payload.collected))
+        )
+        conn.commit()
+
+        cursor.execute(
+            "SELECT * FROM deal_documents WHERE deal_id = ? AND document_name = ?",
+            (deal_id, payload.document_name)
+        )
+        return DealDocumentResponse(**dict(cursor.fetchone()))
+
 @app.delete("/api/deals/{deal_id}")
 async def delete_deal(deal_id: int, token: str = Query(None)):
     """Delete a deal"""
@@ -1784,7 +1833,7 @@ async def get_dashboard_analytics(token: str = Query(None)):
     contacts/campaigns rows, including the Loan Pipeline and Pipeline Status widgets (both
     used to be hardcoded fake numbers on the frontend that never changed no matter what was
     actually in the database)."""
-    get_current_user(token)
+    require_admin(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -1852,7 +1901,7 @@ async def get_loan_stage_deals(label: str = Query(...), token: str = Query(None)
     """The actual deals behind one Dashboard Loan Pipeline bucket - reuses the exact same
     WHERE clause the aggregate count/value above is computed from (_loan_stage_where), so the
     drill-down can never disagree with the number already shown on the card."""
-    get_current_user(token)
+    require_admin(token)
 
     where_clause, params = _loan_stage_where(label)
     if where_clause is None:
@@ -1880,7 +1929,7 @@ async def get_loan_stage_deals(label: str = Query(...), token: str = Query(None)
 @app.get("/api/analytics/conversion-rate")
 async def get_conversion_rate(token: str = Query(None)):
     """Get lead to deal conversion rate"""
-    get_current_user(token)
+    require_admin(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -1902,7 +1951,7 @@ async def get_conversion_rate(token: str = Query(None)):
 @app.get("/api/analytics/sales")
 async def get_sales_analytics(token: str = Query(None)):
     """Get sales report metrics, computed from real deals/leads data"""
-    get_current_user(token)
+    require_admin(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -7908,7 +7957,7 @@ async def get_team_analytics(token: str = Query(None)):
     owning login and a newer explicit assignment. Every member now gets a real (possibly
     zero) count rather than the old None-for-unlinked-members placeholder, because assignment
     genuinely makes every member measurable now."""
-    get_current_user(token)
+    require_admin(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -8002,7 +8051,7 @@ async def get_team_member_companies(team_member_id: int, token: str = Query(None
 @app.get("/api/analytics/contacts")
 async def get_contacts_analytics(token: str = Query(None)):
     """Get contacts report metrics, computed from real contacts/notes data"""
-    get_current_user(token)
+    require_admin(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -8045,7 +8094,7 @@ async def get_contacts_analytics(token: str = Query(None)):
 @app.get("/api/analytics/calls")
 async def get_calls_analytics(token: str = Query(None)):
     """Get calls report metrics, computed from real calls data"""
-    get_current_user(token)
+    require_admin(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -8085,7 +8134,7 @@ async def get_lead_source_roi(token: str = Query(None)):
     real cost-adjusted ROI number can't be computed without fabricating a cost. leads.source is
     free text (not a fixed dropdown), so this groups by the exact string typed in - blank/null
     values are grouped together as "Not Specified" rather than dropped."""
-    get_current_user(token)
+    require_admin(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -8121,7 +8170,7 @@ async def get_calls_by_employee(token: str = Query(None)):
     """Per-employee call attempt/connect counts (today / this week / this month), computed
     from calls.team_member_id - the field an admin or team lead actually needs to answer
     'who called how many people today, and how many of those actually connected'."""
-    get_current_user(token)
+    require_admin(token)
 
     placeholders = ",".join("?" for _ in _UNCONNECTED_OUTCOMES)
 

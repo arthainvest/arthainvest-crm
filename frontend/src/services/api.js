@@ -160,6 +160,18 @@ export const updateDealProcessStatus = async (token, dealId, processStatus) => {
   return response.data;
 };
 
+export const getDealDocuments = async (token, dealId) => {
+  const response = await api.get(`/api/deals/${dealId}/documents?token=${token}`);
+  return response.data;
+};
+
+export const updateDealDocument = async (token, dealId, documentName, collected) => {
+  const response = await api.put(`/api/deals/${dealId}/documents?token=${token}`, {
+    document_name: documentName, collected
+  });
+  return response.data;
+};
+
 // Analytics
 export const getDashboardAnalytics = async (token) => {
   const response = await api.get(`/api/analytics/dashboard?token=${token}`);

@@ -1321,6 +1321,18 @@ class ContactDocumentResponse(BaseModel):
     uploaded_by_name: Optional[str] = None
     created_at: datetime
 
+class DealDocumentResponse(BaseModel):
+    id: int
+    deal_id: int
+    document_name: str
+    collected: bool
+    collected_at: Optional[datetime] = None
+    updated_at: datetime
+
+class DealDocumentUpdate(BaseModel):
+    document_name: str
+    collected: bool
+
 # Body for POST /api/public/leads. Deliberately its own schema (not LeadCreate) with tight
 # length limits on every field - this endpoint is authenticated by API key rather than a JWT,
 # reachable by any external system that has a key, so it must not become a way to write

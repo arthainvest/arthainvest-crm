@@ -840,6 +840,23 @@ def init_db():
         _add_column_if_missing(cursor, "contact_documents", "file_data", "LONGBLOB")
         _add_column_if_missing(cursor, "contact_documents", "content_type", "VARCHAR(100)")
 
+        # Loan document checklist per deal - see database_sqlite.py's matching table for the
+        # full rationale (replaces the Pipeline page's old "DigiLocker" modal, which only
+        # toggled checkboxes in local React state with nothing ever saved).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS deal_documents (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                deal_id INT NOT NULL,
+                document_name VARCHAR(255) NOT NULL,
+                collected TINYINT(1) NOT NULL DEFAULT 0,
+                collected_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_deal_documents_deal_doc (deal_id, document_name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_deal_documents_deal_id", "deal_documents", "deal_id")
+
         # Automations: a simple linear drip sequence. automations is the flow itself,
         # automation_steps are its ordered messages (each fires wait_minutes after the
         # previous one), and automation_enrollments tracks each lead/contact's live progress
