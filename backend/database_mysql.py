@@ -141,29 +141,6 @@ def _ensure_integrations_catalog(cursor, conn):
     conn.commit()
 
 
-def _ensure_team_roster(cursor, conn):
-    """Same pattern as _ensure_integrations_catalog - runs on every startup so it appears
-    without duplicating on restart."""
-    roster = [
-        ('Artha', 'admin', 'artha@arthainvest.com', '+91-9876500001', 1),
-        ('Team Admin', 'admin', 'admin2@arthainvest.com', '+91-9876500002', None),
-        ('Rajesh Kumar', 'team_lead', 'rajesh.kumar@arthainvest.com', '+91-9876500003', None),
-        ('Suresh Iyer', 'location_head', 'suresh.iyer@arthainvest.com', '+91-9876500004', None),
-        ('Arjun Sharma', 'employee', 'arjun.sharma@arthainvest.com', '+91-9876500005', None),
-        ('Priya Singh', 'employee', 'priya.singh@arthainvest.com', '+91-9876500006', None),
-        ('Vikram Patel', 'employee', 'vikram.patel@arthainvest.com', '+91-9876500007', None),
-    ]
-    cursor.execute("SELECT name FROM team_members")
-    existing = {row['name'] for row in cursor.fetchall()}
-    for name, role, email, phone, user_id in roster:
-        if name not in existing:
-            cursor.execute(
-                "INSERT INTO team_members (name, role, email, phone, user_id) VALUES (%s, %s, %s, %s, %s)",
-                (name, role, email, phone, user_id)
-            )
-    conn.commit()
-
-
 def init_db():
     """Create the schema if it doesn't exist yet, then seed demo data only on a genuinely
     empty database (first run). Fresh schema (not an ALTER-retrofit chain like
@@ -908,7 +885,6 @@ def init_db():
         conn.commit()
 
         _ensure_integrations_catalog(cursor, conn)
-        _ensure_team_roster(cursor, conn)
 
         cursor.execute("SELECT COUNT(*) as count FROM users")
         if cursor.fetchone()['count'] > 0:
