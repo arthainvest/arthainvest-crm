@@ -40,8 +40,28 @@ Status labels used below match the master directive's own taxonomy (§73), used 
 - Profiled but not yet edited: 14 more skills, full profile table in `JARVIS_CONTEXT_INTEGRATION.md`.
 - The three scenarios the redirect specifically demanded ("prepare for meeting with Raj," "what should I do next," "send Raj the document") are each individually tested end to end, 3/3 passing (`jarvis/tests/test_phase35_scenarios.py`) — including proving, not just asserting, that context resolution and the ability to act are structurally separate.
 
-### 1.6 What Part 1 does NOT include, stated plainly
-Nothing in Part 1 constitutes a Mission system, a Planner, a Worker runtime, a Supervisor, a Verifier, a Recovery Engine, an Intent Lock, an Approval Gate, an Action Firewall, a Model Router, a Connector Fabric, MCP integration, browser/computer-use capability, proactive intelligence, or a Family/Household OS. `superpower` is a fixed sequence of skill calls, not a planner. `jarvis` is an intent router, not a mission orchestrator. This is the honest baseline the rest of this document measures against.
+### 1.6 Mission + MissionStep durable state model (Stage B) — ✅ INTEGRATED AND TESTED, 2026-09-07
+`jarvis/missions.py`: the durable substrate specified in `JARVIS_AGENT_RUNTIME_SPEC.md` Sections 10-12, scoped deliberately narrow per explicit instruction ("do not jump ahead into Planner, Workers, Supervisor, Verifier, Recovery... those come after the durable mission foundation"). Same isolation model as memory.py/context.py (stdlib-only, own tables in `jarvis/jarvis.db`).
+
+**Implemented and tested (16/16, `jarvis/tests/test_missions.py`):**
+- Full Mission (16 statuses) and MissionStep (11 statuses) state machines with an explicit legal-transition adjacency map; terminal states verified to never re-enter an active state.
+- Persistence: both entities durable in SQLite, round-trip tested.
+- Concurrency protection: optimistic locking via a `version` column — every UPDATE's `WHERE` clause is scoped to the version read moments earlier, so a lost-update race raises `StateConflictError` (`category=CONCURRENCY, retryable=true`) rather than silently overwriting.
+- Idempotent transitions: an `idempotency_key` replay returns the cached prior result rather than re-applying — tested by replaying the same key twice and confirming the version doesn't move on the replay.
+- Cancellation: available from any non-terminal state, itself idempotent (cancelling twice is a no-op), rejected against an already-completed/failed mission.
+- Canonical errors: `MissionNotFoundError` / `StepNotFoundError` / `InvalidStateTransitionError` / `StateConflictError` / `MissionValidationError`, each carrying a structured `ErrorObject` (code/category/severity/retryable/user_action_required/mission_id/step_id/timestamp) per spec Sections 13-15, not a bare string.
+- Restart recovery: `reconcile_interrupted()` — the specific, tested guarantee that a mission/step caught mid-`EXECUTING`/`RUNNING` when the process restarts lands in `BLOCKED` with `verification_state = UNKNOWN`, never silently assumed `COMPLETED` or `FAILED` (per spec Section 12/83's "unknown, not false" principle).
+- User isolation: every mission/step scoped to a `user_id`; another user's mission is indistinguishable from a nonexistent one (`MissionNotFoundError` either way, never leaking existence).
+- Dependency-aware step readiness: `advance_ready_steps()` promotes `PENDING` steps to `READY` once all their declared dependencies have `SUCCEEDED` — read-only in the sense that it decides nothing about *running* anything (no Worker exists yet), it only makes dependency-satisfied work visible.
+
+**Verified structurally, not just by policy:** `jarvis/tests/test_jarvis_cannot_touch_transactions.py` already globs all of `jarvis/*.py`, so `missions.py` was automatically covered by both the zero-network-import and zero-prohibited-pattern checks without any test edit — still 2/2 passing.
+
+**Deliberately NOT in Stage B** (each is a later stage, per the explicit "do not jump ahead" instruction): no code decides *when* a `READY` step should start running (Supervisor, Stage E), no code retries a `FAILED` step (Recovery Engine, Stage G — there is no `FAILED -> READY` edge in the state machine on purpose), no code actually executes a step against a real tool (Worker Runtime, Stage D), no code assembles a Plan from a goal (Planner, Stage C).
+
+*Done when* (this stage's own framing, met): a Mission can be created, driven through a full legal lifecycle to `COMPLETED`, survive a simulated mid-flight process restart without its outcome being silently guessed at, and two different users' missions are provably invisible to each other — all exercised by real, executed tests, not just written.
+
+### 1.7 What Part 1 does NOT include, stated plainly
+Nothing in Part 1 constitutes a Planner, a Worker runtime, a Supervisor, a Verifier, a Recovery Engine, an Intent Lock, an Approval Gate, an Action Firewall, a Model Router, a Connector Fabric, MCP integration, browser/computer-use capability, proactive intelligence, or a Family/Household OS. `superpower` is a fixed sequence of skill calls, not a planner. `jarvis` is an intent router, not a mission orchestrator. `missions.py` (§1.6) is a state ledger — nothing writes to it yet except direct API calls a human or test makes; nothing reads it to decide what to actually do next. This is the honest baseline the rest of this document measures against.
 
 ---
 
@@ -52,7 +72,7 @@ Organized by the master directive's own 20-stage order (§120–127), cross-refe
 | Stage | What it builds | Status | Rough scale |
 |---|---|---|---|
 | A | Repository audit | ✅ done (`JARVIS_AGENT_RUNTIME_ASSESSMENT.md`, reconciled in §5 below) | — |
-| B | Mission + MissionStep state model | NOT IMPLEMENTED | small–medium (schema, transitions, persistence, tests) |
+| B | Mission + MissionStep state model | ✅ **done 2026-09-07** — `jarvis/missions.py`, 16/16 tests passing, see §1.6 | small–medium (schema, transitions, persistence, tests) |
 | C | Planner | NOT IMPLEMENTED | medium |
 | D | Worker Runtime (worker interface, first real workers) | NOT IMPLEMENTED | medium–large |
 | E | Supervisor | NOT IMPLEMENTED | medium |
