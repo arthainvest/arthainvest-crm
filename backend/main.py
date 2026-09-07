@@ -52,7 +52,7 @@ from schemas import (
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskCompanyAssign, TaskResponse,
     MeetingCreate, MeetingUpdate, MeetingCompanyAssign, MeetingDealAssign, MeetingCallAssign, MeetingTaskAssign, MeetingQuotationAssign, MeetingResponse,
-    CallCreate, CallAssign, CallContactAssign, CallCompanyAssign, CallResponse, EmployeeCallStats,
+    CallCreate, CallAssign, CallContactAssign, CallCompanyAssign, CallResponse, CallCompleteRequest, EmployeeCallStats,
     CommunicationLogResponse,
     DialRequest, DialResponse, AISummaryResponse,
     DetectDateRequest, DetectDateResponse,
@@ -2863,12 +2863,16 @@ async def update_settings(settings: SettingsUpdate, token: str = Query(None)):
             values = [v for _, v in updates] + [current_user['user_id']]
             cursor.execute(f"UPDATE user_settings SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", values)
 
-        # A user's own Profile Information (name/email/phone) is the authoritative source for
+        # A user's own Profile Information (name/email) is still the authoritative source for
         # what to call them - if this login is linked to a team roster entry
-        # (team_members.user_id), keep that entry's name/email/phone in sync automatically,
-        # so Reports/Calls/Pipeline assignment dropdowns always show the current name without
-        # an admin having to separately edit the Team page.
-        roster_updates = [(k, v) for k, v in [('name', settings.full_name), ('email', settings.email), ('phone', settings.phone)] if v is not None]
+        # (team_members.user_id), keep that entry's name/email in sync automatically, so
+        # Reports/Calls/Pipeline assignment dropdowns always show the current name without an
+        # admin having to separately edit the Team page. `phone` is deliberately excluded here
+        # since Phase 1 makes team_members.phone the canonical calling number, edited only via
+        # the Team page's Calling Profile - letting a Settings save silently overwrite it would
+        # undermine that (see dial_call's team_members.phone-first, user_settings.phone-fallback
+        # resolution).
+        roster_updates = [(k, v) for k, v in [('name', settings.full_name), ('email', settings.email)] if v is not None]
         if roster_updates:
             roster_set_clause = ', '.join(f"{k} = ?" for k, _ in roster_updates)
             roster_values = [v for _, v in roster_updates] + [current_user['user_id']]
@@ -4259,6 +4263,9 @@ async def get_calls(token: str = Query(None), team_member_id: int = Query(None))
 
     with get_db() as conn:
         cursor = conn.cursor()
+        _sweep_abandoned_calls(cursor)
+        conn.commit()
+
         query = """
             SELECT calls.*, team_members.name as team_member_name,
                    leads.name as lead_name, contacts.name as contact_name,
@@ -4328,6 +4335,137 @@ async def assign_call(call_id: int, assignment: CallAssign, token: str = Query(N
         conn.commit()
 
         return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+
+_CALL_STATUS_TO_OUTCOME = {
+    "no_answer": "No Answer",
+    "busy": "Not Connected",
+    "failed": "Not Connected",
+    "cancelled": "Not Connected",
+    "unknown": None,
+}
+
+@app.put("/api/calls/{call_id}/complete", response_model=CallResponse)
+async def complete_call(call_id: int, payload: CallCompleteRequest, token: str = Query(None)):
+    """Finishes the click-to-call flow: fills in what happened on the SAME row dial_call
+    already created as status='initiated', rather than creating a second call record for one
+    dial attempt. For a non-'completed' status, outcome is auto-set from
+    _CALL_STATUS_TO_OUTCOME so Calls-by-Employee's Attempted/Connected counts stay meaningful
+    without the caller having to know that vocabulary; 'completed' calls use whatever
+    qualitative outcome (Interested/Not Interested/etc.) the rep picked."""
+    get_current_user(token)
+
+    valid_statuses = {"completed", "no_answer", "busy", "failed", "cancelled", "unknown"}
+    if payload.status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"status must be one of {sorted(valid_statuses)}")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        outcome = payload.outcome if payload.status == "completed" else _CALL_STATUS_TO_OUTCOME[payload.status]
+
+        cursor.execute(
+            """
+            UPDATE calls
+            SET status = ?, duration_seconds = ?, outcome = ?, notes = ?, follow_up_date = ?
+            WHERE id = ?
+            """,
+            (payload.status, payload.duration_seconds, outcome, payload.notes, payload.follow_up_date, call_id)
+        )
+        conn.commit()
+
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+
+# Audio only, matching what a phone's own call-recording app typically produces - a video or
+# document upload here would just be a mislabeled document upload with extra steps.
+_ALLOWED_RECORDING_CONTENT_TYPES = {
+    "audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/wav", "audio/wave",
+    "audio/x-wav", "audio/amr", "audio/3gpp", "audio/ogg", "audio/webm",
+}
+_MAX_RECORDING_BYTES = 20 * 1024 * 1024  # 20MB - well under a MySQL LONGBLOB's real limit,
+                                          # generous for a compressed call recording of any
+                                          # realistic length, and small enough to not strain
+                                          # Render's free-tier request/response handling.
+
+@app.post("/api/calls/{call_id}/recording", response_model=CallResponse)
+async def upload_call_recording(call_id: int, token: str = Query(None), file: UploadFile = File(...)):
+    """Manual recording upload for a call the rep recorded on their own phone/app - this is
+    NOT automatic recording of a plain tel: call, which the server has no way to capture.
+    Stored as a DB blob (same pattern as contact_documents - Render's free tier has no
+    persistent disk) and served back only through get_call_recording, which requires auth and
+    never exposes a raw path."""
+    current_user = get_current_user(token)
+
+    if file.content_type not in _ALLOWED_RECORDING_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}. Upload an audio recording (mp3, m4a, wav, amr, ogg).")
+
+    data = await file.read()
+    if len(data) > _MAX_RECORDING_BYTES:
+        raise HTTPException(status_code=400, detail=f"Recording is too large ({len(data) // (1024*1024)}MB) - the limit is {_MAX_RECORDING_BYTES // (1024*1024)}MB.")
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM calls WHERE id = ?", (call_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        cursor.execute(
+            f"""
+            UPDATE calls
+            SET recording_source = 'manual', recording_file_name = ?, recording_content_type = ?,
+                recording_file_data = ?, recording_file_size = ?, recording_uploaded_by = ?,
+                recording_uploaded_at = {db_compat.sql_current_timestamp()}
+            WHERE id = ?
+            """,
+            (file.filename, file.content_type, data, len(data), current_user['user_id'], call_id)
+        )
+        conn.commit()
+
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+
+@app.get("/api/calls/{call_id}/recording")
+async def get_call_recording(call_id: int, token: str = Query(None)):
+    """Streams a manually-uploaded recording's bytes back - auth-gated like every other
+    protected route here, never a public/static path. Logging every access (not just upload)
+    is the audit trail the recording-privacy requirement calls for."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT recording_file_name, recording_file_data, recording_content_type FROM calls WHERE id = ?",
+            (call_id,)
+        )
+        row = cursor.fetchone()
+
+    if not row or row['recording_file_data'] is None:
+        raise HTTPException(status_code=404, detail="No recording uploaded for this call")
+
+    print(f"[audit] call recording {call_id} downloaded by user_id={current_user['user_id']}")
+    file_data = bytes(row['recording_file_data'])
+    return Response(
+        content=file_data,
+        media_type=row['recording_content_type'] or 'application/octet-stream',
+        headers={"Content-Disposition": f'inline; filename="{row["recording_file_name"]}"'}
+    )
+
+def _sweep_abandoned_calls(cursor):
+    """A call left at status='initiated' for more than 30 minutes was never completed - the
+    rep got interrupted, closed the tab, whatever. Marked abandoned here as a lazy, on-read
+    sweep (there's no background scheduler running in this deployment - see
+    automations_scheduler) rather than left accumulating forever as fake-looking
+    "in progress" calls. Caller is responsible for committing."""
+    cursor.execute(
+        f"""
+        UPDATE calls SET status = 'abandoned', outcome = COALESCE(outcome, 'Unknown')
+        WHERE status = 'initiated' AND created_at < {db_compat.sql_now_offset('?')}
+        """,
+        ('-1800',)
+    )
 
 @app.delete("/api/calls/{call_id}")
 async def delete_call(call_id: int, token: str = Query(None)):
@@ -4439,14 +4577,32 @@ async def get_company_calls(company_id: int, token: str = Query(None)):
 
 @app.post("/api/calls/dial", response_model=DialResponse)
 async def dial_call(dial: DialRequest, token: str = Query(None)):
-    """Click-to-call: rings the agent's own phone first, then bridges the call to the
-    customer's number once the agent answers. Tries Exotel first (EXOTEL_SID/EXOTEL_API_KEY/
-    EXOTEL_API_TOKEN/EXOTEL_CALLER_ID - the Indian multi-agent dialer with call recording
-    built in, see _dial_via_exotel), falling back to Twilio (TWILIO_ACCOUNT_SID/AUTH_TOKEN/
-    FROM_NUMBER) if only that's configured. Either way requires the agent's own phone number
-    saved in Settings first - without any provider configured, returns configured=False so
-    the frontend can fall back to a plain tel: link instead of erroring."""
+    """Click-to-call. Always creates a `status='initiated'` calls row first (see
+    _auto_log_dial), regardless of whether a real telephony provider is configured - the
+    frontend uses the returned call_id to complete the SAME record once the rep is done,
+    whether that means a real Exotel/Twilio-bridged call or a plain tel: link. Tries Exotel
+    first (EXOTEL_SID/EXOTEL_API_KEY/EXOTEL_API_TOKEN/EXOTEL_CALLER_ID - the Indian
+    multi-agent dialer with call recording built in, see _dial_via_exotel), falling back to
+    Twilio (TWILIO_ACCOUNT_SID/AUTH_TOKEN/FROM_NUMBER) if only that's configured. Either way
+    requires the agent's own phone number - team_members.phone (Phase 1's canonical calling
+    number) if this login is linked to a roster entry, else user_settings.phone as a legacy
+    fallback (see database_mysql.py's team_members columns for the migration plan)."""
     current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, phone, calling_enabled, active FROM team_members WHERE user_id = ?",
+            (current_user['user_id'],)
+        )
+        member = cursor.fetchone()
+
+    team_member_id = member['id'] if member else None
+    # A login not linked to any roster entry (e.g. the seed testuser) has no calling profile
+    # to enforce - only block when a profile exists and explicitly disables calling.
+    if member and (not member['calling_enabled'] or not member['active']):
+        reason = "Calling is disabled" if not member['calling_enabled'] else "This team member is inactive"
+        return DialResponse(configured=False, message=f"{reason} - see the Team page's Calling Profile.")
 
     exotel_sid = os.getenv("EXOTEL_SID")
     exotel_api_key = os.getenv("EXOTEL_API_KEY")
@@ -4460,23 +4616,32 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
     twilio_configured = bool(account_sid and auth_token and from_number)
 
     if not (exotel_configured or twilio_configured):
-        return DialResponse(configured=False, message="No calling provider (Exotel or Twilio) is configured on this server.")
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT phone FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
-        row = cursor.fetchone()
-
-    provider_name = "Exotel" if exotel_configured else "Twilio"
-    agent_number = row['phone'] if row else None
-    if not agent_number:
+        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
         return DialResponse(
             configured=False,
-            message=f"Add your own phone number in Settings first - {provider_name} calls you there, then connects you to the customer."
+            message="No calling provider (Exotel or Twilio) is configured on this server.",
+            call_id=call_id
+        )
+
+    agent_number = (member['phone'] if member else None) or None
+    if not agent_number:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT phone FROM user_settings WHERE user_id = ?", (current_user['user_id'],))
+            legacy = cursor.fetchone()
+        agent_number = legacy['phone'] if legacy else None
+
+    provider_name = "Exotel" if exotel_configured else "Twilio"
+    if not agent_number:
+        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
+        return DialResponse(
+            configured=False,
+            message=f"Add your personal calling number in the Team page first - {provider_name} calls you there, then connects you to the customer.",
+            call_id=call_id
         )
 
     if exotel_configured:
-        return _dial_via_exotel(dial, current_user['user_id'], agent_number, exotel_sid, exotel_api_key, exotel_api_token, exotel_caller_id)
+        return _dial_via_exotel(dial, current_user['user_id'], agent_number, exotel_sid, exotel_api_key, exotel_api_token, exotel_caller_id, team_member_id)
 
     try:
         from twilio.rest import Client
@@ -4488,14 +4653,16 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
             from_=from_number,
             twiml=f'<Response><Dial callerId="{from_number}">{dial.to}</Dial></Response>'
         )
-        call_id = _auto_log_dial(dial, current_user['user_id'])
+        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
         return DialResponse(configured=True, message=f"Calling you at {agent_number} now.", call_sid=call.sid, call_id=call_id)
     except TwilioRestException as e:
-        return DialResponse(configured=True, message=f"Twilio couldn't place the call: {e.msg}")
+        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
+        return DialResponse(configured=True, message=f"Twilio couldn't place the call: {e.msg}", call_id=call_id)
     except Exception as e:
-        return DialResponse(configured=True, message=f"Call failed: {str(e)}")
+        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
+        return DialResponse(configured=True, message=f"Call failed: {str(e)}", call_id=call_id)
 
-def _dial_via_exotel(dial, user_id, agent_number, sid, api_key, api_token, caller_id):
+def _dial_via_exotel(dial, user_id, agent_number, sid, api_key, api_token, caller_id, team_member_id=None):
     """Exotel's 'Connect two numbers' API - same ring-agent-then-bridge shape as the Twilio
     path above, but with call recording built into the platform and priced for a multi-agent
     Indian team instead of a per-Twilio-number setup. CustomField carries our own calls.id
@@ -4506,7 +4673,7 @@ def _dial_via_exotel(dial, user_id, agent_number, sid, api_key, api_token, calle
     legs back to the caller's own record."""
     import requests
 
-    call_id = _auto_log_dial(dial, user_id)
+    call_id = _auto_log_dial(dial, user_id, team_member_id)
     subdomain = os.getenv("EXOTEL_SUBDOMAIN", "api.exotel.com")
     callback_base = os.getenv("EXOTEL_STATUS_CALLBACK_BASE_URL")
 
@@ -4592,12 +4759,13 @@ async def exotel_status_webhook(request: Request):
 
     return {"ok": True}
 
-def _auto_log_dial(dial, user_id):
-    """A click-to-call that actually rang counts as a real Attempted call even though its
-    outcome/duration aren't known yet (there's no Twilio status webhook wired up to fill
-    those in later) - logging it with outcome=None still lets Calls-by-Employee's Attempted
-    count reflect what actually happened, since Connected only counts calls with a non-empty
-    outcome. Without this, every click-to-call dial would be invisible to that report."""
+def _auto_log_dial(dial, user_id, team_member_id=None):
+    """Every click-to-call creates a `status='initiated'` row immediately - before the rep even
+    talks to the customer, and regardless of whether a real telephony provider bridges the
+    call or the frontend just falls back to a plain tel: link. complete_call fills in what
+    actually happened on this SAME row later. Logging unconditionally (not just when a
+    provider is configured) is what makes Calls-by-Employee's Attempted count, and the
+    Activity timeline, reflect every real dial attempt."""
     with get_db() as conn:
         cursor = conn.cursor()
 
@@ -4613,14 +4781,15 @@ def _auto_log_dial(dial, user_id):
             if row:
                 name = row['name']
 
-        cursor.execute("SELECT id FROM team_members WHERE user_id = ?", (user_id,))
-        member_row = cursor.fetchone()
-        team_member_id = member_row['id'] if member_row else None
+        if team_member_id is None:
+            cursor.execute("SELECT id FROM team_members WHERE user_id = ?", (user_id,))
+            member_row = cursor.fetchone()
+            team_member_id = member_row['id'] if member_row else None
 
         cursor.execute(
             f"""
-            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id)
-            VALUES (?, ?, 0, 'Outbound', NULL, {db_compat.sql_today()}, ?, ?, ?, ?)
+            INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id, status)
+            VALUES (?, ?, 0, 'Outbound', NULL, {db_compat.sql_today()}, ?, ?, ?, ?, 'initiated')
             """,
             (name, dial.to, user_id, team_member_id, dial.lead_id, dial.contact_id)
         )
@@ -7947,6 +8116,17 @@ async def voice_agent_webhook(payload: dict):
 
 TEAM_ROLE_ORDER = {"admin": 0, "team_lead": 1, "location_head": 2, "business_manager": 3, "employee": 4}
 
+def _team_member_row_to_dict(row):
+    """calling_enabled/recording_enabled/active are stored as 0/1 (MySQL TINYINT / SQLite
+    INTEGER) - cast to real bool here so TeamMemberResponse validates cleanly, same pattern as
+    the integrations catalog's `connected` field."""
+    m = dict(row)
+    m['calling_enabled'] = bool(m.get('calling_enabled', 1))
+    m['recording_enabled'] = bool(m.get('recording_enabled', 0))
+    m['active'] = bool(m.get('active', 1))
+    m['phone_verification_status'] = m.get('phone_verification_status') or 'unverified'
+    return m
+
 @app.get("/api/team", response_model=list[TeamMemberResponse])
 async def get_team(token: str = Query(None)):
     """List all team members, grouped by role hierarchy then name"""
@@ -7955,7 +8135,7 @@ async def get_team(token: str = Query(None)):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM team_members")
-        members = [dict(row) for row in cursor.fetchall()]
+        members = [_team_member_row_to_dict(row) for row in cursor.fetchall()]
 
     members.sort(key=lambda m: (TEAM_ROLE_ORDER.get(m['role'], 99), m['name']))
     return members
@@ -7975,7 +8155,7 @@ async def get_my_team_member(token: str = Query(None)):
         cursor.execute("SELECT * FROM team_members WHERE user_id = ?", (current_user['user_id'],))
         row = cursor.fetchone()
 
-    return dict(row) if row else None
+    return _team_member_row_to_dict(row) if row else None
 
 @app.post("/api/team", response_model=TeamMemberResponse)
 async def create_team_member(member: TeamMemberCreate, token: str = Query(None)):
@@ -7990,17 +8170,27 @@ async def create_team_member(member: TeamMemberCreate, token: str = Query(None))
         )
         conn.commit()
         cursor.execute("SELECT * FROM team_members WHERE id = ?", (cursor.lastrowid,))
-        return dict(cursor.fetchone())
+        return _team_member_row_to_dict(cursor.fetchone())
 
 @app.put("/api/team/{member_id}", response_model=TeamMemberResponse)
 async def update_team_member(member_id: int, member: TeamMemberUpdate, token: str = Query(None)):
-    """Update a team member's details - admin only"""
+    """Update a team member's details, including the Calling Profile (calling_enabled/
+    recording_enabled/active) - admin only. Setting `phone` here re-marks the number
+    unverified, since a changed number hasn't been confirmed to actually belong to this
+    person yet - see verify_team_member_phone."""
     require_admin(token)
 
     field_map = {
-        'name': member.name, 'role': member.role, 'email': member.email, 'phone': member.phone
+        'name': member.name, 'role': member.role, 'email': member.email, 'phone': member.phone,
+        'user_id': member.user_id,
+        'calling_enabled': None if member.calling_enabled is None else int(member.calling_enabled),
+        'recording_enabled': None if member.recording_enabled is None else int(member.recording_enabled),
+        'active': None if member.active is None else int(member.active),
     }
     updates = [(k, v) for k, v in field_map.items() if v is not None]
+    if member.phone is not None:
+        updates.append(('phone_verification_status', 'unverified'))
+        updates.append(('phone_verified_at', None))
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -8015,7 +8205,33 @@ async def update_team_member(member_id: int, member: TeamMemberUpdate, token: st
             conn.commit()
 
         cursor.execute("SELECT * FROM team_members WHERE id = ?", (member_id,))
-        return dict(cursor.fetchone())
+        return _team_member_row_to_dict(cursor.fetchone())
+
+@app.put("/api/team/{member_id}/verify-phone", response_model=TeamMemberResponse)
+async def verify_team_member_phone(member_id: int, token: str = Query(None)):
+    """Marks a team member's calling number as manually verified (e.g. the admin actually
+    rang it and confirmed the right person answered) - there's no automated OTP/verification
+    provider wired up in Phase 1, so this is an explicit admin action, not a real SMS/call
+    verification flow."""
+    require_admin(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT phone FROM team_members WHERE id = ?", (member_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Team member not found")
+        if not row['phone']:
+            raise HTTPException(status_code=400, detail="Add a personal calling number before verifying it.")
+
+        cursor.execute(
+            f"UPDATE team_members SET phone_verification_status = 'verified', phone_verified_at = {db_compat.sql_current_timestamp()} WHERE id = ?",
+            (member_id,)
+        )
+        conn.commit()
+
+        cursor.execute("SELECT * FROM team_members WHERE id = ?", (member_id,))
+        return _team_member_row_to_dict(cursor.fetchone())
 
 @app.delete("/api/team/{member_id}")
 async def delete_team_member(member_id: int, token: str = Query(None)):

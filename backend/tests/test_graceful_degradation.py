@@ -162,18 +162,21 @@ def test_voice_agent_call_unconfigured(auth_client):
 
 def test_dial_requires_agent_phone_number(auth_client):
     """Even with Twilio env vars set, dialing must fail gracefully (not crash) if the agent
-    hasn't saved their own phone number in Settings yet."""
+    has no personal calling number anywhere - neither team_members.phone (Phase 1's canonical
+    source) nor user_settings.phone (the legacy fallback)."""
     import os
     os.environ["TWILIO_ACCOUNT_SID"] = "fake_sid"
     os.environ["TWILIO_AUTH_TOKEN"] = "fake_token"
     os.environ["TWILIO_FROM_NUMBER"] = "+15551234567"
     try:
+        artha_id = next(m for m in auth_client.get("/api/team").json() if m["name"] == "Artha")["id"]
+        auth_client.put(f"/api/team/{artha_id}", json={"phone": ""})
         auth_client.put("/api/settings", json={"phone": ""})
         resp = auth_client.post("/api/calls/dial", json={"to": "+911234567890"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["configured"] is False
-        assert "settings" in data["message"].lower()
+        assert "team page" in data["message"].lower()
     finally:
         for k in ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]:
             os.environ.pop(k, None)

@@ -550,6 +550,16 @@ class CallCreate(BaseModel):
 class CallAssign(BaseModel):
     team_member_id: Optional[int] = None  # None unassigns the call
 
+# Click-to-call flow (Phase 1): dial_call creates a `status='initiated'` row immediately,
+# before the rep even talks to the customer; complete_call fills in what happened, on the
+# SAME row - never a second call record for one dial attempt.
+class CallCompleteRequest(BaseModel):
+    status: str  # completed, no_answer, busy, failed, cancelled, unknown
+    duration_seconds: int = 0
+    outcome: Optional[str] = None
+    notes: Optional[str] = None
+    follow_up_date: Optional[str] = None
+
 class CallResponse(BaseModel):
     id: int
     name: str
@@ -569,6 +579,15 @@ class CallResponse(BaseModel):
     company_id: Optional[int] = None
     company_name: Optional[str] = None
     recording_url: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    follow_up_date: Optional[date] = None
+    recording_source: Optional[str] = None
+    recording_file_name: Optional[str] = None
+    recording_file_size: Optional[int] = None
+    recording_uploaded_at: Optional[datetime] = None
+    transcript: Optional[str] = None
+    ai_summary: Optional[str] = None
 
 # Communication Log (Emails/WhatsApp/SMS actually sent - "Emails"/"WhatsApp" tabs alongside
 # Calls, matching how Kylas groups Call Logs/Emails/WhatsApp under one nav item)
@@ -899,13 +918,17 @@ class TeamMemberCreate(BaseModel):
     name: str
     role: str  # admin, team_lead, location_head, employee
     email: Optional[str] = None
-    phone: Optional[str] = None
+    phone: Optional[str] = None  # canonical personal calling number (Phase 1)
 
 class TeamMemberUpdate(BaseModel):
     name: Optional[str] = None
     role: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
+    calling_enabled: Optional[bool] = None
+    recording_enabled: Optional[bool] = None
+    active: Optional[bool] = None
+    user_id: Optional[int] = None  # links this roster entry to a login account (see get_my_team_member)
 
 class TeamMemberResponse(BaseModel):
     id: int
@@ -914,6 +937,12 @@ class TeamMemberResponse(BaseModel):
     email: Optional[str]
     phone: Optional[str]
     created_at: datetime
+    user_id: Optional[int] = None
+    calling_enabled: bool = True
+    recording_enabled: bool = False
+    active: bool = True
+    phone_verification_status: str = "unverified"
+    phone_verified_at: Optional[datetime] = None
 
 class TeamProductivityRow(BaseModel):
     id: int

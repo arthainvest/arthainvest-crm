@@ -215,6 +215,31 @@ def init_db():
         _add_column_if_missing(cursor, "calls", "recording_url", "TEXT")
         _add_column_if_missing(cursor, "calls", "provider_call_sid", "VARCHAR(255)")
 
+        # Phase 1 click-to-call flow (see main.py's dial_call/complete_call): `status` tracks
+        # the call's own lifecycle (initiated -> completed/abandoned), independent of `outcome`
+        # (the qualitative sales result - Interested/Not Interested/etc.) which only makes sense
+        # once a call is actually completed. notes/follow_up_date let a rep capture what
+        # happened and when to follow up, tied to the SAME call record rather than a separate
+        # task the two systems could drift out of sync on.
+        _add_column_if_missing(cursor, "calls", "status", "VARCHAR(20) DEFAULT 'completed'")
+        _add_column_if_missing(cursor, "calls", "notes", "TEXT")
+        _add_column_if_missing(cursor, "calls", "follow_up_date", "DATE")
+        # Manually-uploaded recording (distinct from recording_url, which the Exotel webhook
+        # sets to a provider-hosted URL) - stored as a DB blob like contact_documents, since
+        # Render's free tier has no persistent disk. `recording_source` distinguishes the two
+        # so the frontend never claims a plain tel: call was auto-recorded.
+        _add_column_if_missing(cursor, "calls", "recording_source", "VARCHAR(20)")
+        _add_column_if_missing(cursor, "calls", "recording_file_name", "VARCHAR(255)")
+        _add_column_if_missing(cursor, "calls", "recording_content_type", "VARCHAR(100)")
+        _add_column_if_missing(cursor, "calls", "recording_file_data", "LONGBLOB")
+        _add_column_if_missing(cursor, "calls", "recording_file_size", "INT")
+        _add_column_if_missing(cursor, "calls", "recording_uploaded_by", "INT")
+        _add_column_if_missing(cursor, "calls", "recording_uploaded_at", "DATETIME")
+        # Schema support for the future telephony pipeline (recording -> transcript -> AI
+        # summary) - unused until a real provider is connected, not claimed as working now.
+        _add_column_if_missing(cursor, "calls", "transcript", "TEXT")
+        _add_column_if_missing(cursor, "calls", "ai_summary", "TEXT")
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -496,6 +521,18 @@ def init_db():
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+
+        # Employee Calling Profile (Phase 1) - `phone` here becomes the canonical personal
+        # calling number, moving that role off user_settings.phone (kept temporarily as a
+        # fallback - see dial_call). calling_enabled/active let an admin turn a member's
+        # calling off without deleting their roster entry; recording_enabled records that the
+        # employee is AUTHORIZED/configured for call recording, not that a plain tel: call is
+        # actually being recorded (it can't be, from the server side).
+        _add_column_if_missing(cursor, "team_members", "calling_enabled", "TINYINT(1) DEFAULT 1")
+        _add_column_if_missing(cursor, "team_members", "recording_enabled", "TINYINT(1) DEFAULT 0")
+        _add_column_if_missing(cursor, "team_members", "active", "TINYINT(1) DEFAULT 1")
+        _add_column_if_missing(cursor, "team_members", "phone_verification_status", "VARCHAR(20) DEFAULT 'unverified'")
+        _add_column_if_missing(cursor, "team_members", "phone_verified_at", "DATETIME")
 
         # Bridges triggering a Priti (Vapi) voice call and Vapi's later end-of-call-report
         # webhook, which only carries the call's own id. Its PK isn't named `id` (the one

@@ -90,13 +90,16 @@ def test_auto_logged_dial_counts_as_attempted_not_connected(auth_client, monkeyp
     assert after["today_connected"] == baseline["today_connected"]  # no outcome yet - not counted as connected
 
 
-def test_dial_unconfigured_does_not_log_a_call(auth_client):
-    """No credentials set (conftest strips them) - nothing was actually attempted, so no call
-    should be logged, matching the same contract as _log_communication's configured=False path."""
+def test_dial_unconfigured_still_logs_an_initiated_call(auth_client):
+    """Phase 1: every click-to-call creates a status='initiated' row immediately, whether or
+    not a real telephony provider is configured - the frontend still needs a call_id to
+    complete once the rep is done with the plain tel: fallback."""
     resp = auth_client.post("/api/calls/dial", json={"to": "+911234567890"})
     assert resp.status_code == 200
     assert resp.json()["configured"] is False
-    assert resp.json()["call_id"] is None
+    call_id = resp.json()["call_id"]
+    assert call_id is not None
 
     calls = auth_client.get("/api/calls").json()
-    assert len(calls) == 4  # only the seeded demo calls, nothing new
+    logged = next(c for c in calls if c["id"] == call_id)
+    assert logged["status"] == "initiated"

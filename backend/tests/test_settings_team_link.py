@@ -23,6 +23,11 @@ def test_get_my_team_member_null_when_unlinked(client, auth_client):
 
 
 def test_saving_profile_settings_syncs_linked_roster_entry(auth_client):
+    """name/email still sync from Settings into the linked roster entry. phone deliberately
+    does NOT (Phase 1: team_members.phone is the canonical calling number, edited only via the
+    Team page's Calling Profile - a Settings save must never silently overwrite it)."""
+    original_phone = auth_client.get("/api/team/me").json()["phone"]
+
     resp = auth_client.put("/api/settings", json={
         "full_name": "Artha Updated", "email": "artha.new@arthainvest.com", "phone": "+919999911111"
     })
@@ -31,7 +36,7 @@ def test_saving_profile_settings_syncs_linked_roster_entry(auth_client):
     member = auth_client.get("/api/team/me").json()
     assert member["name"] == "Artha Updated"
     assert member["email"] == "artha.new@arthainvest.com"
-    assert member["phone"] == "+919999911111"
+    assert member["phone"] == original_phone
 
     # And the change is visible from the team roster list too, not just /team/me.
     roster = auth_client.get("/api/team").json()

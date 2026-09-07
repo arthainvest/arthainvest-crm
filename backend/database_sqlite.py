@@ -556,6 +556,20 @@ def init_db():
             # /api/webhooks/exotel/status handler) - Twilio-dialed calls leave both NULL.
             "ALTER TABLE calls ADD COLUMN recording_url TEXT",
             "ALTER TABLE calls ADD COLUMN provider_call_sid TEXT",
+            # Phase 1 click-to-call flow (see main.py's dial_call/complete_call) - see
+            # database_mysql.py's matching columns for the full rationale.
+            "ALTER TABLE calls ADD COLUMN status TEXT DEFAULT 'completed'",
+            "ALTER TABLE calls ADD COLUMN notes TEXT",
+            "ALTER TABLE calls ADD COLUMN follow_up_date DATE",
+            "ALTER TABLE calls ADD COLUMN recording_source TEXT",
+            "ALTER TABLE calls ADD COLUMN recording_file_name TEXT",
+            "ALTER TABLE calls ADD COLUMN recording_content_type TEXT",
+            "ALTER TABLE calls ADD COLUMN recording_file_data BLOB",
+            "ALTER TABLE calls ADD COLUMN recording_file_size INTEGER",
+            "ALTER TABLE calls ADD COLUMN recording_uploaded_by INTEGER",
+            "ALTER TABLE calls ADD COLUMN recording_uploaded_at TIMESTAMP",
+            "ALTER TABLE calls ADD COLUMN transcript TEXT",
+            "ALTER TABLE calls ADD COLUMN ai_summary TEXT",
         ]:
             try:
                 cursor.execute(ddl)
@@ -664,6 +678,20 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         """)
+
+        # Employee Calling Profile (Phase 1) - see database_mysql.py's matching columns for
+        # the full rationale.
+        for ddl in [
+            "ALTER TABLE team_members ADD COLUMN calling_enabled INTEGER DEFAULT 1",
+            "ALTER TABLE team_members ADD COLUMN recording_enabled INTEGER DEFAULT 0",
+            "ALTER TABLE team_members ADD COLUMN active INTEGER DEFAULT 1",
+            "ALTER TABLE team_members ADD COLUMN phone_verification_status TEXT DEFAULT 'unverified'",
+            "ALTER TABLE team_members ADD COLUMN phone_verified_at TIMESTAMP",
+        ]:
+            try:
+                cursor.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
 
         # Bridges the gap between triggering a Priti (Vapi) voice call and Vapi's later
         # end-of-call-report webhook, which only carries the call's own id - not which

@@ -1,12 +1,17 @@
 from unittest.mock import patch, MagicMock
 
 
+def _artha_id(auth_client):
+    return next(m for m in auth_client.get("/api/team").json() if m["name"] == "Artha")["id"]
+
+
 def _configure_exotel_dial(monkeypatch, auth_client):
     monkeypatch.setenv("EXOTEL_SID", "sid123")
     monkeypatch.setenv("EXOTEL_API_KEY", "key")
     monkeypatch.setenv("EXOTEL_API_TOKEN", "token")
     monkeypatch.setenv("EXOTEL_CALLER_ID", "0XXXXXXXXX")
-    auth_client.put("/api/settings", json={"phone": "+919999999999"})
+    # Phase 1: team_members.phone is the canonical calling number, not user_settings.phone.
+    auth_client.put(f"/api/team/{_artha_id(auth_client)}", json={"phone": "+919999999999"})
 
 
 def _fake_exotel_response(sid="CSid1234"):
@@ -63,13 +68,16 @@ def test_exotel_dial_requires_agent_phone_number(auth_client, monkeypatch):
     monkeypatch.setenv("EXOTEL_API_KEY", "key")
     monkeypatch.setenv("EXOTEL_API_TOKEN", "token")
     monkeypatch.setenv("EXOTEL_CALLER_ID", "0XXXXXXXXX")
+    # Clear both the canonical (team_members.phone) and legacy fallback (user_settings.phone)
+    # sources - neither set means dialing genuinely can't proceed.
+    auth_client.put(f"/api/team/{_artha_id(auth_client)}", json={"phone": ""})
     auth_client.put("/api/settings", json={"phone": ""})
 
     resp = auth_client.post("/api/calls/dial", json={"to": "+911234567890"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["configured"] is False
-    assert "settings" in data["message"].lower()
+    assert "team page" in data["message"].lower()
 
 
 def test_exotel_dial_api_error_is_reported_not_raised(auth_client, monkeypatch):
