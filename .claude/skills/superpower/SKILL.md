@@ -11,6 +11,10 @@ Runs the other CRM skills together as one morning routine, in the order that act
 
 Check whether the person is admin (Nimita/Yogesh/owner) or a regular employee (Samiksha/Amol/Chirag/etc.) - this changes which sub-skills get included, same access rule as `ceo-dashboard`/`sales-intelligence`/`credit-manager`. If unclear, ask.
 
+## Context Assembly (Phase 3.5)
+
+Before running the sequence, call `python jarvis/context.py --context business --mission "morning superpower run for <name>" --budget 25` (add `--entity contact:<id>` / `--mention <name>` for anything already known to be relevant - e.g. a specific stuck deal that came up recently). This surfaces any conflicting facts (per `jarvis-memory`) before the briefing starts, and any related entities (linked deals/tasks/documents) the individual sub-skills below might not think to cross-reference on their own. After the run, log it: `python jarvis/memory.py remember --type episodic --content "Superpower run for <name>: <one-line summary of what was flagged>" --source superpower --importance 2 --privacy business`.
+
 ## Sequence
 
 **For admin:**

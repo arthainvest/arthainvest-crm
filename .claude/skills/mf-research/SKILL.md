@@ -37,6 +37,10 @@ A source list, not a single tool - which site to check depends on what's actuall
 - **Fortune India 500**, **ClearTax** - company rankings and tax-and-finance context.
 - **Zerodha Pulse** - market news aggregator, good for a fast daily-news check.
 
+## Context Assembly (Phase 3.5)
+
+Only if this research is for a specific client conversation (not a general "analyse Reliance" ask): `python jarvis/context.py --context business --mission "fund research for <client>" --mention <client name> --budget 5`. Small budget on purpose - this skill's job is external market research, not a deep relationship pull; the point is only to check whether Jarvis already knows something relevant (a stated risk preference, a prior fund discussion) before building the rationale, not to replace the actual web research below.
+
 ## Workflow
 
 1. Identify what's actually being asked - a specific fund's rating (Value Research/Morningstar), a stock's fundamentals (Stock Screener/Trendlyne), a macro/sector question (Trading Economics/IBEF), or "what happened in the industry" (Cafemutual).

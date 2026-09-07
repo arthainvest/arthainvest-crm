@@ -21,6 +21,10 @@ No dedicated compliance table exists - this uses the CRM's existing Tasks featur
 - **DSA agreement renewal** - loan DSA agreements with individual lenders may have their own renewal/re-KYC cycle, distinct from ARN/POSP.
 - **Any CPD/continuing-education hours** required to keep a license active.
 
+## Context Assembly (Phase 3.5)
+
+Before answering "what's coming up" or creating a new deadline, check for anything Jarvis already knows about license/renewal timing that isn't in the task list yet: `python jarvis/context.py --context business --mission "compliance calendar check" --query "ARN renewal" --budget 10` (repeat with `POSP`/`DSA`/`CPD` as relevant). If this surfaces a conflict (e.g. a remembered renewal date that disagrees with a task's `due_date`), say so explicitly rather than silently trusting one - the whole point of this skill is that a missed deadline is worse than most other misses in this business.
+
 ## Workflow
 
 1. When setting up or reviewing the calendar, pull existing `[Compliance]`-tagged tasks first - don't create duplicates for something already tracked.

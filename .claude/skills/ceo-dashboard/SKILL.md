@@ -13,6 +13,10 @@ This skill shows **individual employees' names against their call/conversion num
 
 This is a policy the assistant enforces, not something the CRM's backend enforces today - the API itself doesn't check role before returning this data (see the earlier security notes on this project), so this check has to happen here.
 
+## Context Assembly (Phase 3.5)
+
+Before pulling the CRM endpoints below, call `python jarvis/context.py --context business --mission "CEO dashboard briefing" --budget 20` (no `--entity`/`--mention` needed for the company-wide view - this is a broad pass, not one scoped to a single person). This surfaces anything Jarvis already knows that the raw analytics numbers wouldn't show on their own - a remembered decision, a flagged conflict between two sources, a stale fact worth re-confirming - and folds into step 2 of the workflow below ("the one or two things that actually need a decision"), it doesn't replace the CRM data pull.
+
 ## Data sources
 
 - `GET /api/analytics/dashboard` - leads/deals/contacts counts, pipeline value, loan-stage breakdown, lead-status funnel.

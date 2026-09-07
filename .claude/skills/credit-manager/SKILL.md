@@ -15,6 +15,8 @@ This touches sensitive financial detail about a customer - income, existing debt
 
 `GET https://arthainvest-crm.onrender.com/api/deals/{deal_id}` (via the deals list, filter by id) for `deal_value`, `loan_product`; the linked contact/lead record for `amount`, `bank`, `city`, `company`; and `GET /api/custom-fields/for/deal/{deal_id}` for anything already recorded (income, existing EMIs, CIBIL score if the DSA has it on file). Don't fabricate a score or number that isn't actually in the CRM - if it's missing, say it's missing.
 
+**Context Assembly (Phase 3.5):** before checking the CRM data above, call `python jarvis/context.py --context business --mission "pre-screen deal <id>" --entity deal:<id> --entity contact:<contact_id> --max-hops 2 --budget 15`. This is the exact "prepare for X" shape - it traverses from the deal/contact to anything linked (company, related tasks, prior notes) and surfaces any conflicting facts (e.g. two different income figures recorded at different times) before you even open the CRM data. If it flags a conflict, treat that as a "worth double-checking with the customer" item in the output below, same as any other gap.
+
 ## What to check per case
 
 1. **Completeness** - is there a linked contact with phone, and (for Business/Project loans) a linked company? A Business loan with no `company_id` set is a data gap, flag it before it becomes a submission problem.
