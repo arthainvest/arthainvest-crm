@@ -30,6 +30,12 @@ _STRING_OR_PLACEHOLDER_RE = re.compile(r"'(?:[^']|'')*'|\?")
 
 
 def _convert_placeholders(query):
+    # Escape literal '%' first (e.g. DATE_FORMAT's '%Y-%m') so PyMySQL's own %-substitution
+    # treats it as a literal percent rather than a format spec - doubling to '%%' is standard
+    # for Python's %-style formatting and PyMySQL undoes it correctly when it substitutes the
+    # real %s placeholders inserted below. Must happen before the ? -> %s conversion, or it
+    # would double those too.
+    query = query.replace("%", "%%")
     return _STRING_OR_PLACEHOLDER_RE.sub(lambda m: "%s" if m.group(0) == "?" else m.group(0), query)
 
 
