@@ -10,53 +10,6 @@ const FolderIcon = () => (
 );
 
 export default function Pipeline() {
-  const mockDeals = [
-    {
-      id: 1,
-      name: 'Neha Singh',
-      company: 'Startup Fund',
-      value: 5,
-      phone: '+91-9876543210',
-      loanProduct: 'LAP',
-      stage: 'New',
-      probability: 30,
-      processStatus: 'Login'
-    },
-    {
-      id: 2,
-      name: 'Vikram Reddy',
-      company: 'Tech Park',
-      value: 10,
-      phone: '+91-9876543211',
-      loanProduct: 'Business',
-      stage: 'Qualified',
-      probability: 50,
-      processStatus: 'Hold'
-    },
-    {
-      id: 3,
-      name: 'Anjali Desai',
-      company: 'Retail Chain',
-      value: 8,
-      phone: '+91-9876543212',
-      loanProduct: 'Home',
-      stage: 'Proposal',
-      probability: 70,
-      processStatus: 'Sanction'
-    },
-    {
-      id: 4,
-      name: 'Amit Patel',
-      company: 'Manufacturing',
-      value: 15,
-      phone: '+91-9876543213',
-      loanProduct: 'Project',
-      stage: 'Negotiation',
-      probability: 60,
-      processStatus: 'Disbursed'
-    }
-  ];
-
   const PROCESS_STATUS_OPTIONS = [
     'Document Collection', 'Login', 'Under Verification', 'Approved', 'Sanction',
     'Disbursement Pending', 'Disbursed', 'Hold', 'Rejected', 'Closed - Lost'
@@ -64,7 +17,7 @@ export default function Pipeline() {
 
   const processStatusClass = (status) => `status-${(status || 'Login').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
-  const [deals, setDeals] = useState(mockDeals);
+  const [deals, setDeals] = useState([]);
   const [leads, setLeads] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [companies, setCompanies] = useState([]);
@@ -185,7 +138,7 @@ export default function Pipeline() {
   const fetchDeals = async () => {
     try {
       const dealsData = await getDeals(token);
-      if (Array.isArray(dealsData) && dealsData.length > 0) {
+      if (Array.isArray(dealsData)) {
         let leadsById = {};
         try {
           const leadsData = await getLeads(token);
@@ -198,11 +151,11 @@ export default function Pipeline() {
         }
         setDeals(dealsData.map((d) => normalizeDeal(d, leadsById)));
       } else {
-        setDeals(mockDeals);
+        setDeals([]);
       }
     } catch (error) {
       console.error('Error fetching deals:', error);
-      setDeals(mockDeals);
+      setDeals([]);
     }
   };
 
@@ -301,7 +254,7 @@ export default function Pipeline() {
 
   const getDealsByStage = (stage) => {
     if (!deals || !Array.isArray(deals)) {
-      return mockDeals.filter(d => d.stage === stage);
+      return [];
     }
     return deals.filter(d => d.stage === stage);
   };
@@ -356,6 +309,11 @@ export default function Pipeline() {
                 </tr>
               </thead>
               <tbody>
+                {deals.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="no-data">No deals yet. Add one to get started.</td>
+                  </tr>
+                )}
                 {deals.map((deal) => {
                   const loanInfo = getLoanProductInfo(deal.loanProduct);
                   return (
