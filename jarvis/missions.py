@@ -301,14 +301,14 @@ def init_db():
 
 
 def _row_to_mission(row) -> dict:
-    d = dict(row)
-    d["dependencies"] = None
-    return d
+    return dict(row)
 
 
 def _row_to_step(row) -> dict:
     d = dict(row)
     d["dependencies"] = json.loads(d["dependencies"] or "[]")
+    for json_field in ("inputs", "expected_output", "output", "observation", "error", "verification"):
+        d[json_field] = json.loads(d[json_field]) if d[json_field] else None
     return d
 
 
