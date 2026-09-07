@@ -33,6 +33,8 @@ def test_bulk_import_contacts(auth_client):
     assert data["created"] == 3
     assert data["skipped_duplicate"] == 0
     assert data["total"] == 3
+    assert [c["phone"] for c in data["created_contacts"]] == ["7000000001", "7000000002", ""]
+    assert all(isinstance(c["id"], int) for c in data["created_contacts"])
 
     resp = auth_client.get("/api/contacts")
     assert len(resp.json()) == 8
@@ -61,7 +63,7 @@ def test_bulk_import_requires_auth(client):
 def test_bulk_import_empty_list(auth_client):
     resp = auth_client.post("/api/contacts/bulk-import", json={"contacts": []})
     assert resp.status_code == 200
-    assert resp.json() == {"created": 0, "skipped_duplicate": 0, "total": 0}
+    assert resp.json() == {"created": 0, "skipped_duplicate": 0, "total": 0, "created_contacts": []}
 
 
 def test_upcoming_renewals(auth_client):

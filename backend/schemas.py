@@ -344,10 +344,15 @@ class ContactUpdate(BaseModel):
 class ContactBulkImportRequest(BaseModel):
     contacts: list[ContactCreate]
 
+class ContactBulkImportCreated(BaseModel):
+    id: int
+    phone: Optional[str] = None
+
 class ContactBulkImportResponse(BaseModel):
     created: int
     skipped_duplicate: int
     total: int
+    created_contacts: list[ContactBulkImportCreated] = []
 
 class ContactAssign(BaseModel):
     team_member_id: Optional[int] = None  # None unassigns the contact

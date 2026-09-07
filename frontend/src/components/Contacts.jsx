@@ -4,7 +4,7 @@ import {
   getContactNotes, createContactNote, updateContactNote, deleteContactNote,
   uploadNoteAudio, API_URL, dialCall, aiSuggestContactFollowup,
   sendWhatsApp, sendEmailReal, sendSms, detectFollowupDate,
-  getCompanies, linkContactCompany, getActivities, getCompanyDeals
+  getCompanies, linkContactCompany, getActivities, getCompanyDeals, bulkImportContacts
 } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import EntityTags from './EntityTags';
@@ -238,9 +238,14 @@ export default function Contacts() {
           const obj = {};
           headers.forEach((h, i) => { obj[h] = cols[i] || ''; });
           const assignedName = (obj.employee || obj['assigned to'] || obj['assigned employee'] || '').trim();
+          const companyName = obj.company || '';
+          const companyMatch = companyName
+            ? companies.find((co) => co.name.toLowerCase() === companyName.toLowerCase())
+            : null;
           return {
             name: obj.name || 'Unnamed Contact',
-            company: obj.company || '',
+            company: companyName,
+            company_id: companyMatch ? companyMatch.id : null,
             email: obj.email || '',
             phone: obj.phone || '',
             city: obj.city || obj['city/area'] || obj.location || '',
@@ -253,33 +258,35 @@ export default function Contacts() {
           };
         });
 
-        let created = 0;
-        let failed = 0;
-        for (const row of imported) {
+        // Bulk-created in a single request (avoids the connection exhaustion a
+        // one-request-per-contact loop caused on a 2000+ row import in the past).
+        const bulkPayload = imported.map(({ score, assignedName, ...contactData }) => contactData);
+        const result = await bulkImportContacts(token, bulkPayload);
+
+        // Score and team assignment aren't part of bulk-create, so apply them as a
+        // small number of follow-up calls, only for rows that actually need one.
+        let followUpFailed = 0;
+        for (const created of result.created_contacts) {
+          const sourceRow = imported.find((row) => row.phone && row.phone === created.phone);
+          if (!sourceRow) continue;
           try {
-            const { score, assignedName, ...contactData } = row;
-            const newContact = await createContact(token, contactData);
-            if (score !== null && !Number.isNaN(score)) {
-              await updateContact(token, newContact.id, { score });
+            if (sourceRow.score !== null && !Number.isNaN(sourceRow.score)) {
+              await updateContact(token, created.id, { score: sourceRow.score });
             }
-            if (assignedName) {
-              const match = teamMembers.find((m) => m.name.toLowerCase() === assignedName.toLowerCase());
-              if (match) await assignContact(token, newContact.id, match.id);
+            if (sourceRow.assignedName) {
+              const match = teamMembers.find((m) => m.name.toLowerCase() === sourceRow.assignedName.toLowerCase());
+              if (match) await assignContact(token, created.id, match.id);
             }
-            if (row.company) {
-              const companyMatch = companies.find((co) => co.name.toLowerCase() === row.company.toLowerCase());
-              if (companyMatch) await linkContactCompany(token, newContact.id, companyMatch.id);
-            }
-            created++;
-          } catch (rowErr) {
-            console.error('Error importing row:', row, rowErr);
-            failed++;
+          } catch (followUpErr) {
+            console.error('Error applying score/assignment for imported contact:', sourceRow, followUpErr);
+            followUpFailed++;
           }
         }
+
         await fetchContacts();
-        alert(failed > 0
-          ? `Imported ${created} contact(s). ${failed} row(s) failed - check the console for details.`
-          : `Imported ${created} contact(s) successfully.`);
+        const skippedNote = result.skipped_duplicate > 0 ? ` ${result.skipped_duplicate} duplicate(s) skipped.` : '';
+        const followUpNote = followUpFailed > 0 ? ` ${followUpFailed} row(s) had score/assignment issues - check the console.` : '';
+        alert(`Imported ${result.created} contact(s).${skippedNote}${followUpNote}`);
       } catch (err) {
         alert('Failed to parse CSV file: ' + err.message);
       } finally {

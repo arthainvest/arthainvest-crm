@@ -47,7 +47,7 @@ from schemas import (
     IntegrationToggle, IntegrationResponse, IntegrationStatusItem,
     SettingsUpdate, SettingsResponse,
     ContactCreate, ContactUpdate, ContactAssign, ContactCompanyAssign, ContactQuotationAssign, ContactCallAssign, ContactResponse, RenewalContact,
-    ContactBulkImportRequest, ContactBulkImportResponse,
+    ContactBulkImportRequest, ContactBulkImportResponse, ContactBulkImportCreated,
     ContactNoteCreate, ContactNoteUpdate, ContactNoteResponse,
     LeadNoteCreate, LeadNoteUpdate, LeadNoteResponse,
     TaskCreate, TaskUpdate, TaskContactAssign, TaskCallAssign, TaskQuotationAssign, TaskCompanyAssign, TaskResponse,
@@ -2980,6 +2980,7 @@ async def bulk_import_contacts(payload: ContactBulkImportRequest, token: str = Q
 
     created = 0
     skipped_duplicate = 0
+    created_contacts = []
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -3000,12 +3001,14 @@ async def bulk_import_contacts(payload: ContactBulkImportRequest, token: str = Q
                  contact.amount, contact.bank, contact.status or 'Active', contact.renewal_date, current_user['user_id'])
             )
             created += 1
+            created_contacts.append(ContactBulkImportCreated(id=cursor.lastrowid, phone=contact.phone))
             if contact.phone:
                 existing_phones.add(contact.phone)
 
         conn.commit()
 
-    return ContactBulkImportResponse(created=created, skipped_duplicate=skipped_duplicate, total=len(payload.contacts))
+    return ContactBulkImportResponse(created=created, skipped_duplicate=skipped_duplicate,
+                                      total=len(payload.contacts), created_contacts=created_contacts)
 
 @app.put("/api/contacts/{contact_id}", response_model=ContactResponse)
 async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Query(None)):

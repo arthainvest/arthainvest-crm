@@ -377,6 +377,11 @@ export const updateContact = async (token, id, contactData) => {
   return response.data;
 };
 
+export const bulkImportContacts = async (token, contacts) => {
+  const response = await api.post(`/api/contacts/bulk-import?token=${token}`, { contacts });
+  return response.data;
+};
+
 export const deleteContact = async (token, id) => {
   await api.delete(`/api/contacts/${id}?token=${token}`);
 };
