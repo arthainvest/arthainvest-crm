@@ -13,15 +13,15 @@ import '../styles/Integrations.css';
 // anyone (or any bug) could flip to say anything. Their Connect/Disconnect button (if any)
 // does something real instead of just toggling a flag.
 const REAL_STATUS_INTEGRATIONS = new Set([
-  'WhatsApp Business API', 'Twilio', 'Email Service', 'Mailchimp', 'Claude AI', 'LinkedIn',
+  'WhatsApp Business API', 'Twilio', 'Exotel', 'MSG91', 'Email Service', 'Mailchimp', 'Claude AI', 'LinkedIn',
   'Google Sheets', 'Gmail', 'Google Calendar', 'Zapier', 'Slack'
 ]);
 // Sheets, Gmail send, and Calendar sync all ride on one connected Google account - the same
 // Connect/Disconnect button and OAuth flow serves all three rows.
 const GOOGLE_ACCOUNT_INTEGRATIONS = new Set(['Google Sheets', 'Gmail', 'Google Calendar']);
-// These five have no user-facing "connect" action at all - they're wired up (or not) purely
+// These seven have no user-facing "connect" action at all - they're wired up (or not) purely
 // by which env vars are set on the server, so there's nothing to click here.
-const ENV_ONLY_INTEGRATIONS = new Set(['WhatsApp Business API', 'Twilio', 'Email Service', 'Mailchimp', 'Claude AI']);
+const ENV_ONLY_INTEGRATIONS = new Set(['WhatsApp Business API', 'Twilio', 'Exotel', 'MSG91', 'Email Service', 'Mailchimp', 'Claude AI']);
 
 export default function Integrations() {
   const [integrations, setIntegrations] = useState([]);

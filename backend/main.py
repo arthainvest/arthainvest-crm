@@ -59,7 +59,7 @@ from schemas import (
     GenerateContentRequest, GenerateContentResponse,
     ChatMessage, ChatRequest, ChatResponse,
     WhatsAppSendRequest, WhatsAppSendResponse, WhatsAppReplyRequest,
-    WhatsAppTemplatesResponse, WhatsAppConversationResponse, WhatsAppMessageResponse,
+    WhatsAppTemplatesResponse, WhatsAppConversationResponse, WhatsAppMessageResponse, WhatsAppPhoneNumberResponse,
     ConversationAssign, ConversationStatusUpdate,
     FlowCreate, FlowUpdate, FlowResponse, FlowSendRequest, FlowSendResponse, FlowSessionResponse,
     EmailSendRequest, EmailSendResponse,
@@ -2730,6 +2730,9 @@ async def get_integrations_status(token: str = Query(None)):
         "Exotel": IntegrationStatusItem(
             configured=bool(os.getenv("EXOTEL_SID") and os.getenv("EXOTEL_API_KEY") and os.getenv("EXOTEL_API_TOKEN") and os.getenv("EXOTEL_CALLER_ID"))
         ),
+        "MSG91": IntegrationStatusItem(
+            configured=bool(os.getenv("MSG91_AUTH_KEY") and os.getenv("MSG91_SENDER_ID"))
+        ),
         "Email Service": IntegrationStatusItem(
             configured=bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_PORT") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD"))
         ),
@@ -4777,33 +4780,82 @@ async def delete_slack_webhook(webhook_id: int, token: str = Query(None)):
             raise HTTPException(status_code=404, detail="Webhook not found")
     return {"message": "Webhook deleted"}
 
+def _send_sms_via_msg91(to_digits, message):
+    """Raw call to MSG91's Send SMS API (api/v2/sendsms). `to_digits` is expected in
+    normalize_phone() form (country code included, e.g. '919876543210') - stripped back down
+    to the bare 10-digit local number here since MSG91's `country` field supplies the code
+    separately; sending both would double it up. Returns (ok, error_text_or_None).
+    Caller is responsible for checking MSG91_AUTH_KEY/MSG91_SENDER_ID are set first.
+
+    India requires DLT-registered templates for commercial SMS - MSG91 will reject the send
+    (not just warn) if `message` doesn't exactly match an approved template registered against
+    this sender ID, regardless of what this code sends."""
+    import requests
+    auth_key = os.getenv("MSG91_AUTH_KEY")
+    sender_id = os.getenv("MSG91_SENDER_ID")
+    route = os.getenv("MSG91_ROUTE", "4")  # 4 = transactional
+
+    local_number = to_digits[-10:] if len(to_digits) > 10 else to_digits
+
+    try:
+        resp = requests.post(
+            "https://api.msg91.com/api/v2/sendsms",
+            headers={"authkey": auth_key, "content-type": "application/json"},
+            json={
+                "sender": sender_id,
+                "route": route,
+                "country": "91",
+                "sms": [{"message": message, "to": [local_number]}]
+            },
+            timeout=10
+        )
+        data = resp.json() if resp.content else {}
+        if resp.status_code == 200 and data.get("type") != "error":
+            return True, None
+        return False, data.get("message") or f"MSG91 returned HTTP {resp.status_code}"
+    except Exception as e:
+        return False, str(e)
+
+
 @app.post("/api/sms/send", response_model=SmsSendResponse)
 async def send_sms(sms: SmsSendRequest, token: str = Query(None)):
-    """Send a real SMS via Twilio, reusing the same credentials as click-to-call. Returns
-    configured=False when TWILIO_* isn't set, so the frontend can fall back to an sms: link."""
+    """Send a real SMS - tries Twilio first (if configured), then falls back to MSG91.
+    Returns configured=False only when neither provider is set, so the frontend can fall
+    back to an sms: link."""
     current_user = get_current_user(token)
 
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
     from_number = os.getenv("TWILIO_FROM_NUMBER")
+    twilio_configured = bool(account_sid and auth_token and from_number)
 
-    if not (account_sid and auth_token and from_number):
-        return SmsSendResponse(configured=False, message="Twilio SMS is not configured on this server.")
+    msg91_configured = bool(os.getenv("MSG91_AUTH_KEY") and os.getenv("MSG91_SENDER_ID"))
 
-    try:
-        from twilio.rest import Client
-        from twilio.base.exceptions import TwilioRestException
+    if not (twilio_configured or msg91_configured):
+        return SmsSendResponse(configured=False, message="No SMS provider (Twilio or MSG91) is configured on this server.")
 
-        client = Client(account_sid, auth_token)
-        client.messages.create(to=sms.to, from_=from_number, body=sms.message)
+    if twilio_configured:
+        try:
+            from twilio.rest import Client
+            from twilio.base.exceptions import TwilioRestException
+
+            client = Client(account_sid, auth_token)
+            client.messages.create(to=sms.to, from_=from_number, body=sms.message)
+            _log_communication("SMS", sms.to, sms.message, "Sent", user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
+            return SmsSendResponse(configured=True, message=f"SMS sent to {sms.to} via Twilio.")
+        except TwilioRestException as e:
+            _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=e.msg, user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
+            return SmsSendResponse(configured=True, message=f"SMS failed: {e.msg}")
+        except Exception as e:
+            _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=str(e), user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
+            return SmsSendResponse(configured=True, message=f"SMS failed: {str(e)}")
+
+    ok, error = _send_sms_via_msg91(normalize_phone(sms.to), sms.message)
+    if ok:
         _log_communication("SMS", sms.to, sms.message, "Sent", user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
-        return SmsSendResponse(configured=True, message=f"SMS sent to {sms.to}.")
-    except TwilioRestException as e:
-        _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=e.msg, user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
-        return SmsSendResponse(configured=True, message=f"SMS failed: {e.msg}")
-    except Exception as e:
-        _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=str(e), user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
-        return SmsSendResponse(configured=True, message=f"SMS failed: {str(e)}")
+        return SmsSendResponse(configured=True, message=f"SMS sent to {sms.to} via MSG91.")
+    _log_communication("SMS", sms.to, sms.message, "Failed", error_detail=error, user_id=current_user['user_id'], lead_id=sms.lead_id, contact_id=sms.contact_id)
+    return SmsSendResponse(configured=True, message=f"SMS failed: {error}")
 
 @app.post("/api/whatsapp/send", response_model=WhatsAppSendResponse)
 async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
@@ -4861,6 +4913,36 @@ async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
         return WhatsAppSendResponse(configured=True, message=f"WhatsApp message sent to {payload.to}.", conversation_id=convo['id'])
     _log_communication("WhatsApp", payload.to, log_body, "Failed", error_detail=error, user_id=current_user['user_id'], lead_id=payload.lead_id, contact_id=payload.contact_id)
     return WhatsAppSendResponse(configured=True, message=f"WhatsApp send failed: {error}", conversation_id=convo['id'])
+
+@app.get("/api/whatsapp/phone-number", response_model=WhatsAppPhoneNumberResponse)
+async def get_whatsapp_phone_number(token: str = Query(None)):
+    """Resolves WHATSAPP_PHONE_ID (Meta's internal numeric id, not human-readable) to the
+    actual registered display number and verified business name, via the Graph API."""
+    get_current_user(token)
+
+    wa_token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_ID")
+    if not (wa_token and phone_id):
+        return WhatsAppPhoneNumberResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
+
+    try:
+        import requests
+        resp = requests.get(
+            f"https://graph.facebook.com/v19.0/{phone_id}",
+            headers={"Authorization": f"Bearer {wa_token}"},
+            params={"fields": "display_phone_number,verified_name"},
+            timeout=10
+        )
+        if resp.status_code >= 400:
+            return WhatsAppPhoneNumberResponse(configured=True, message=f"Could not fetch phone number: {resp.text[:200]}")
+        data = resp.json()
+        return WhatsAppPhoneNumberResponse(
+            configured=True, message="OK",
+            display_phone_number=data.get("display_phone_number"),
+            verified_name=data.get("verified_name")
+        )
+    except Exception as e:
+        return WhatsAppPhoneNumberResponse(configured=True, message=f"Failed to fetch phone number: {str(e)}")
 
 @app.get("/api/whatsapp/templates", response_model=WhatsAppTemplatesResponse)
 async def get_whatsapp_templates(token: str = Query(None)):

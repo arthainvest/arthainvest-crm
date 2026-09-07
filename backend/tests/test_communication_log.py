@@ -50,6 +50,49 @@ def test_successful_email_send_is_logged(auth_client, monkeypatch):
     assert len(email_resp.json()) == 1
 
 
+def test_sms_falls_back_to_msg91_when_twilio_unconfigured(auth_client, monkeypatch):
+    """Twilio env vars stay unset (conftest strips them) - MSG91 should be tried instead."""
+    monkeypatch.setenv("MSG91_AUTH_KEY", "fake-auth-key")
+    monkeypatch.setenv("MSG91_SENDER_ID", "ARTHA1")
+
+    mock_response = MagicMock(status_code=200, content=b'{"type": "success"}')
+    mock_response.json.return_value = {"type": "success"}
+    with patch("requests.post", return_value=mock_response) as mock_post:
+        resp = auth_client.post("/api/sms/send", json={"to": "+911234567890", "message": "hi"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["configured"] is True
+    assert "msg91" in data["message"].lower()
+    assert mock_post.call_args.kwargs["headers"]["authkey"] == "fake-auth-key"
+
+    log_resp = auth_client.get("/api/communication-log")
+    entries = log_resp.json()
+    assert len(entries) == 1
+    assert entries[0]["channel"] == "SMS"
+    assert entries[0]["status"] == "Sent"
+
+
+def test_sms_msg91_failure_is_logged(auth_client, monkeypatch):
+    monkeypatch.setenv("MSG91_AUTH_KEY", "fake-auth-key")
+    monkeypatch.setenv("MSG91_SENDER_ID", "ARTHA1")
+
+    mock_response = MagicMock(status_code=200, content=b'{"type": "error", "message": "Invalid sender id"}')
+    mock_response.json.return_value = {"type": "error", "message": "Invalid sender id"}
+    with patch("requests.post", return_value=mock_response):
+        resp = auth_client.post("/api/sms/send", json={"to": "+911234567890", "message": "hi"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["configured"] is True
+    assert "invalid sender id" in data["message"].lower()
+
+    log_resp = auth_client.get("/api/communication-log")
+    entries = log_resp.json()
+    assert len(entries) == 1
+    assert entries[0]["status"] == "Failed"
+
+
 def test_failed_email_send_is_logged_with_error(auth_client, monkeypatch):
     monkeypatch.setenv("SMTP_HOST", "smtp.fake.com")
     monkeypatch.setenv("SMTP_PORT", "587")

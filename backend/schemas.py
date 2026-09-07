@@ -675,6 +675,12 @@ class WhatsAppTemplatesResponse(BaseModel):
     message: str
     templates: List[dict] = []
 
+class WhatsAppPhoneNumberResponse(BaseModel):
+    configured: bool
+    message: str
+    display_phone_number: Optional[str] = None
+    verified_name: Optional[str] = None
+
 class WhatsAppConversationResponse(BaseModel):
     id: int
     contact_id: Optional[int]
