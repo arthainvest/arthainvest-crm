@@ -11,7 +11,13 @@
 .calls-table td { padding: 15px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); }
 .badge-outbound { background: #1976d2; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
 .badge-inbound { background: var(--bg-surface); color: #1976d2; border: 1px solid #90caf9; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
-.btn-small { padding: 6px 12px; border: 1px solid #90caf9; background: var(--bg-surface); color: #1976d2; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px; }
+.call-status-badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; text-transform: capitalize; }
+.call-status-completed { background: #d4edda; color: #1e7e34; }
+.call-status-initiated { background: #fff3cd; color: #856404; }
+.call-status-abandoned { background: #e2e3e5; color: #383d41; }
+.call-status-no_answer, .call-status-busy, .call-status-failed, .call-status-cancelled, .call-status-unknown { background: #f8d7da; color: #a71d2a; }
+.call-notes-indicator { margin-left: 6px; cursor: help; font-size: 13px; }
+.btn-small { padding: 6px 12px; border: 1px solid #90caf9; background: var(--bg-surface); color: #1976d2; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px; text-decoration: none; display: inline-block; }
 .btn-small.delete { color: #1976d2; border-color: #90caf9; }
 .no-data { text-align: center; color: var(--text-muted); padding: 40px; font-size: 14px; }
 

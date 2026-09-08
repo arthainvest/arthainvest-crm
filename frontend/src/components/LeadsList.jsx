@@ -9,6 +9,7 @@ import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import EntityTags from './EntityTags';
 import EntityGroups from './EntityGroups';
 import EntityCustomFields from './EntityCustomFields';
+import CallCompletionModal from './CallCompletionModal';
 import '../styles/LeadsList.css';
 
 const STATUS_OPTIONS = ['New', 'Contacted', 'Interested', 'Document Pending', 'In Process', 'Qualified', 'Not Interested', 'CIBIL Issue', 'Lost to Competition'];
@@ -67,6 +68,7 @@ const WhatsAppIcon = () => (
 );
 
 export default function LeadsList() {
+  const [activeCall, setActiveCall] = useState(null);  // { id, name } - drives the Complete Call modal
   const [leads, setLeads] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -318,18 +320,25 @@ export default function LeadsList() {
       alert('No phone number available');
       return;
     }
-    // Try a real Twilio click-to-call first (rings the agent, then bridges to the lead);
-    // falls back to a plain tel: link when Twilio isn't configured on the server.
+    // dial_call always logs a call (status='initiated') unless calling is disabled/inactive
+    // for this rep's Calling Profile - the Complete Call modal fills in what happened on that
+    // same record once the rep is back, whether or not Twilio/Exotel actually bridged the call.
     try {
       const result = await dialCall(token, lead.phone, { leadId: lead.id });
-      if (result.configured) {
-        alert(result.message);
+      if (!result.call_id) {
+        alert(result.message);  // calling blocked entirely - see Team page's Calling Profile
         return;
       }
+      setActiveCall({ id: result.call_id, name: lead.name });
+      if (result.configured) {
+        alert(result.message);
+      } else {
+        window.location.href = `tel:${lead.phone}`;
+      }
     } catch (error) {
-      console.error('Error placing Twilio call:', error);
+      console.error('Error placing call:', error);
+      window.location.href = `tel:${lead.phone}`;
     }
-    window.location.href = `tel:${lead.phone}`;
   };
 
   const handleWhatsApp = async (lead) => {
@@ -1042,6 +1051,15 @@ export default function LeadsList() {
             </div>
           </div>
         </div>
+      )}
+      {activeCall && (
+        <CallCompletionModal
+          token={token}
+          callId={activeCall.id}
+          customerName={activeCall.name}
+          onClose={() => setActiveCall(null)}
+          onSaved={() => { setActiveCall(null); fetchLeads(); }}
+        />
       )}
     </div>
   );

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   getCallsList, createCall, deleteCall, assignCall, getTeam, getCallsByEmployee, getCommunicationLog,
-  getActivities, getDialerQueue, updateDialerStatus, deleteDialerItem, getLeads, getContactsList
+  getActivities, getDialerQueue, updateDialerStatus, deleteDialerItem, getLeads, getContactsList,
+  getCallRecordingUrl
 } from '../services/api';
 import '../styles/Calls.css';
 
@@ -485,6 +486,7 @@ export default function Calls() {
               <th>Linked To</th>
               <th>Duration</th>
               <th>Type</th>
+              <th>Status</th>
               <th>Outcome</th>
               <th>Date</th>
               <th>Employee</th>
@@ -493,16 +495,27 @@ export default function Calls() {
           </thead>
           <tbody>
             {calls.length === 0 ? (
-              <tr><td colSpan="9" className="no-data">No calls logged yet.</td></tr>
+              <tr><td colSpan="10" className="no-data">No calls logged yet.</td></tr>
             ) : calls.map(call => (
               <tr key={call.id}>
-                <td><strong>{call.name}</strong></td>
+                <td>
+                  <strong>{call.name}</strong>
+                  {(call.notes || call.follow_up_date) && (
+                    <span
+                      className="call-notes-indicator"
+                      title={[call.notes, call.follow_up_date ? `Follow-up: ${call.follow_up_date}` : null].filter(Boolean).join('\n')}
+                    >
+                      📝
+                    </span>
+                  )}
+                </td>
                 <td>{call.phone}</td>
                 <td>
                   {call.lead_name ? `📈 ${call.lead_name}` : call.contact_name ? `👥 ${call.contact_name}` : '-'}
                 </td>
                 <td>{call.duration}</td>
                 <td><span className={`badge-${(call.type || '').toLowerCase()}`}>{call.type || 'Unknown'}</span></td>
+                <td><span className={`call-status-badge call-status-${call.status || 'completed'}`}>{(call.status || 'completed').replace('_', ' ')}</span></td>
                 <td>{call.outcome || '-'}</td>
                 <td>{call.call_date}</td>
                 <td>
@@ -519,6 +532,17 @@ export default function Calls() {
                   </select>
                 </td>
                 <td>
+                  {call.recording_file_name && (
+                    <a
+                      className="btn-small"
+                      href={getCallRecordingUrl(token, call.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Play recording: ${call.recording_file_name}`}
+                    >
+                      🎙️
+                    </a>
+                  )}
                   <button className="btn-small delete" onClick={() => handleDeleteCall(call.id)}>Delete</button>
                 </td>
               </tr>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTeam, createTeamMember, updateTeamMember, deleteTeamMember, getTeamAnalytics, getLeads, getContactsList, getCallsList, getTasksByTeamMember, getMeetingsByTeamMember, getDeals } from '../services/api';
+import { getTeam, createTeamMember, updateTeamMember, deleteTeamMember, verifyTeamMemberPhone, getTeamAnalytics, getLeads, getContactsList, getCallsList, getTasksByTeamMember, getMeetingsByTeamMember, getDeals } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Team.css';
 
@@ -18,7 +18,7 @@ const ROLE_LABELS = {
 
 const ROLE_ORDER = ['admin', 'team_lead', 'location_head', 'business_manager', 'employee'];
 
-const emptyForm = { name: '', role: 'employee', email: '', phone: '' };
+const emptyForm = { name: '', role: 'employee', email: '', phone: '', calling_enabled: true, recording_enabled: false, active: true };
 
 export default function Team() {
   const [members, setMembers] = useState([]);
@@ -60,8 +60,22 @@ export default function Team() {
 
   const handleEditClick = (member) => {
     setEditingId(member.id);
-    setForm({ name: member.name, role: member.role, email: member.email || '', phone: member.phone || '' });
+    setForm({
+      name: member.name, role: member.role, email: member.email || '', phone: member.phone || '',
+      calling_enabled: member.calling_enabled !== false, recording_enabled: !!member.recording_enabled,
+      active: member.active !== false
+    });
     setShowForm(true);
+  };
+
+  const handleVerifyPhone = async (member) => {
+    try {
+      await verifyTeamMemberPhone(token, member.id);
+      fetchTeam();
+    } catch (error) {
+      console.error('Error verifying phone:', error);
+      alert(error?.response?.data?.detail || 'Failed to verify phone. Please try again.');
+    }
   };
 
   const handleSave = async (e) => {
@@ -171,7 +185,18 @@ export default function Team() {
                     </div>
                     <div className="team-contact-info">
                       {member.email && <p>📧 {member.email}</p>}
-                      {member.phone && <p>📱 {member.phone}</p>}
+                      {member.phone && (
+                        <p>
+                          📱 {member.phone}
+                          {member.phone_verification_status === 'verified' ? ' ✅' : ' ⚠️ unverified'}
+                        </p>
+                      )}
+                      {!member.phone && <p className="no-data-inline">⚠️ No personal calling number set</p>}
+                      {(!member.calling_enabled || !member.active) && (
+                        <p className="calling-disabled-note">
+                          {!member.active ? '🔴 Inactive' : '🚫 Calling disabled'}
+                        </p>
+                      )}
                     </div>
                     <div className="team-stats team-stats-clickable" onClick={() => toggleExpand(member)}>
                       <div className="team-stat">
@@ -323,13 +348,58 @@ export default function Team() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Phone</label>
+                  <label>Personal Calling Number</label>
                   <input
                     type="tel"
+                    placeholder="+91 98765 43210"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   />
                 </div>
+                {editingId && (
+                  <div className="form-group calling-profile">
+                    <label>Calling Profile</label>
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={form.calling_enabled}
+                        onChange={(e) => setForm({ ...form, calling_enabled: e.target.checked })}
+                      />
+                      Calling enabled
+                    </label>
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={form.active}
+                        onChange={(e) => setForm({ ...form, active: e.target.checked })}
+                      />
+                      Active
+                    </label>
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={form.recording_enabled}
+                        onChange={(e) => setForm({ ...form, recording_enabled: e.target.checked })}
+                      />
+                      Recording authorized (does not auto-record plain phone calls)
+                    </label>
+                    {(() => {
+                      const current = members.find((m) => m.id === editingId);
+                      if (!current) return null;
+                      return (
+                        <p className="phone-verification-status">
+                          Number status: <strong>{current.phone_verification_status}</strong>
+                          {current.phone_verified_at ? ` (${new Date(current.phone_verified_at).toLocaleDateString()})` : ''}
+                          {current.phone_verification_status !== 'verified' && current.phone && (
+                            <button type="button" className="btn-small" onClick={() => handleVerifyPhone(current)}>
+                              Mark Verified
+                            </button>
+                          )}
+                        </p>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
               <div className="modal-actions">
                 <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Add Member'}</button>

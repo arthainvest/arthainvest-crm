@@ -490,6 +490,22 @@ export const dialCall = async (token, to, { leadId, contactId } = {}) => {
   return response.data;
 };
 
+export const completeCall = async (token, callId, payload) => {
+  const response = await api.put(`/api/calls/${callId}/complete?token=${token}`, payload);
+  return response.data;
+};
+
+export const uploadCallRecording = async (token, callId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(`/api/calls/${callId}/recording?token=${token}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+export const getCallRecordingUrl = (token, callId) => `${API_URL}/api/calls/${callId}/recording?token=${token}`;
+
 // Claude AI note assistant
 export const aiSuggestContactFollowup = async (token, contactId) => {
   const response = await api.post(`/api/contacts/${contactId}/ai-suggest?token=${token}`);
@@ -667,6 +683,11 @@ export const updateTeamMember = async (token, id, memberData) => {
 
 export const deleteTeamMember = async (token, id) => {
   await api.delete(`/api/team/${id}?token=${token}`);
+};
+
+export const verifyTeamMemberPhone = async (token, id) => {
+  const response = await api.put(`/api/team/${id}/verify-phone?token=${token}`);
+  return response.data;
 };
 
 export const getTeamAnalytics = async (token) => {

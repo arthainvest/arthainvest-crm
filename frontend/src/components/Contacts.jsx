@@ -13,6 +13,7 @@ import EntityCustomFields from './EntityCustomFields';
 import ContactMfHoldings from './ContactMfHoldings';
 import ContactInsurancePolicies from './ContactInsurancePolicies';
 import ContactDocuments from './ContactDocuments';
+import CallCompletionModal from './CallCompletionModal';
 import '../styles/Contacts.css';
 
 const STATUS_OPTIONS = ['Active', 'Renewal Due', 'Lapsed', 'Inactive'];
@@ -82,6 +83,7 @@ const parseImportDate = (raw) => {
 };
 
 export default function Contacts() {
+  const [activeCall, setActiveCall] = useState(null);  // { id, name } - drives the Complete Call modal
   const [contacts, setContacts] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [companies, setCompanies] = useState([]);
@@ -338,18 +340,25 @@ export default function Contacts() {
       alert('No phone number available');
       return;
     }
-    // Try a real Twilio click-to-call first (rings the agent, then bridges to the contact);
-    // falls back to a plain tel: link when Twilio isn't configured on the server.
+    // dial_call always logs a call (status='initiated') unless calling is disabled/inactive
+    // for this rep's Calling Profile - the Complete Call modal fills in what happened on that
+    // same record once the rep is back, whether or not Twilio/Exotel actually bridged the call.
     try {
       const result = await dialCall(token, contact.phone, { contactId: contact.id });
-      if (result.configured) {
-        alert(result.message);
+      if (!result.call_id) {
+        alert(result.message);  // calling blocked entirely - see Team page's Calling Profile
         return;
       }
+      setActiveCall({ id: result.call_id, name: contact.name });
+      if (result.configured) {
+        alert(result.message);
+      } else {
+        window.location.href = `tel:${contact.phone}`;
+      }
     } catch (error) {
-      console.error('Error placing Twilio call:', error);
+      console.error('Error placing call:', error);
+      window.location.href = `tel:${contact.phone}`;
     }
-    window.location.href = `tel:${contact.phone}`;
   };
 
   const handleWhatsApp = async (contact) => {
@@ -1151,6 +1160,15 @@ export default function Contacts() {
             </div>
           </div>
         </div>
+      )}
+      {activeCall && (
+        <CallCompletionModal
+          token={token}
+          callId={activeCall.id}
+          customerName={activeCall.name}
+          onClose={() => setActiveCall(null)}
+          onSaved={() => { setActiveCall(null); fetchContacts(); }}
+        />
       )}
     </div>
   );
