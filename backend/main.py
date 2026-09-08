@@ -26,6 +26,7 @@ import db_compat
 import storage
 import calling_providers
 import automations_scheduler
+import chat_routes
 
 # DATABASE_URL is set in production (MySQL, e.g. Hostinger's Remote MySQL) and unset for
 # local dev - this is the one switch point for the whole app. See backend/database_mysql.py
@@ -91,6 +92,24 @@ from policy import check_no_transaction_routes
 
 load_dotenv()
 
+def _iter_route_paths(routes):
+    """Yields every route's `.path`, recursing into routers mounted via
+    app.include_router() - added for chat_routes.py, the first use of include_router() in this
+    codebase. Newer FastAPI/Starlette versions (this app runs 0.141.1, well past the 0.104.1
+    pinned in requirements.txt) wrap an included router's routes in a lazy `_IncludedRouter`
+    object that has no `.path` of its own, only an `.original_router` holding the real routes -
+    duck-typed via getattr rather than an isinstance check so this keeps working across FastAPI
+    versions that structure this differently."""
+    for route in routes:
+        nested_router = getattr(route, "original_router", None)
+        if nested_router is not None:
+            yield from _iter_route_paths(nested_router.routes)
+            continue
+        path = getattr(route, "path", None)
+        if path is not None:
+            yield path
+
+
 # Lifespan event
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -99,7 +118,7 @@ async def lifespan(app: FastAPI):
     # transaction-execution route present. Checked here, not just in tests,
     # so it can't be skipped by forgetting to run the test suite. See
     # backend/policy.py for why this lives here instead of as an LLM rule.
-    check_no_transaction_routes([route.path for route in app.routes])
+    check_no_transaction_routes(list(_iter_route_paths(app.routes)))
 
     try:
         init_db()
@@ -144,6 +163,11 @@ app.add_middleware(
 # Serve uploaded voice-note audio files (only used when storage.py's local-disk
 # fallback is active - i.e. S3_BUCKET_NAME isn't set; see storage.py)
 app.mount("/uploads", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "uploads")), name="uploads")
+
+# ArthaInvest Connect (Phase 2A-i): internal real-time chat REST endpoints (/api/chat/*) and
+# the /ws WebSocket route - see chat_routes.py for the full design rationale.
+app.include_router(chat_routes.router)
+app.include_router(chat_routes.ws_router)
 
 # ============= HELPER FUNCTIONS =============
 

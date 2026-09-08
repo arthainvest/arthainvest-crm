@@ -1023,4 +1023,40 @@ export const stopAutomationEnrollment = async (token, enrollmentId) => {
   return response.data;
 };
 
+// ===== ArthaInvest Connect (Phase 2A-i): internal real-time chat =====
+
+// wss://... in production, ws://... in local dev - mirrors API_URL's own http(s) scheme.
+export const getChatWebSocketUrl = (token) => `${API_URL.replace(/^http/, 'ws')}/ws?token=${token}`;
+
+export const getChatUsers = async (token) => {
+  const response = await api.get(`/api/chat/users?token=${token}`);
+  return response.data;
+};
+
+export const getChatConversations = async (token, updatedAfter = null) => {
+  const params = new URLSearchParams({ token });
+  if (updatedAfter) params.append('updated_after', updatedAfter);
+  const response = await api.get(`/api/chat/conversations?${params.toString()}`);
+  return response.data;
+};
+
+export const createChatConversation = async (token, type, memberUserIds, name = null) => {
+  const response = await api.post(`/api/chat/conversations?token=${token}`, { type, member_user_ids: memberUserIds, name });
+  return response.data;
+};
+
+export const getChatMessages = async (token, conversationId, { afterId = null, beforeId = null, limit = 50 } = {}) => {
+  const params = new URLSearchParams({ token, limit: String(limit) });
+  if (afterId != null) params.append('after_id', String(afterId));
+  if (beforeId != null) params.append('before_id', String(beforeId));
+  const response = await api.get(`/api/chat/conversations/${conversationId}/messages?${params.toString()}`);
+  return response.data;
+};
+
+// REST fallback for sending a message when the WebSocket isn't connected - see ChatContext.jsx.
+export const sendChatMessageRest = async (token, conversationId, body) => {
+  const response = await api.post(`/api/chat/conversations/${conversationId}/messages?token=${token}`, { body });
+  return response.data;
+};
+
 export default api;

@@ -1195,6 +1195,50 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_automation_enrollments_automation ON automation_enrollments(automation_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_automation_enrollments_next_run ON automation_enrollments(next_run_at, status)")
 
+        # ArthaInvest Connect (Phase 2A-i): internal real-time chat. See backend/chat_routes.py
+        # for the REST/WebSocket layer built on these tables. No FK constraints, matching every
+        # other table in this schema - integrity is enforced at the application layer.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                name TEXT,
+                created_by INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_message_at TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_last_message_at ON conversations(last_message_at)")
+
+        # role_in_conversation ('owner'|'member') is modeled now, ahead of Phase 2A-ii/2D
+        # actually enforcing anything with it, since it's free to add alongside the table and
+        # every conversation needs an owner recorded from the moment it's created.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role_in_conversation TEXT NOT NULL DEFAULT 'member',
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                left_at TIMESTAMP,
+                UNIQUE(conversation_id, user_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_members_user_id ON conversation_members(user_id)")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                sender_id INTEGER NOT NULL,
+                body TEXT,
+                message_type TEXT NOT NULL DEFAULT 'text',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id, id)")
+
         conn.commit()
 
         # Runs on every startup regardless of seed state (unlike the demo-data block below),

@@ -71,6 +71,10 @@ export default function Navigation({ onLogout }) {
           <span className="icon">💬</span>
           <span>WhatsApp Inbox</span>
         </Link>
+        <Link to="/connect" className="nav-link">
+          <span className="icon">🗨️</span>
+          <span>Connect</span>
+        </Link>
         <Link to="/automations" className="nav-link">
           <span className="icon">🔁</span>
           <span>Automations</span>

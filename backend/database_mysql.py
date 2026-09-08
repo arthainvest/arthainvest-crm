@@ -925,6 +925,50 @@ def init_db():
         _create_index_if_missing(cursor, "idx_automation_enrollments_automation", "automation_enrollments", "automation_id")
         _create_index_if_missing(cursor, "idx_automation_enrollments_next_run", "automation_enrollments", "next_run_at, status")
 
+        # ArthaInvest Connect (Phase 2A-i): internal real-time chat. See backend/chat_routes.py
+        # for the REST/WebSocket layer built on these tables. No FK constraints, matching every
+        # other table in this schema - integrity is enforced at the application layer.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                type VARCHAR(20) NOT NULL,
+                name VARCHAR(255),
+                created_by INT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_message_at DATETIME
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_conversations_last_message_at", "conversations", "last_message_at")
+
+        # role_in_conversation ('owner'|'member') is modeled now, ahead of Phase 2A-ii/2D
+        # actually enforcing anything with it, since it's free to add alongside the table and
+        # every conversation needs an owner recorded from the moment it's created.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_members (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                conversation_id INT NOT NULL,
+                user_id INT NOT NULL,
+                role_in_conversation VARCHAR(20) NOT NULL DEFAULT 'member',
+                joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                left_at DATETIME,
+                UNIQUE KEY uq_conversation_members_conv_user (conversation_id, user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_conversation_members_user_id", "conversation_members", "user_id")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                conversation_id INT NOT NULL,
+                sender_id INT NOT NULL,
+                body TEXT,
+                message_type VARCHAR(20) NOT NULL DEFAULT 'text',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_messages_conversation_created", "messages", "conversation_id, id")
+
         conn.commit()
 
         _ensure_integrations_catalog(cursor, conn)

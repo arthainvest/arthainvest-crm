@@ -21,6 +21,8 @@ import ApiKeys from './components/ApiKeys';
 import Settings from './components/Settings';
 import Navigation from './components/Navigation';
 import ChatbotWidget from './components/ChatbotWidget';
+import ChatPage from './components/chat/ChatPage';
+import { ChatProvider } from './contexts/ChatContext';
 import { applyTheme, getStoredTheme } from './utils/theme';
 import { getSettings } from './services/api';
 import './App.css';
@@ -65,31 +67,35 @@ function App() {
   return (
     <Router>
       {isLoggedIn ? (
-        <div className="app-container">
-          <Navigation onLogout={() => setIsLoggedIn(false)} />
-          <div className="main-content">
-            <Routes>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/today" element={<Today />} />
-              <Route path="/contacts" element={<Contacts />} />
-              <Route path="/companies" element={<Companies />} />
-              <Route path="/leads" element={<LeadsList />} />
-              <Route path="/pipeline" element={<Pipeline />} />
-              <Route path="/quotations" element={<Quotations />} />
-              <Route path="/calls" element={<Calls />} />
-              <Route path="/marketing" element={<Marketing />} />
-              <Route path="/team" element={<Team />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/integrations" element={<Integrations />} />
-              <Route path="/inbox" element={<WhatsAppInbox />} />
-              <Route path="/automations" element={<Automations />} />
-              <Route path="/api-keys" element={<ApiKeys />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/dashboard" />} />
-            </Routes>
+        <ChatProvider>
+          <div className="app-container">
+            <Navigation onLogout={() => setIsLoggedIn(false)} />
+            <div className="main-content">
+              <Routes>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/today" element={<Today />} />
+                <Route path="/contacts" element={<Contacts />} />
+                <Route path="/companies" element={<Companies />} />
+                <Route path="/leads" element={<LeadsList />} />
+                <Route path="/pipeline" element={<Pipeline />} />
+                <Route path="/quotations" element={<Quotations />} />
+                <Route path="/calls" element={<Calls />} />
+                <Route path="/marketing" element={<Marketing />} />
+                <Route path="/team" element={<Team />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/integrations" element={<Integrations />} />
+                <Route path="/inbox" element={<WhatsAppInbox />} />
+                <Route path="/connect" element={<ChatPage />} />
+                <Route path="/connect/:conversationId" element={<ChatPage />} />
+                <Route path="/automations" element={<Automations />} />
+                <Route path="/api-keys" element={<ApiKeys />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="*" element={<Navigate to="/dashboard" />} />
+              </Routes>
+            </div>
+            <ChatbotWidget />
           </div>
-          <ChatbotWidget />
-        </div>
+        </ChatProvider>
       ) : (
         <Routes>
           <Route path="/login" element={<Login onLoginSuccess={() => setIsLoggedIn(true)} />} />

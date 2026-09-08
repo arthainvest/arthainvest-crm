@@ -1384,3 +1384,46 @@ class PublicLeadCreate(BaseModel):
     phone: Optional[str] = Field(None, max_length=50)
     product: Optional[str] = Field(None, max_length=100)
     source: Optional[str] = Field(None, max_length=100)
+
+# ===== ArthaInvest Connect (Phase 2A-i): internal real-time chat =====
+class ChatUserResponse(BaseModel):
+    """A real login account eligible as a chat participant - never fake/demo data."""
+    id: int
+    username: str
+    full_name: str
+
+class ConversationCreate(BaseModel):
+    type: str  # 'dm' | 'group'
+    member_user_ids: List[int]
+    name: Optional[str] = None
+
+class ConversationMember(BaseModel):
+    user_id: int
+    username: str
+    full_name: str
+    role_in_conversation: str
+    online: bool = False
+
+class ConversationResponse(BaseModel):
+    id: int
+    type: str
+    name: Optional[str] = None
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+    last_message_at: Optional[datetime] = None
+    last_message_body: Optional[str] = None
+    last_message_sender_id: Optional[int] = None
+    members: List[ConversationMember]
+
+class MessageCreate(BaseModel):
+    body: str = Field(..., min_length=1, max_length=10000)
+
+class MessageResponse(BaseModel):
+    id: int
+    conversation_id: int
+    sender_id: int
+    sender_name: str
+    body: str
+    message_type: str
+    created_at: datetime
