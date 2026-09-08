@@ -138,8 +138,16 @@ def _ensure_integrations_catalog(cursor, conn):
     existing = {row['name'] for row in cursor.fetchall()}
     for name, logo, description, connected, last_sync in catalog:
         if name not in existing:
+            # '?' here, not '%s' - this cursor's execute() converts '?' -> '%s' itself (see
+            # _convert_placeholders above main.py's import line), and doubles any literal '%'
+            # first to protect against DATE_FORMAT-style format strings elsewhere. A query that
+            # already spells out '%s' gets that same doubling applied to it, corrupting it to
+            # '%%s' and making PyMySQL raise "not all arguments converted during string
+            # formatting" the moment this INSERT actually needs to run for a genuinely new
+            # catalog entry - a real, previously-latent bug this comment documents so it isn't
+            # reintroduced (found via the identical mistake in _ensure_chat_channels below).
             cursor.execute(
-                "INSERT INTO integrations (name, logo, description, connected, last_sync) VALUES (%s, %s, %s, %s, %s)",
+                "INSERT INTO integrations (name, logo, description, connected, last_sync) VALUES (?, ?, ?, ?, ?)",
                 (name, logo, description, connected, last_sync)
             )
 
@@ -174,26 +182,32 @@ def _ensure_chat_channels(cursor, conn):
     cursor.execute("SELECT id FROM users WHERE is_active = 1")
     active_user_ids = [row['id'] for row in cursor.fetchall()]
 
+    # '?' placeholders throughout, not '%s' - see the comment on _ensure_integrations_catalog's
+    # INSERT above for why a literal '%s' in a parameterized query on this cursor is a real bug,
+    # not a style choice. This is the exact mistake that made every one of these queries raise
+    # "not all arguments converted during string formatting" in production before this fix -
+    # caught by live verification (0 channels ever got created), not by the test suite, since
+    # the test suite runs against SQLite's plain cursor, which has no such placeholder rewriting.
     for slug, name in CHAT_CHANNEL_SEEDS:
-        cursor.execute("SELECT id FROM conversations WHERE slug = %s", (slug,))
+        cursor.execute("SELECT id FROM conversations WHERE slug = ?", (slug,))
         row = cursor.fetchone()
         if row:
             channel_id = row['id']
         else:
             cursor.execute(
                 "INSERT INTO conversations (type, name, slug, created_by, created_at, updated_at) "
-                "VALUES ('channel', %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                "VALUES ('channel', ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 (name, slug, system_user_id),
             )
             channel_id = cursor.lastrowid
 
-        cursor.execute("SELECT user_id FROM conversation_members WHERE conversation_id = %s", (channel_id,))
+        cursor.execute("SELECT user_id FROM conversation_members WHERE conversation_id = ?", (channel_id,))
         existing_member_ids = {row['user_id'] for row in cursor.fetchall()}
         for user_id in active_user_ids:
             if user_id not in existing_member_ids:
                 cursor.execute(
                     "INSERT INTO conversation_members (conversation_id, user_id, role_in_conversation, joined_at) "
-                    "VALUES (%s, %s, 'member', CURRENT_TIMESTAMP)",
+                    "VALUES (?, ?, 'member', CURRENT_TIMESTAMP)",
                     (channel_id, user_id),
                 )
     conn.commit()
@@ -1049,106 +1063,106 @@ def init_db():
         hashed_password = hash_password("12345")
         cursor.execute("""
             INSERT INTO users (username, email, password, role, full_name, is_active)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, ('testuser', 'test@example.com', hashed_password, 'admin', 'Test User', 1))
 
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, ('Neha Singh', 'StartUp Fund', 'neha@startup.com', '9876543210', 'New', 1))
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, ('Vikram Reddy', 'Tech Park', 'vikram@techpark.com', '9876543211', 'New', 1))
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, ('Anjali Desai', 'Retail Chain', 'anjali@retail.com', '9876543212', 'New', 1))
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, ('Amit Patel', 'Manufacturing', 'amit@mfg.com', '9876543213', 'New', 1))
         cursor.execute("""
             INSERT INTO leads (name, company, email, phone, status, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, ('Priya Kapoor', 'Digital Ventures', 'priya@digital.com', '9876543214', 'New', 1))
 
         cursor.execute("""
             INSERT INTO deals (lead_id, deal_value, stage, probability, owner_id)
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?)
         """, (1, 50000, 'new', 0.3, 1))
         cursor.execute("""
             INSERT INTO deals (lead_id, deal_value, stage, probability, owner_id)
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?)
         """, (2, 75000, 'qualified', 0.5, 1))
         cursor.execute("""
             INSERT INTO deals (lead_id, deal_value, stage, probability, owner_id)
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?)
         """, (3, 100000, 'proposal', 0.7, 1))
         cursor.execute("""
             INSERT INTO deals (lead_id, deal_value, stage, probability, owner_id)
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?)
         """, (4, 120000, 'negotiation', 0.8, 1))
 
         cursor.execute("""
             INSERT INTO campaigns (name, type, status, recipients, opens, clicks, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Insurance Awareness', 'Email', 'Active', 3000, 1200, 450, 1))
         cursor.execute("""
             INSERT INTO campaigns (name, type, status, recipients, opens, clicks, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Health Insurance Promotion', 'WhatsApp', 'Completed', 2500, 2000, 800, 1))
         cursor.execute("""
             INSERT INTO campaigns (name, type, status, recipients, opens, clicks, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Q3 Product Launch', 'Email', 'Completed', 1200, 600, 180, 1))
 
         cursor.execute("""
             INSERT INTO user_settings (user_id, full_name, email, phone, company, timezone, theme, notifications, email_notifications, sms_notifications)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (1, 'Test User', 'test@example.com', '+91-9876543210', '', 'IST', 'light', 1, 1, 0))
 
         cursor.execute("""
             INSERT INTO contacts (name, company, email, phone, city, score, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Neha Singh', 'Tech Startup', 'neha@techstartup.com', '+91-9876543210', 'Mumbai, Andheri West', 85, 1))
         cursor.execute("""
             INSERT INTO contacts (name, company, email, phone, city, score, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Vikram Reddy', 'Tech Park', 'vikram@techpark.com', '+91-9876543211', 'Bangalore, Whitefield', 72, 1))
         cursor.execute("""
             INSERT INTO contacts (name, company, email, phone, city, score, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Anjali Desai', 'Retail Chain', 'anjali@retail.com', '+91-9876543212', 'Pune, Kothrud', 65, 1))
         cursor.execute("""
             INSERT INTO contacts (name, company, email, phone, city, score, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Amit Patel', 'Manufacturing', 'amit@mfg.com', '+91-9876543213', 'Ahmedabad, Naroda', 58, 1))
         cursor.execute("""
             INSERT INTO contacts (name, company, email, phone, city, score, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Priya Kapoor', 'Digital Ventures', 'priya@digital.com', '+91-9876543214', 'Delhi, Connaught Place', 80, 1))
 
         cursor.execute("""
             INSERT INTO contact_notes (contact_id, next_conversation, transcript)
-            VALUES (%s, %s, %s)
+            VALUES (?, ?, ?)
         """, (1, '2026-08-25T10:30', 'Discussed LAP requirements, sending document checklist.'))
 
         cursor.execute("""
             INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Neha Singh', '+91-9876543210', 320, 'Outbound', 'Interested', '2026-08-21', 1))
         cursor.execute("""
             INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Vikram Reddy', '+91-9876543211', 225, 'Inbound', 'Not Interested', '2026-08-21', 1))
         cursor.execute("""
             INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Anjali Desai', '+91-9876543212', 490, 'Outbound', 'Meeting Scheduled', '2026-08-20', 1))
         cursor.execute("""
             INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ('Amit Patel', '+91-9876543213', 410, 'Outbound', 'Follow-up Needed', '2026-08-20', 1))
 
         conn.commit()
