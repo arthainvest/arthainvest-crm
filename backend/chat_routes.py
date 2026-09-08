@@ -21,6 +21,7 @@ import os
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
 
 from auth import decode_token
 from schemas import ChatUserResponse, ConversationCreate, ConversationResponse, MessageCreate, MessageResponse
@@ -70,12 +71,21 @@ def _is_online(user_id: int) -> bool:
 async def broadcast_to_users(user_ids, event: dict):
     """Send `event` to every currently-connected socket for each user in user_ids. Silently
     skips anyone offline - they never get it queued in memory, only via REST catch-up on their
-    next load/reconnect."""
+    next load/reconnect.
+
+    jsonable_encoder is required here, not optional: `event["data"]` can be a raw DB row dict
+    (e.g. a message with a `created_at` field) and PyMySQL's DictCursor returns DATETIME columns
+    as native `datetime.datetime` objects (unlike SQLite, which returns plain strings) - a bare
+    `ws.send_json()` calls `json.dumps()` directly and raises TypeError on those, which would
+    silently be swallowed by the except below and falsely mark a perfectly healthy socket as
+    dead. jsonable_encoder applies the same datetime->ISO-string conversion FastAPI's REST
+    response_model already does automatically, so the WS and REST payloads stay consistent."""
+    encoded = jsonable_encoder(event)
     dead = []
     for user_id in user_ids:
         for ws in list(_connections.get(user_id, ())):
             try:
-                await ws.send_json(event)
+                await ws.send_json(encoded)
             except Exception:
                 dead.append((user_id, ws))
     for user_id, ws in dead:

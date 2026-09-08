@@ -81,8 +81,13 @@ export function ChatProvider({ children }) {
     if (event.event === 'new_message') {
       const msg = event.data;
       setMessagesByConversation((prev) => {
-        const existing = prev[msg.conversation_id];
-        if (!existing) return prev; // conversation not open in this session - list preview still updates via refreshConversations below
+        // Default to [] rather than bailing out when the conversation hasn't been loaded yet
+        // in this session - a WS echo can otherwise arrive before loadMessages()'s REST fetch
+        // resolves (e.g. right after creating a brand-new conversation and sending the first
+        // message), silently dropping the just-sent message from view even though it saved
+        // correctly. If the full history arrives afterward via loadMessages(), it replaces
+        // this array wholesale anyway, so a partial array here is never stale for long.
+        const existing = prev[msg.conversation_id] || [];
         if (existing.some((m) => m.id === msg.id)) return prev; // already have it (e.g. sender's own echo already added optimistically)
         return { ...prev, [msg.conversation_id]: [...existing, msg] };
       });

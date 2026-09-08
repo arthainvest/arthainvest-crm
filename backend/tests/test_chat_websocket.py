@@ -1,6 +1,54 @@
 """ArthaInvest Connect (Phase 2A-i): WebSocket contract tests, via FastAPI's
 client.websocket_connect - same TestClient(main.app) instance used by every REST test in this
 suite, so no special test infrastructure is needed for real-time delivery either."""
+import asyncio
+import json
+from datetime import datetime
+
+import chat_routes
+
+
+class _FakeWebSocket:
+    """Mimics Starlette's WebSocket.send_json enough to reproduce a real production bug: it
+    actually round-trips the payload through json.dumps()/json.loads(), since that's the
+    operation that chokes on a raw datetime object - a stub that just stores the object
+    without serializing it would not catch this."""
+    def __init__(self):
+        self.sent = []
+
+    async def send_json(self, data):
+        self.sent.append(json.loads(json.dumps(data)))
+
+
+def test_broadcast_to_users_serializes_datetime_fields_without_raising():
+    """Regression test for a real bug found during production verification: PyMySQL's
+    DictCursor returns DATETIME columns as native datetime.datetime objects (unlike SQLite,
+    which returns plain strings) - this test suite runs entirely against SQLite, so it would
+    never otherwise exercise that value shape. A bare ws.send_json() on a dict containing one
+    of these raises TypeError inside broadcast_to_users's try/except, which used to silently
+    swallow it and falsely mark a perfectly healthy socket as dead - a message would save
+    correctly but never broadcast live, exactly what was observed against the real deployed
+    MySQL backend before this fix (jsonable_encoder in broadcast_to_users)."""
+    fake_ws = _FakeWebSocket()
+    chat_routes._connections[999999] = {fake_ws}
+    try:
+        event = {
+            "event": "new_message",
+            "data": {
+                "id": 1, "conversation_id": 1, "sender_id": 1, "sender_name": "Test User",
+                "body": "hello", "message_type": "text",
+                "created_at": datetime(2026, 9, 8, 7, 26, 35),  # PyMySQL's actual return type
+            },
+        }
+        asyncio.run(chat_routes.broadcast_to_users([999999], event))
+
+        assert len(fake_ws.sent) == 1
+        assert fake_ws.sent[0]["data"]["created_at"] == "2026-09-08T07:26:35"
+        assert fake_ws in chat_routes._connections.get(999999, set()), (
+            "socket was falsely marked dead and unregistered - the exact symptom of the bug this guards against"
+        )
+    finally:
+        chat_routes._connections.pop(999999, None)
 
 
 def _register_and_login(client, username, full_name):
