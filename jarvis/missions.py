@@ -196,10 +196,18 @@ STEP_STATUSES = {
 
 TERMINAL_STEP_STATUSES = {"SUCCEEDED", "PARTIALLY_SUCCEEDED", "FAILED", "SKIPPED", "CANCELLED"}
 
-# Deliberately no FAILED -> READY edge here. Retrying a failed step is a
-# Recovery Engine decision (Stage G, not built yet) - this substrate records
-# that a step failed, but doesn't decide on its own that it should be
-# re-attempted. Building that in here would be jumping ahead.
+# Deliberately no FAILED -> READY edge in this generic map, even now that
+# Stage G (Recovery Engine) exists. transition_step()'s terminal-status
+# guard must stay absolute for every terminal status - SUCCEEDED/
+# PARTIALLY_SUCCEEDED/SKIPPED/CANCELLED are never reopenable, and weakening
+# that check here to let FAILED through would weaken it for everything.
+# The one narrow, deliberate carve-out Stage B's own docstring foreshadowed
+# ("Stage B does not introduce a recovery transition such as FAILED ->
+# READY because Recovery Engine is Stage G") lives in its own explicitly-
+# named function below, reopen_failed_step_for_recovery() - it performs
+# exactly that one transition and nothing else, using the same CAS
+# mechanics as everything else in this module, but never through the
+# generic transition_step() path.
 STEP_TRANSITIONS = {
     "PENDING": {"READY", "BLOCKED", "CANCELLED", "SKIPPED"},
     "READY": {"RUNNING", "BLOCKED", "CANCELLED", "SKIPPED"},
@@ -531,6 +539,54 @@ def record_step_verification(step_id, mission_id, user_id, verification: dict) -
         if cur.rowcount == 0:
             raise StateConflictError("MissionStep", step_id, mission_id=mission_id, step_id=step_id)
     return get_step(step_id, mission_id, user_id)
+
+
+def reopen_failed_step_for_recovery(step_id, mission_id, user_id, *, new_worker_id=None,
+                                     idempotency_key=None) -> dict:
+    """The one deliberate, narrow carve-out - added for Stage G (Recovery
+    Engine), exactly as Stage B's own comment above STEP_TRANSITIONS
+    foreshadowed. Performs FAILED -> READY (BLOCKED -> READY is already a
+    legal edge in the generic map - accepted here too only so a FALLBACK
+    decision can reassign worker_id in the same atomic write regardless of
+    which of the two stuck statuses the step is in) and nothing else;
+    never routed through transition_step()'s generic terminal-status
+    guard, which stays absolute for every other terminal status.
+    Idempotent via idempotency_key, same pattern as transition_step()."""
+    get_mission(mission_id, user_id)  # user-isolation check
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM jarvis_mission_steps WHERE step_id = ? AND mission_id = ?",
+            (step_id, mission_id),
+        ).fetchone()
+        if row is None:
+            raise StepNotFoundError(step_id, mission_id)
+
+        if idempotency_key and row["last_idempotency_key"] == idempotency_key:
+            cached = row["last_transition_result"]
+            return json.loads(cached) if cached else _row_to_step(row)
+
+        if row["status"] not in ("FAILED", "BLOCKED"):
+            raise InvalidStateTransitionError("MissionStep", step_id, row["status"], "READY",
+                                               mission_id=mission_id, step_id=step_id)
+
+        version = row["version"]
+        now = _now()
+        worker_id = new_worker_id if new_worker_id is not None else row["worker_id"]
+
+        cur = conn.execute("""
+            UPDATE jarvis_mission_steps
+            SET status = 'READY', worker_id = ?, version = version + 1, updated_at = ?, last_idempotency_key = ?
+            WHERE step_id = ? AND mission_id = ? AND version = ?
+        """, (worker_id, now, idempotency_key, step_id, mission_id, version))
+        if cur.rowcount == 0:
+            raise StateConflictError("MissionStep", step_id, mission_id=mission_id, step_id=step_id)
+
+        updated = conn.execute("SELECT * FROM jarvis_mission_steps WHERE step_id = ?", (step_id,)).fetchone()
+        result_dict = _row_to_step(updated)
+        if idempotency_key:
+            conn.execute("UPDATE jarvis_mission_steps SET last_transition_result = ? WHERE step_id = ?",
+                          (json.dumps(result_dict), step_id))
+    return result_dict
 
 
 def list_steps(mission_id, user_id) -> list:
