@@ -6,9 +6,23 @@ def test_status_shows_all_unconfigured_by_default(auth_client):
     assert resp.status_code == 200
     data = resp.json()
 
-    for name in ["WhatsApp Business API", "Twilio", "Exotel", "Email Service", "Mailchimp", "Claude AI", "LinkedIn", "Google Sheets", "Gmail", "Google Calendar", "Zapier", "Slack"]:
+    for name in ["WhatsApp Business API", "Twilio", "Exotel", "MSG91", "Email Service", "Mailchimp", "Claude AI", "LinkedIn", "Google Sheets", "Gmail", "Google Calendar", "Zapier", "Slack"]:
         assert name in data
         assert data[name]["configured"] is False
+
+
+def test_status_honestly_reports_unbuilt_integrations(auth_client, monkeypatch):
+    """QuickBooks/Aircall/Apollo.io/TradeIndia have no integration code at all (Phase 1.5
+    scoping decision) - always configured=False with an explicit 'not built' detail, never a
+    generic 'unconfigured' message that would wrongly imply setting an env var could fix it."""
+    # Even a plausible-looking env var must not flip these - there's no code that reads them.
+    monkeypatch.setenv("QUICKBOOKS_CLIENT_ID", "fake")
+    monkeypatch.setenv("AIRCALL_API_KEY", "fake")
+
+    data = auth_client.get("/api/integrations/status").json()
+    for name in ["QuickBooks", "Aircall", "Apollo.io", "TradeIndia"]:
+        assert data[name]["configured"] is False
+        assert data[name]["detail"] == "Not built yet"
 
 
 def test_status_reflects_configured_env_vars(auth_client, monkeypatch):

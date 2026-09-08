@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse, PlainTextResponse
 from contextlib import asynccontextmanager
 import sqlite3
 import asyncio
+import time
 from typing import List, Optional
 import os
 import json
@@ -23,6 +24,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 import db_compat
 import storage
+import calling_providers
 import automations_scheduler
 
 # DATABASE_URL is set in production (MySQL, e.g. Hostinger's Remote MySQL) and unset for
@@ -637,9 +639,35 @@ def _send_whatsapp_flow_message(to_digits, flow_meta_id, flow_token, body_text,
 # ============= HEALTH CHECK =============
 
 @app.get("/api/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "ok", "message": "ArthaInvest API is running"}
+async def health_check(response: Response):
+    """Public (no token) - this is what an external uptime monitor pings to keep the free
+    Render instance from spinning down, and what a human checks when something feels slow.
+    Previously a static stub that always said "ok" even if the database itself was
+    unreachable - now actually round-trips a query and reports real latency, and returns a
+    real 503 (not 200) when the database is down, since an uptime monitor silently getting
+    200 for a broken database defeats the point of monitoring at all."""
+    db_status = "ok"
+    db_error = None
+    start = time.monotonic()
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception as e:
+        db_status = "error"
+        db_error = str(e)[:300]
+    db_latency_ms = round((time.monotonic() - start) * 1000, 1)
+
+    overall_status = "ok" if db_status == "ok" else "degraded"
+    if overall_status != "ok":
+        response.status_code = 503
+
+    return {
+        "status": overall_status,
+        "message": "ArthaInvest API is running",
+        "database": {"status": db_status, "latency_ms": db_latency_ms, "error": db_error},
+    }
 
 # ============= AUTHENTICATION ENDPOINTS =============
 
@@ -2740,6 +2768,15 @@ async def get_integrations_status(token: str = Query(None)):
             configured=bool(os.getenv("MAILCHIMP_API_KEY") and os.getenv("MAILCHIMP_AUDIENCE_ID") and "-" in (os.getenv("MAILCHIMP_API_KEY") or ""))
         ),
         "Claude AI": IntegrationStatusItem(configured=bool(os.getenv("ANTHROPIC_API_KEY"))),
+        # These four have no integration code at all yet (see the Phase 1.5 scoping - Apollo.io
+        # and TradeIndia don't fit this business's actual lead source, QuickBooks/Aircall are
+        # only worth building if the user actually adopts them) - hardcoded False, not an env
+        # var check, since no code path would consume that env var even if it were set. The
+        # honest state is "not built", not "unconfigured".
+        "QuickBooks": IntegrationStatusItem(configured=False, detail="Not built yet"),
+        "Aircall": IntegrationStatusItem(configured=False, detail="Not built yet"),
+        "Apollo.io": IntegrationStatusItem(configured=False, detail="Not built yet"),
+        "TradeIndia": IntegrationStatusItem(configured=False, detail="Not built yet"),
     }
 
     with get_db() as conn:
@@ -4580,13 +4617,14 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
     """Click-to-call. Always creates a `status='initiated'` calls row first (see
     _auto_log_dial), regardless of whether a real telephony provider is configured - the
     frontend uses the returned call_id to complete the SAME record once the rep is done,
-    whether that means a real Exotel/Twilio-bridged call or a plain tel: link. Tries Exotel
-    first (EXOTEL_SID/EXOTEL_API_KEY/EXOTEL_API_TOKEN/EXOTEL_CALLER_ID - the Indian
-    multi-agent dialer with call recording built in, see _dial_via_exotel), falling back to
-    Twilio (TWILIO_ACCOUNT_SID/AUTH_TOKEN/FROM_NUMBER) if only that's configured. Either way
-    requires the agent's own phone number - team_members.phone (Phase 1's canonical calling
-    number) if this login is linked to a roster entry, else user_settings.phone as a legacy
-    fallback (see database_mysql.py's team_members columns for the migration plan)."""
+    whether that means a real Exotel/Twilio-bridged call or a plain tel: link. The actual
+    provider (Exotel preferred over Twilio, or neither) is resolved via
+    calling_providers.get_cloud_calling_provider() - see that module's docstring for the
+    provider abstraction this sits on, built so a future telephony provider (with automatic
+    recording/transcription) plugs in without rewriting this flow. Either way requires the
+    agent's own phone number - team_members.phone (Phase 1's canonical calling number) if this
+    login is linked to a roster entry, else user_settings.phone as a legacy fallback (see
+    database_mysql.py's team_members columns for the migration plan)."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
@@ -4604,18 +4642,8 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
         reason = "Calling is disabled" if not member['calling_enabled'] else "This team member is inactive"
         return DialResponse(configured=False, message=f"{reason} - see the Team page's Calling Profile.")
 
-    exotel_sid = os.getenv("EXOTEL_SID")
-    exotel_api_key = os.getenv("EXOTEL_API_KEY")
-    exotel_api_token = os.getenv("EXOTEL_API_TOKEN")
-    exotel_caller_id = os.getenv("EXOTEL_CALLER_ID")
-    exotel_configured = bool(exotel_sid and exotel_api_key and exotel_api_token and exotel_caller_id)
-
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-    from_number = os.getenv("TWILIO_FROM_NUMBER")
-    twilio_configured = bool(account_sid and auth_token and from_number)
-
-    if not (exotel_configured or twilio_configured):
+    provider = calling_providers.get_cloud_calling_provider()
+    if provider is None:
         call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
         return DialResponse(
             configured=False,
@@ -4631,7 +4659,7 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
             legacy = cursor.fetchone()
         agent_number = legacy['phone'] if legacy else None
 
-    provider_name = "Exotel" if exotel_configured else "Twilio"
+    provider_name = "Exotel" if provider.name == "exotel" else "Twilio"
     if not agent_number:
         call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
         return DialResponse(
@@ -4640,75 +4668,22 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
             call_id=call_id
         )
 
-    if exotel_configured:
-        return _dial_via_exotel(dial, current_user['user_id'], agent_number, exotel_sid, exotel_api_key, exotel_api_token, exotel_caller_id, team_member_id)
+    call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
+    result = provider.place_call(agent_number, dial.to, call_id)
 
-    try:
-        from twilio.rest import Client
-        from twilio.base.exceptions import TwilioRestException
+    if result.ok and result.call_sid and provider.name == "exotel":
+        # Exotel's own call Sid isn't reliable for correlating the async status webhook (a
+        # bridged call has two legs, each with a different Sid) - CustomField (already set to
+        # this call_id in ExotelProvider.place_call) is what that webhook actually matches on.
+        # The Sid is still worth storing for reference/support purposes.
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE calls SET provider_call_sid = ? WHERE id = ?", (result.call_sid, call_id))
+            conn.commit()
 
-        client = Client(account_sid, auth_token)
-        call = client.calls.create(
-            to=agent_number,
-            from_=from_number,
-            twiml=f'<Response><Dial callerId="{from_number}">{dial.to}</Dial></Response>'
-        )
-        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
-        return DialResponse(configured=True, message=f"Calling you at {agent_number} now.", call_sid=call.sid, call_id=call_id)
-    except TwilioRestException as e:
-        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
-        return DialResponse(configured=True, message=f"Twilio couldn't place the call: {e.msg}", call_id=call_id)
-    except Exception as e:
-        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
-        return DialResponse(configured=True, message=f"Call failed: {str(e)}", call_id=call_id)
-
-def _dial_via_exotel(dial, user_id, agent_number, sid, api_key, api_token, caller_id, team_member_id=None):
-    """Exotel's 'Connect two numbers' API - same ring-agent-then-bridge shape as the Twilio
-    path above, but with call recording built into the platform and priced for a multi-agent
-    Indian team instead of a per-Twilio-number setup. CustomField carries our own calls.id
-    through to Exotel's StatusCallback webhook (see exotel_status_webhook below) so the
-    recording URL and final duration can be written back onto the right row once the call
-    ends - Exotel's own call Sid isn't reliable for this since a bridged call has two legs,
-    each with a different Sid, and CustomField is Exotel's documented way to correlate both
-    legs back to the caller's own record."""
-    import requests
-
-    call_id = _auto_log_dial(dial, user_id, team_member_id)
-    subdomain = os.getenv("EXOTEL_SUBDOMAIN", "api.exotel.com")
-    callback_base = os.getenv("EXOTEL_STATUS_CALLBACK_BASE_URL")
-
-    payload = {
-        "From": agent_number,
-        "To": dial.to,
-        "CallerId": caller_id,
-        "CallType": "trans",
-        "Record": "true",
-        "CustomField": str(call_id),
-    }
-    if callback_base:
-        payload["StatusCallback"] = f"{callback_base.rstrip('/')}/api/webhooks/exotel/status"
-
-    try:
-        resp = requests.post(
-            f"https://{subdomain}/v1/Accounts/{sid}/Calls/connect.json",
-            data=payload,
-            auth=(api_key, api_token),
-            timeout=15,
-        )
-        body = resp.json()
-        if resp.status_code >= 400:
-            error_msg = (body.get("RestException") or {}).get("Message") or resp.text[:200]
-            return DialResponse(configured=True, message=f"Exotel couldn't place the call: {error_msg}", call_id=call_id)
-
-        call_sid = (body.get("Call") or {}).get("Sid")
-        if call_sid:
-            with get_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute("UPDATE calls SET provider_call_sid = ? WHERE id = ?", (call_sid, call_id))
-                conn.commit()
-        return DialResponse(configured=True, message=f"Calling you at {agent_number} now.", call_sid=call_sid, call_id=call_id)
-    except Exception as e:
-        return DialResponse(configured=True, message=f"Call failed: {str(e)}", call_id=call_id)
+    if result.ok:
+        return DialResponse(configured=True, message=f"Calling you at {agent_number} now.", call_sid=result.call_sid, call_id=call_id)
+    return DialResponse(configured=True, message=f"{provider_name} couldn't place the call: {result.error}", call_id=call_id)
 
 @app.post("/api/webhooks/exotel/status")
 async def exotel_status_webhook(request: Request):

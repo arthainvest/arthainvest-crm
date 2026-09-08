@@ -14,14 +14,19 @@ import '../styles/Integrations.css';
 // does something real instead of just toggling a flag.
 const REAL_STATUS_INTEGRATIONS = new Set([
   'WhatsApp Business API', 'Twilio', 'Exotel', 'MSG91', 'Email Service', 'Mailchimp', 'Claude AI', 'LinkedIn',
-  'Google Sheets', 'Gmail', 'Google Calendar', 'Zapier', 'Slack'
+  'Google Sheets', 'Gmail', 'Google Calendar', 'Zapier', 'Slack',
+  'QuickBooks', 'Aircall', 'Apollo.io', 'TradeIndia'
 ]);
 // Sheets, Gmail send, and Calendar sync all ride on one connected Google account - the same
 // Connect/Disconnect button and OAuth flow serves all three rows.
 const GOOGLE_ACCOUNT_INTEGRATIONS = new Set(['Google Sheets', 'Gmail', 'Google Calendar']);
-// These seven have no user-facing "connect" action at all - they're wired up (or not) purely
-// by which env vars are set on the server, so there's nothing to click here.
-const ENV_ONLY_INTEGRATIONS = new Set(['WhatsApp Business API', 'Twilio', 'Exotel', 'MSG91', 'Email Service', 'Mailchimp', 'Claude AI']);
+// These eleven have no user-facing "connect" action at all - either wired up (or not) purely
+// by server env vars, or (QuickBooks/Aircall/Apollo.io/TradeIndia) not built at all yet -
+// Phase 1.5 scoping decided against building them until there's a real business reason to.
+const ENV_ONLY_INTEGRATIONS = new Set([
+  'WhatsApp Business API', 'Twilio', 'Exotel', 'MSG91', 'Email Service', 'Mailchimp', 'Claude AI',
+  'QuickBooks', 'Aircall', 'Apollo.io', 'TradeIndia'
+]);
 
 export default function Integrations() {
   const [integrations, setIntegrations] = useState([]);
@@ -297,7 +302,7 @@ export default function Integrations() {
                 </span>
               </div>
 
-              {isReal && connected && status?.detail && (
+              {isReal && status?.detail && (
                 <p className="last-sync">{status.detail}</p>
               )}
               {!isReal && connected && (
@@ -307,7 +312,9 @@ export default function Integrations() {
               <div className="integration-actions">
                 {isEnvOnly ? (
                   <span className="integration-env-note">
-                    {connected ? 'Configured on the server' : 'Set the required keys in the server .env to enable this'}
+                    {connected
+                      ? 'Configured on the server'
+                      : status?.detail || 'Set the required keys in the server .env to enable this'}
                   </span>
                 ) : isLinkedIn ? (
                   connected ? (
