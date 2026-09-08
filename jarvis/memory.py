@@ -295,6 +295,20 @@ def forget(memory_id: int) -> bool:
         return forgotten
 
 
+def get_memory(memory_id: int) -> dict | None:
+    """Direct, independent by-id read — bypasses recall()'s privacy/
+    staleness/ranking pipeline entirely. Added for Stage F (Verifier):
+    verifying that a write actually happened means re-querying the row
+    itself, not trusting recall()'s filtered/ranked view of it. Returns
+    None for a nonexistent or soft-deleted id — deleted_at IS NULL is not
+    relaxed here, since a 'forgotten' memory should verify as absent."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM jarvis_memory WHERE id = ? AND deleted_at IS NULL", (memory_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def link(from_type: str, from_id: int, relation: str, to_type: str, to_id: int) -> int:
     """Create a knowledge-graph edge, e.g. link('contact', 12, 'has_deal', 'deal', 44)."""
     with _connect() as conn:

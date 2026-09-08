@@ -301,7 +301,10 @@ def init_db():
 
 
 def _row_to_mission(row) -> dict:
-    return dict(row)
+    d = dict(row)
+    for json_field in ("error", "result"):
+        d[json_field] = json.loads(d[json_field]) if d[json_field] else None
+    return d
 
 
 def _row_to_step(row) -> dict:
@@ -501,6 +504,33 @@ def get_step(step_id, mission_id, user_id) -> dict:
     if row is None:
         raise StepNotFoundError(step_id, mission_id)
     return _row_to_step(row)
+
+
+def record_step_verification(step_id, mission_id, user_id, verification: dict) -> dict:
+    """Metadata-only update to a MissionStep's `verification` field - added
+    for Stage F (Verifier). Deliberately NOT a state transition: recording
+    evidence about an already-terminal step's outcome isn't itself a state
+    change, so this bypasses transition_step()'s legal-edge check (which
+    would otherwise reject any write to a terminal step) while still using
+    the same optimistic-lock CAS as every other write in this module - a
+    concurrent verifier writing the same step still can't lose an update
+    silently, it gets StateConflictError like everything else here."""
+    get_mission(mission_id, user_id)  # user-isolation check
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT version FROM jarvis_mission_steps WHERE step_id = ? AND mission_id = ?",
+            (step_id, mission_id),
+        ).fetchone()
+        if row is None:
+            raise StepNotFoundError(step_id, mission_id)
+        cur = conn.execute(
+            "UPDATE jarvis_mission_steps SET verification = ?, updated_at = ?, version = version + 1 "
+            "WHERE step_id = ? AND mission_id = ? AND version = ?",
+            (json.dumps(verification), _now(), step_id, mission_id, row["version"]),
+        )
+        if cur.rowcount == 0:
+            raise StateConflictError("MissionStep", step_id, mission_id=mission_id, step_id=step_id)
+    return get_step(step_id, mission_id, user_id)
 
 
 def list_steps(mission_id, user_id) -> list:
