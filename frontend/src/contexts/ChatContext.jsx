@@ -1,7 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   getChatWebSocketUrl, getChatConversations, getChatMessages, sendChatMessageRest, createChatConversation,
+  markChatConversationRead,
 } from '../services/api';
+
+const currentUserId = Number(localStorage.getItem('userId'));
 
 // First React Context in this frontend - justified because the single WebSocket connection and
 // presence/unread state need to be visible in the nav bar (a future unread badge) and inside the
@@ -18,6 +21,8 @@ export function ChatProvider({ children }) {
   const [conversations, setConversations] = useState([]);
   const [presenceMap, setPresenceMap] = useState({}); // user_id -> boolean online
   const [messagesByConversation, setMessagesByConversation] = useState({}); // id -> array
+  const [typingMap, setTypingMap] = useState({}); // conversation_id -> [user_ids currently typing]
+  const [readReceipts, setReadReceipts] = useState({}); // conversation_id -> { user_id: up_to_message_id }
   const [connected, setConnected] = useState(false);
 
   const wsRef = useRef(null);
@@ -93,12 +98,32 @@ export function ChatProvider({ children }) {
       });
       setConversations((prev) => prev.map((c) => (
         c.id === msg.conversation_id
-          ? { ...c, last_message_body: msg.body, last_message_sender_id: msg.sender_id, last_message_at: msg.created_at }
+          ? {
+              ...c,
+              last_message_body: msg.body,
+              last_message_sender_id: msg.sender_id,
+              last_message_at: msg.created_at,
+              // Only bump unread for messages from someone else - my own sent messages
+              // shouldn't count as "unread" in my own conversation list.
+              unread_count: msg.sender_id === currentUserId ? c.unread_count : (c.unread_count || 0) + 1,
+            }
           : c
       )));
+      // A new message means whoever was typing has finished, at least for this message.
+      setTypingMap((prev) => ({ ...prev, [msg.conversation_id]: (prev[msg.conversation_id] || []).filter((id) => id !== msg.sender_id) }));
     } else if (event.event === 'presence') {
       const { user_id: userId, status } = event.data;
       setPresenceMap((prev) => ({ ...prev, [userId]: status === 'online' }));
+    } else if (event.event === 'typing') {
+      const { conversation_id: convId, user_id: userId, is_typing: isTyping } = event.data;
+      setTypingMap((prev) => {
+        const current = prev[convId] || [];
+        const next = isTyping ? [...new Set([...current, userId])] : current.filter((id) => id !== userId);
+        return { ...prev, [convId]: next };
+      });
+    } else if (event.event === 'read_receipt') {
+      const { conversation_id: convId, user_id: userId, up_to_message_id: upToId } = event.data;
+      setReadReceipts((prev) => ({ ...prev, [convId]: { ...(prev[convId] || {}), [userId]: upToId } }));
     }
     // 'pong'/'error' need no state change here.
   }, []);
@@ -178,9 +203,30 @@ export function ChatProvider({ children }) {
     return conv;
   }, [token]);
 
+  const sendTyping = useCallback((conversationId, isTyping) => {
+    // WS-only, no REST fallback - a typing indicator is purely ephemeral, so if the socket is
+    // down there's nothing useful to deliver by the time a REST call would land anyway.
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ event: isTyping ? 'typing_start' : 'typing_stop', data: { conversation_id: conversationId } }));
+    }
+  }, []);
+
+  const markRead = useCallback(async (conversationId, upToMessageId) => {
+    setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c)));
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ event: 'mark_read', data: { conversation_id: conversationId, up_to_message_id: upToMessageId } }));
+      return;
+    }
+    try {
+      await markChatConversationRead(token, conversationId, upToMessageId);
+    } catch (err) {
+      console.error('Error marking conversation read:', err);
+    }
+  }, [token]);
+
   const value = {
-    conversations, presenceMap, messagesByConversation, connected,
-    refreshConversations, loadMessages, sendMessage, startConversation,
+    conversations, presenceMap, messagesByConversation, typingMap, readReceipts, connected,
+    refreshConversations, loadMessages, sendMessage, startConversation, sendTyping, markRead,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

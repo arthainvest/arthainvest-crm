@@ -147,6 +147,58 @@ def _ensure_integrations_catalog(cursor, conn):
     conn.commit()
 
 
+# The fixed org-wide channels for ArthaInvest Connect (Phase 2A-ii) - every active employee is
+# a member of each one automatically, no manual setup. Adding a new one later is a one-line
+# change here.
+CHAT_CHANNEL_SEEDS = [
+    ('loans', 'Loans'),
+    ('insurance', 'Insurance'),
+    ('mutual-funds', 'Mutual Funds'),
+    ('mumbai', 'Mumbai'),
+    ('akola', 'Akola'),
+]
+
+
+def _ensure_chat_channels(cursor, conn):
+    """Create the fixed channels above (by slug, idempotent) and make sure every active user is
+    a member of each - runs on every startup, so a channel added to CHAT_CHANNEL_SEEDS later, or
+    a user created after the channels already exist, both get membership without a manual step.
+    No-ops on a genuinely empty database (no admin yet to own the channels) - self-heals on the
+    next restart once real users exist, same tolerance _ensure_integrations_catalog already has."""
+    cursor.execute("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1")
+    admin_row = cursor.fetchone()
+    if not admin_row:
+        return
+    system_user_id = admin_row['id']
+
+    cursor.execute("SELECT id FROM users WHERE is_active = 1")
+    active_user_ids = [row['id'] for row in cursor.fetchall()]
+
+    for slug, name in CHAT_CHANNEL_SEEDS:
+        cursor.execute("SELECT id FROM conversations WHERE slug = %s", (slug,))
+        row = cursor.fetchone()
+        if row:
+            channel_id = row['id']
+        else:
+            cursor.execute(
+                "INSERT INTO conversations (type, name, slug, created_by, created_at, updated_at) "
+                "VALUES ('channel', %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (name, slug, system_user_id),
+            )
+            channel_id = cursor.lastrowid
+
+        cursor.execute("SELECT user_id FROM conversation_members WHERE conversation_id = %s", (channel_id,))
+        existing_member_ids = {row['user_id'] for row in cursor.fetchall()}
+        for user_id in active_user_ids:
+            if user_id not in existing_member_ids:
+                cursor.execute(
+                    "INSERT INTO conversation_members (conversation_id, user_id, role_in_conversation, joined_at) "
+                    "VALUES (%s, %s, 'member', CURRENT_TIMESTAMP)",
+                    (channel_id, user_id),
+                )
+    conn.commit()
+
+
 def init_db():
     """Create the schema if it doesn't exist yet, then seed demo data only on a genuinely
     empty database (first run). Fresh schema (not an ALTER-retrofit chain like
@@ -940,6 +992,11 @@ def init_db():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
         _create_index_if_missing(cursor, "idx_conversations_last_message_at", "conversations", "last_message_at")
+        # slug identifies the fixed org-wide channels (Phase 2A-ii) - e.g. 'loans', 'mumbai'.
+        # NULL for DMs/groups. Uniqueness is enforced at the application layer (in
+        # _ensure_chat_channels below), not a DB constraint, since this is a retrofitted column.
+        _add_column_if_missing(cursor, "conversations", "slug", "VARCHAR(50)")
+        _create_index_if_missing(cursor, "idx_conversations_slug", "conversations", "slug")
 
         # role_in_conversation ('owner'|'member') is modeled now, ahead of Phase 2A-ii/2D
         # actually enforcing anything with it, since it's free to add alongside the table and
@@ -956,6 +1013,9 @@ def init_db():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
         _create_index_if_missing(cursor, "idx_conversation_members_user_id", "conversation_members", "user_id")
+        # Drives unread counts and read-receipt status (Phase 2A-ii) - the highest message id
+        # this member has read up to. NULL means "never read anything in this conversation".
+        _add_column_if_missing(cursor, "conversation_members", "last_read_message_id", "INT")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -972,6 +1032,7 @@ def init_db():
         conn.commit()
 
         _ensure_integrations_catalog(cursor, conn)
+        _ensure_chat_channels(cursor, conn)
 
         cursor.execute("SELECT COUNT(*) as count FROM users")
         if cursor.fetchone()['count'] > 0:
@@ -1091,6 +1152,13 @@ def init_db():
         """, ('Amit Patel', '+91-9876543213', 410, 'Outbound', 'Follow-up Needed', '2026-08-20', 1))
 
         conn.commit()
+
+        # Fresh-install case: _ensure_chat_channels() ran earlier in this same function, before
+        # any user existed (a genuinely empty database at that point) and no-op'd. Run it again
+        # now that testuser (and the rest of the demo seed) exists, so channels are ready on the
+        # very first startup.
+        _ensure_chat_channels(cursor, conn)
+
         cursor.close()
         print("[OK] MySQL database initialized successfully!")
         print("[OK] Test user created: testuser / password")

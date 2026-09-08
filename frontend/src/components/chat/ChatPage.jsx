@@ -68,6 +68,7 @@ export default function ChatPage() {
             </div>
           ) : (
             <MessageThread
+              key={selectedConversation.id}
               conversation={selectedConversation}
               onBack={() => {
                 setSelectedId(null);

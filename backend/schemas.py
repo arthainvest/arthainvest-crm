@@ -1408,6 +1408,7 @@ class ConversationResponse(BaseModel):
     id: int
     type: str
     name: Optional[str] = None
+    slug: Optional[str] = None
     created_by: int
     created_at: datetime
     updated_at: datetime
@@ -1415,6 +1416,10 @@ class ConversationResponse(BaseModel):
     last_message_body: Optional[str] = None
     last_message_sender_id: Optional[int] = None
     members: List[ConversationMember]
+    unread_count: int = 0
+
+class MarkReadRequest(BaseModel):
+    up_to_message_id: int
 
 class MessageCreate(BaseModel):
     body: str = Field(..., min_length=1, max_length=10000)

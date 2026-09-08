@@ -24,7 +24,7 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from fastapi.encoders import jsonable_encoder
 
 from auth import decode_token
-from schemas import ChatUserResponse, ConversationCreate, ConversationResponse, MessageCreate, MessageResponse
+from schemas import ChatUserResponse, ConversationCreate, ConversationResponse, MarkReadRequest, MessageCreate, MessageResponse
 
 if os.getenv("DATABASE_URL"):
     from database_mysql import get_db
@@ -106,7 +106,7 @@ def _require_member(cursor, conversation_id: int, user_id: int):
         raise HTTPException(status_code=403, detail="You are not a member of this conversation")
 
 
-def _conversation_to_dict(cursor, conv_row) -> dict:
+def _conversation_to_dict(cursor, conv_row, viewer_id: int) -> dict:
     conv = dict(conv_row)
     cursor.execute(
         """
@@ -121,6 +121,21 @@ def _conversation_to_dict(cursor, conv_row) -> dict:
     conv["members"] = [
         {**dict(row), "online": _is_online(row["user_id"])} for row in cursor.fetchall()
     ]
+
+    # Unread count (Phase 2A-ii): everything after the viewer's own last_read_message_id -
+    # NULL (never read anything here) is treated as 0 so every message counts as unread.
+    cursor.execute(
+        "SELECT last_read_message_id FROM conversation_members WHERE conversation_id = ? AND user_id = ?",
+        (conv["id"], viewer_id),
+    )
+    read_row = cursor.fetchone()
+    last_read_id = (read_row["last_read_message_id"] if read_row else None) or 0
+    cursor.execute(
+        "SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = ? AND id > ?",
+        (conv["id"], last_read_id),
+    )
+    conv["unread_count"] = cursor.fetchone()["cnt"]
+
     return conv
 
 
@@ -171,6 +186,46 @@ async def _create_message(conn, cursor, conversation_id: int, sender_id: int, bo
     return message
 
 
+async def _mark_read(conn, cursor, conversation_id: int, user_id: int, up_to_message_id: int):
+    """Updates the caller's read position and notifies every other current member - the one
+    path both the WebSocket mark_read event and the REST fallback endpoint go through."""
+    cursor.execute(
+        "UPDATE conversation_members SET last_read_message_id = ? WHERE conversation_id = ? AND user_id = ?",
+        (up_to_message_id, conversation_id, user_id),
+    )
+    conn.commit()
+    cursor.execute(
+        "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL AND user_id != ?",
+        (conversation_id, user_id),
+    )
+    other_ids = [row["user_id"] for row in cursor.fetchall()]
+    await broadcast_to_users(
+        other_ids,
+        {"event": "read_receipt", "data": {"conversation_id": conversation_id, "user_id": user_id, "up_to_message_id": up_to_message_id}},
+    )
+
+
+def add_user_to_all_channels(cursor, conn, user_id: int):
+    """Called from main.py's POST /api/auth/register right after a new user account is created,
+    so a newly onboarded employee is immediately a member of every existing fixed channel -
+    without this, they'd only get channel membership on the next server restart (when
+    database_mysql.py/database_sqlite.py's _ensure_chat_channels() next runs)."""
+    cursor.execute("SELECT id FROM conversations WHERE type = 'channel'")
+    channel_ids = [row["id"] for row in cursor.fetchall()]
+    for channel_id in channel_ids:
+        cursor.execute(
+            "SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?",
+            (channel_id, user_id),
+        )
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO conversation_members (conversation_id, user_id, role_in_conversation, joined_at) "
+                "VALUES (?, ?, 'member', CURRENT_TIMESTAMP)",
+                (channel_id, user_id),
+            )
+    conn.commit()
+
+
 # ============= REST endpoints =============
 
 @router.get("/users", response_model=list[ChatUserResponse])
@@ -211,7 +266,7 @@ async def list_conversations(updated_after: Optional[str] = Query(None), token: 
         query += " ORDER BY COALESCE(conversations.last_message_at, conversations.created_at) DESC"
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
-        return [_conversation_to_dict(cursor, row) for row in rows]
+        return [_conversation_to_dict(cursor, row, user["user_id"]) for row in rows]
 
 
 @router.post("/conversations", response_model=ConversationResponse)
@@ -256,7 +311,7 @@ async def create_conversation(payload: ConversationCreate, token: str = Query(No
             existing = cursor.fetchone()
             if existing:
                 cursor.execute("SELECT * FROM conversations WHERE id = ?", (existing["id"],))
-                return _conversation_to_dict(cursor, cursor.fetchone())
+                return _conversation_to_dict(cursor, cursor.fetchone(), user["user_id"])
 
         cursor.execute(
             "INSERT INTO conversations (type, name, created_by, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -273,7 +328,7 @@ async def create_conversation(payload: ConversationCreate, token: str = Query(No
         conn.commit()
 
         cursor.execute("SELECT * FROM conversations WHERE id = ?", (conversation_id,))
-        return _conversation_to_dict(cursor, cursor.fetchone())
+        return _conversation_to_dict(cursor, cursor.fetchone(), user["user_id"])
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
@@ -283,7 +338,7 @@ async def get_conversation(conversation_id: int, token: str = Query(None)):
         cursor = conn.cursor()
         _require_member(cursor, conversation_id, user["user_id"])
         cursor.execute("SELECT * FROM conversations WHERE id = ?", (conversation_id,))
-        return _conversation_to_dict(cursor, cursor.fetchone())
+        return _conversation_to_dict(cursor, cursor.fetchone(), user["user_id"])
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageResponse])
@@ -342,6 +397,18 @@ async def send_message_rest(conversation_id: int, payload: MessageCreate, token:
         return await _create_message(conn, cursor, conversation_id, user["user_id"], payload.body.strip())
 
 
+@router.post("/conversations/{conversation_id}/read")
+async def mark_conversation_read(conversation_id: int, payload: MarkReadRequest, token: str = Query(None)):
+    """REST fallback for marking a conversation read when the WebSocket isn't connected - mirrors
+    the WS mark_read event via the same _mark_read() function."""
+    user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        _require_member(cursor, conversation_id, user["user_id"])
+        await _mark_read(conn, cursor, conversation_id, user["user_id"], payload.up_to_message_id)
+    return {"ok": True}
+
+
 # ============= WebSocket =============
 
 @ws_router.websocket("/ws")
@@ -383,6 +450,43 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json({"event": "error", "data": {"message": "Not a member of this conversation"}})
                         continue
                     await _create_message(conn, cursor, conversation_id, user_id, body)
+
+            elif event in ("typing_start", "typing_stop"):
+                conversation_id = data.get("conversation_id")
+                if not conversation_id:
+                    continue
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL",
+                        (conversation_id, user_id),
+                    )
+                    if not cursor.fetchone():
+                        continue
+                    cursor.execute(
+                        "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL AND user_id != ?",
+                        (conversation_id, user_id),
+                    )
+                    other_ids = [row["user_id"] for row in cursor.fetchall()]
+                await broadcast_to_users(
+                    other_ids,
+                    {"event": "typing", "data": {"conversation_id": conversation_id, "user_id": user_id, "is_typing": event == "typing_start"}},
+                )
+
+            elif event == "mark_read":
+                conversation_id = data.get("conversation_id")
+                up_to_message_id = data.get("up_to_message_id")
+                if not conversation_id or up_to_message_id is None:
+                    continue
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL",
+                        (conversation_id, user_id),
+                    )
+                    if not cursor.fetchone():
+                        continue
+                    await _mark_read(conn, cursor, conversation_id, user_id, up_to_message_id)
 
             elif event == "ping":
                 await websocket.send_json({"event": "pong", "data": {}})

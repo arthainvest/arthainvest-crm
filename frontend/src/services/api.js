@@ -1059,4 +1059,10 @@ export const sendChatMessageRest = async (token, conversationId, body) => {
   return response.data;
 };
 
+// REST fallback for marking a conversation read when the WebSocket isn't connected - see ChatContext.jsx.
+export const markChatConversationRead = async (token, conversationId, upToMessageId) => {
+  const response = await api.post(`/api/chat/conversations/${conversationId}/read?token=${token}`, { up_to_message_id: upToMessageId });
+  return response.data;
+};
+
 export default api;

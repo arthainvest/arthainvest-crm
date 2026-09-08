@@ -32,15 +32,20 @@ export default function ConversationList({ conversations, selectedId, onSelect }
       {conversations.map((convo) => {
         const title = conversationTitle(convo);
         const others = convo.members.filter((m) => m.user_id !== currentUserId);
-        const anyOnline = others.some((m) => presenceMap[m.user_id] ?? m.online);
+        // Only DMs show an online ring on the avatar - a group/channel's "anyone online" isn't
+        // a meaningful single-dot signal the way it is for exactly one other person.
+        const anyOnline = convo.type === 'dm' && others.some((m) => presenceMap[m.user_id] ?? m.online);
+        const unread = convo.unread_count || 0;
 
         return (
           <button
             key={convo.id}
-            className={`chat-conversation-item ${selectedId === convo.id ? 'active' : ''}`}
+            className={`chat-conversation-item ${selectedId === convo.id ? 'active' : ''} ${unread > 0 ? 'unread' : ''}`}
             onClick={() => onSelect(convo.id)}
           >
-            <div className={`chat-avatar ${anyOnline ? 'online' : ''}`}>{title.charAt(0).toUpperCase()}</div>
+            <div className={`chat-avatar ${anyOnline ? 'online' : ''}`}>
+              {convo.type === 'channel' ? '#' : title.charAt(0).toUpperCase()}
+            </div>
             <div className="chat-conversation-details">
               <div className="chat-conversation-top-row">
                 <span className="chat-conversation-name">{title}</span>
@@ -50,7 +55,9 @@ export default function ConversationList({ conversations, selectedId, onSelect }
                 {convo.last_message_body || 'No messages yet'}
               </div>
               {convo.type === 'group' && <span className="chat-group-badge">Group</span>}
+              {convo.type === 'channel' && <span className="chat-group-badge">Channel</span>}
             </div>
+            {unread > 0 && <span className="chat-unread-badge">{unread > 99 ? '99+' : unread}</span>}
           </button>
         );
       })}

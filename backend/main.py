@@ -760,6 +760,10 @@ async def register(user: UserCreate, token: str = Query(None)):
             cursor.execute("SELECT id, username, email, full_name, role, is_active FROM users WHERE username = ?", (user.username,))
             new_user = cursor.fetchone()
 
+            # ArthaInvest Connect (Phase 2A-ii): a new employee is immediately a member of
+            # every fixed channel, not just future ones added on the next server restart.
+            chat_routes.add_user_to_all_channels(cursor, conn, new_user['id'])
+
             return UserResponse(**dict(new_user))
 
         except IntegrityError as e:

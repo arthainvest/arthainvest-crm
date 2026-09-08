@@ -11,22 +11,48 @@ function conversationTitle(convo) {
   return others.map((m) => m.full_name).join(', ') || 'You';
 }
 
+function typingLabel(conversation, typingUserIds) {
+  const names = conversation.members
+    .filter((m) => typingUserIds.includes(m.user_id))
+    .map((m) => m.full_name);
+  if (names.length === 0) return null;
+  if (names.length === 1) return `${names[0]} is typing...`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing...`;
+  return `${names.length} people are typing...`;
+}
+
 export default function MessageThread({ conversation, onBack }) {
-  const { messagesByConversation, presenceMap, sendMessage } = useChat();
+  const { messagesByConversation, presenceMap, typingMap, sendMessage, sendTyping, markRead } = useChat();
   // Read the raw (possibly undefined) value for the effect dependency below - falling back to
   // a literal [] here would create a new array reference every render, re-triggering the
   // scroll effect on every render rather than only when the messages actually change.
   const messages = messagesByConversation[conversation.id];
   const messagesEndRef = useRef(null);
+  const lastMarkedReadIdRef = useRef(0);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Mark read whenever the visible last message advances - guarded by a ref (not state) so
+  // this never re-triggers itself via the unread_count update markRead causes elsewhere.
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    const lastId = messages[messages.length - 1].id;
+    if (lastId > lastMarkedReadIdRef.current) {
+      lastMarkedReadIdRef.current = lastId;
+      markRead(conversation.id, lastId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, conversation.id]);
+
   const others = conversation.members.filter((m) => m.user_id !== currentUserId);
-  const anyOnline = others.some((m) => presenceMap[m.user_id] ?? m.online);
+  const anyOnline = conversation.type === 'dm' && others.some((m) => presenceMap[m.user_id] ?? m.online);
+  const typingUserIds = (typingMap[conversation.id] || []).filter((id) => id !== currentUserId);
+  const typing = typingLabel(conversation, typingUserIds);
 
   const handleSend = (body) => sendMessage(conversation.id, body);
+  const handleTyping = (isTyping) => sendTyping(conversation.id, isTyping);
 
   return (
     <>
@@ -41,7 +67,7 @@ export default function MessageThread({ conversation, onBack }) {
               {anyOnline ? 'Online' : 'Offline'}
             </span>
           )}
-          {conversation.type === 'group' && (
+          {(conversation.type === 'group' || conversation.type === 'channel') && (
             <span className="chat-thread-members">{conversation.members.length} members</span>
           )}
         </div>
@@ -56,7 +82,9 @@ export default function MessageThread({ conversation, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      <MessageComposer onSend={handleSend} />
+      {typing && <div className="chat-typing-indicator">{typing}</div>}
+
+      <MessageComposer onSend={handleSend} onTyping={handleTyping} />
     </>
   );
 }

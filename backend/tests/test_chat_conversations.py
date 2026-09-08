@@ -95,11 +95,14 @@ def test_list_conversations_only_shows_callers_own(client, auth_client):
     other_token, other_id = _register_and_login(client, "samiksha4", "Samiksha")
     bystander_token, bystander_id = _register_and_login(client, "bystander", "Bystander")
 
-    auth_client.post("/api/chat/conversations", json={"type": "dm", "member_user_ids": [other_id]})
+    dm = auth_client.post("/api/chat/conversations", json={"type": "dm", "member_user_ids": [other_id]}).json()
 
     resp = client.get(f"/api/chat/conversations?token={bystander_token}")
     assert resp.status_code == 200
-    assert resp.json() == []
+    # Every user auto-joins the fixed team channels (Phase 2A-ii), so a bystander legitimately
+    # sees those - the assertion here is specifically that they do NOT see the DM they're not in.
+    assert dm["id"] not in [c["id"] for c in resp.json()]
+    assert all(c["type"] == "channel" for c in resp.json())
 
 
 def test_get_conversation_403_for_non_member(client, auth_client):
