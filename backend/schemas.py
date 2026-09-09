@@ -1424,6 +1424,7 @@ class MarkReadRequest(BaseModel):
 class MessageCreate(BaseModel):
     body: str = Field(..., min_length=1, max_length=10000)
     reply_to_message_id: Optional[int] = None
+    lead_id: Optional[int] = None
 
 class MessageEditRequest(BaseModel):
     body: str = Field(..., min_length=1, max_length=10000)
@@ -1445,6 +1446,7 @@ class MessageResponse(BaseModel):
     body: Optional[str] = None
     message_type: str
     reply_to_message_id: Optional[int] = None
+    lead_id: Optional[int] = None
     edited_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
     mentioned_user_ids: List[int] = []

@@ -322,6 +322,10 @@
   color: #388E3C;
 }
 
+.lead-row-actions .btn-action.connect {
+  color: #1976d2;
+}
+
 .lead-row-actions .btn-action:hover {
   transform: scale(1.15);
 }

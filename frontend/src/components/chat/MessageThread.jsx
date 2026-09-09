@@ -21,7 +21,7 @@ function typingLabel(conversation, typingUserIds) {
   return `${names.length} people are typing...`;
 }
 
-export default function MessageThread({ conversation, onBack }) {
+export default function MessageThread({ conversation, onBack, initialLeadContext, onLeadContextConsumed }) {
   const {
     messagesByConversation, presenceMap, typingMap, sendMessage, sendTyping, markRead,
     editMessage, removeMessage, uploadAttachment,
@@ -33,6 +33,17 @@ export default function MessageThread({ conversation, onBack }) {
   const messagesEndRef = useRef(null);
   const lastMarkedReadIdRef = useRef(0);
   const [replyTo, setReplyTo] = useState(null);
+  // Phase 2B-i: "Discuss in Connect" (see LeadsList.jsx) hands off a lead via ChatPage's
+  // navigation state; this component owns the actual composer-facing state from there, exactly
+  // mirroring how `replyTo` above works - set once, attached to the next message sent, then
+  // cleared. `initialLeadContext` only seeds the very first render of a freshly-selected
+  // conversation (this component remounts on conversation switch via ChatPage's `key` prop).
+  const [leadContext, setLeadContext] = useState(initialLeadContext || null);
+
+  useEffect(() => {
+    if (initialLeadContext) onLeadContextConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const messagesById = useMemo(() => {
     const map = {};
@@ -62,8 +73,9 @@ export default function MessageThread({ conversation, onBack }) {
   const typing = typingLabel(conversation, typingUserIds);
 
   const handleSend = async (body) => {
-    await sendMessage(conversation.id, body, replyTo?.id ?? null);
+    await sendMessage(conversation.id, body, replyTo?.id ?? null, leadContext?.id ?? null);
     setReplyTo(null);
+    setLeadContext(null);
   };
   const handleTyping = (isTyping) => sendTyping(conversation.id, isTyping);
   const handleAttach = (file) => uploadAttachment(conversation.id, file);
@@ -115,6 +127,8 @@ export default function MessageThread({ conversation, onBack }) {
         onAttach={handleAttach}
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
+        leadContext={leadContext}
+        onCancelLeadContext={() => setLeadContext(null)}
       />
     </>
   );

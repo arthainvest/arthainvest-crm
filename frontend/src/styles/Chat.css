@@ -383,6 +383,68 @@
   cursor: pointer;
 }
 
+/* ---- Phase 2B-i: lead context banner (composer) and lead card (message bubble) ---- */
+
+.chat-lead-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-subtle);
+  background: #e3f2fd;
+}
+
+.chat-lead-banner-label { font-size: 12px; font-weight: 600; color: #1976d2; }
+
+.chat-lead-banner-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  color: #1976d2;
+  cursor: pointer;
+}
+
+.chat-lead-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  border-left: 3px solid #1976d2;
+  background: rgba(25, 118, 210, 0.08);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.chat-message-bubble.outbound .chat-lead-card {
+  border-left-color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.chat-lead-card-tag {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.chat-lead-card-details { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chat-lead-card-name { font-weight: 600; }
+.chat-lead-card-company { opacity: 0.85; }
+.chat-lead-card-status {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.chat-message-bubble.outbound .chat-lead-card-status { background: rgba(255, 255, 255, 0.2); }
+
 /* ---- Edited / deleted state ---- */
 
 .chat-edited-label { font-style: italic; opacity: 0.8; margin-right: 4px; }

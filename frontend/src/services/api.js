@@ -1054,9 +1054,9 @@ export const getChatMessages = async (token, conversationId, { afterId = null, b
 };
 
 // REST fallback for sending a message when the WebSocket isn't connected - see ChatContext.jsx.
-export const sendChatMessageRest = async (token, conversationId, body, replyToMessageId = null) => {
+export const sendChatMessageRest = async (token, conversationId, body, replyToMessageId = null, leadId = null) => {
   const response = await api.post(`/api/chat/conversations/${conversationId}/messages?token=${token}`, {
-    body, reply_to_message_id: replyToMessageId,
+    body, reply_to_message_id: replyToMessageId, lead_id: leadId,
   });
   return response.data;
 };

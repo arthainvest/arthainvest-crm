@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getLeads, createLead, updateLead, assignLead, getTeam,
   getLeadNotes, createLeadNote, updateLeadNote, deleteLeadNote,
@@ -68,6 +69,7 @@ const WhatsAppIcon = () => (
 );
 
 export default function LeadsList() {
+  const navigate = useNavigate();
   const [activeCall, setActiveCall] = useState(null);  // { id, name } - drives the Complete Call modal
   const [leads, setLeads] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
@@ -423,6 +425,13 @@ export default function LeadsList() {
     setDraftAudioUrl(null);
     draftAudioBlobRef.current = null;
     setEditingNoteId(null);
+  };
+
+  // Phase 2B-i: hands the lead off to Connect via router state rather than creating/opening a
+  // conversation here - the user picks or starts the actual conversation on the Connect page
+  // itself (see ChatPage.jsx's pendingLeadContext), so this can never spawn a duplicate one.
+  const handleDiscussInConnect = (lead) => {
+    navigate('/connect', { state: { leadContext: { id: lead.id, name: lead.name } } });
   };
 
   const handleNotes = async (lead) => {
@@ -820,6 +829,7 @@ export default function LeadsList() {
                     </button>
                     <button className="btn-action email" onClick={() => handleEmail(lead)} title="Send Email">📧</button>
                     <button className="btn-action notes" onClick={() => handleNotes(lead)} title="Notes & Follow-up">📝</button>
+                    <button className="btn-action connect" onClick={() => handleDiscussInConnect(lead)} title="Discuss in Connect">💬</button>
                     {lead.converted_contact_id ? (
                       <span className="lead-converted-badge" title={`Converted to Contact: ${lead.converted_contact_name || ''}`}>✅ Converted</span>
                     ) : (

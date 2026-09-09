@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 // after someone has clearly walked away from the box.
 const TYPING_STOP_DELAY_MS = 2000;
 
-export default function MessageComposer({ onSend, onTyping, onAttach, replyTo, onCancelReply }) {
+export default function MessageComposer({ onSend, onTyping, onAttach, replyTo, onCancelReply, leadContext, onCancelLeadContext }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [attaching, setAttaching] = useState(false);
@@ -81,6 +81,12 @@ export default function MessageComposer({ onSend, onTyping, onAttach, replyTo, o
             <span className="chat-reply-banner-body">{(replyTo.body || '').slice(0, 100)}</span>
           </div>
           <button type="button" className="chat-reply-banner-close" onClick={onCancelReply} title="Cancel reply">×</button>
+        </div>
+      )}
+      {leadContext && (
+        <div className="chat-lead-banner">
+          <span className="chat-lead-banner-label">Discussing: {leadContext.name}</span>
+          <button type="button" className="chat-lead-banner-close" onClick={onCancelLeadContext} title="Remove lead context">×</button>
         </div>
       )}
       <div className="chat-composer">

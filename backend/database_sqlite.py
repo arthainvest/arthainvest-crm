@@ -1319,6 +1319,15 @@ def init_db():
             cursor.execute("ALTER TABLE messages ADD COLUMN deleted_at TIMESTAMP")
         except sqlite3.OperationalError:
             pass
+        # Phase 2B-i: optional link to the CRM lead a message is about. Plain nullable INTEGER,
+        # no FK enforcement - same FK-less convention as every other cross-entity link column in
+        # this codebase (see leads.contact_id/deal_id/call_id etc.). Deliberately just this one
+        # column for now, not contact_id/deal_id/policy_id/... - those arrive with their own
+        # checkpoints (2B-ii/2B-iii) once this pattern is proven end-to-end.
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN lead_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
         # No FULLTEXT equivalent needed here - /api/chat/search falls back to a plain LIKE on
         # SQLite (see chat_routes.py), which is fine at this team's scale.
 

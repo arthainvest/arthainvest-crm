@@ -1051,6 +1051,12 @@ def init_db():
         _add_column_if_missing(cursor, "messages", "reply_to_message_id", "INT")
         _add_column_if_missing(cursor, "messages", "edited_at", "DATETIME")
         _add_column_if_missing(cursor, "messages", "deleted_at", "DATETIME")
+        # Phase 2B-i: optional link to the CRM lead a message is about. Plain nullable INT, no
+        # FK enforcement - same FK-less convention as every other cross-entity link column in
+        # this codebase (see leads.contact_id/deal_id/call_id etc.). Deliberately just this one
+        # column for now, not contact_id/deal_id/policy_id/... - those arrive with their own
+        # checkpoints (2B-ii/2B-iii) once this pattern is proven end-to-end.
+        _add_column_if_missing(cursor, "messages", "lead_id", "INT")
         # FULLTEXT lets MySQL's MATCH/AGAINST power /api/chat/search; db_compat-style branching
         # falls back to LIKE on SQLite (see chat_routes.py), which is fine at this team's scale.
         try:

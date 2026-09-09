@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useChat } from '../../contexts/ChatContext';
 import { searchChatMessages } from '../../services/api';
 import ConversationList from './ConversationList';
@@ -16,11 +16,18 @@ export default function ChatPage() {
   const { conversations, connected, refreshConversations, loadMessages } = useChat();
   const { conversationId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedId, setSelectedId] = useState(conversationId ? Number(conversationId) : null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
+  // Phase 2B-i: "Discuss in Connect" (LeadsList.jsx) navigates here with a lead attached via
+  // router state rather than creating/opening a conversation itself - the user still picks or
+  // starts the actual conversation through the existing flows below, so this never risks
+  // creating duplicate conversations. Handed to MessageThread once a conversation is selected;
+  // cleared once MessageThread confirms it took ownership (see onLeadContextConsumed).
+  const [pendingLeadContext, setPendingLeadContext] = useState(location.state?.leadContext || null);
 
   useEffect(() => {
     refreshConversations();
@@ -131,12 +138,18 @@ export default function ChatPage() {
         <div className="chat-thread-pane">
           {!selectedConversation ? (
             <div className="chat-thread-empty">
-              <p>Select a conversation, or start a new one.</p>
+              {pendingLeadContext ? (
+                <p>Discussing <strong>{pendingLeadContext.name}</strong> - select a conversation, or start a new one.</p>
+              ) : (
+                <p>Select a conversation, or start a new one.</p>
+              )}
             </div>
           ) : (
             <MessageThread
               key={selectedConversation.id}
               conversation={selectedConversation}
+              initialLeadContext={pendingLeadContext}
+              onLeadContextConsumed={() => setPendingLeadContext(null)}
               onBack={() => {
                 setSelectedId(null);
                 navigate('/connect', { replace: true });

@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   getChatWebSocketUrl, getChatConversations, getChatMessages, sendChatMessageRest, createChatConversation,
-  markChatConversationRead, editChatMessage, deleteChatMessage, uploadChatAttachment,
+  markChatConversationRead, editChatMessage, deleteChatMessage, uploadChatAttachment, getLead,
 } from '../services/api';
 
 const currentUserId = Number(localStorage.getItem('userId'));
@@ -24,8 +24,10 @@ export function ChatProvider({ children }) {
   const [typingMap, setTypingMap] = useState({}); // conversation_id -> [user_ids currently typing]
   const [readReceipts, setReadReceipts] = useState({}); // conversation_id -> { user_id: up_to_message_id }
   const [connected, setConnected] = useState(false);
+  const [leadCache, setLeadCache] = useState({}); // lead_id -> lead record, so N messages linked to the same lead only ever fetch it once
 
   const wsRef = useRef(null);
+  const leadFetchesInFlightRef = useRef(new Set());
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef(null);
   const heartbeatTimerRef = useRef(null);
@@ -189,26 +191,39 @@ export function ChatProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const sendMessage = useCallback(async (conversationId, body, replyToMessageId = null) => {
+  const sendMessage = useCallback(async (conversationId, body, replyToMessageId = null, leadId = null) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       // Fire-and-forget - the server broadcasts the committed row back over this same socket
       // (handleServerEvent above appends it once the 'new_message' event round-trips).
       wsRef.current.send(JSON.stringify({
         event: 'send_message',
-        data: { conversation_id: conversationId, body, reply_to_message_id: replyToMessageId },
+        data: { conversation_id: conversationId, body, reply_to_message_id: replyToMessageId, lead_id: leadId },
       }));
       return;
     }
     // WebSocket not connected (e.g. mid-reconnect after a Render restart) - REST fallback goes
     // through the same backend _create_message() path. Unlike the WS path, the sender has no
     // live socket to receive their own broadcast back on, so append the response directly.
-    const message = await sendChatMessageRest(token, conversationId, body, replyToMessageId);
+    const message = await sendChatMessageRest(token, conversationId, body, replyToMessageId, leadId);
     setMessagesByConversation((prev) => {
       const existing = prev[conversationId] || [];
       if (existing.some((m) => m.id === message.id)) return prev;
       return { ...prev, [conversationId]: [...existing, message] };
     });
   }, [token]);
+
+  // Phase 2B-i: fetches a lead once and caches it by id, so a thread with N messages linked to
+  // the same lead (e.g. a long back-and-forth about one prospect) issues exactly one request,
+  // not N - both the cache-hit check and the in-flight guard live here rather than in
+  // MessageBubble, since multiple bubbles for the same lead can mount around the same tick.
+  const getLeadInfo = useCallback((leadId) => {
+    if (!leadId || leadCache[leadId] || leadFetchesInFlightRef.current.has(leadId)) return;
+    leadFetchesInFlightRef.current.add(leadId);
+    getLead(leadId, token)
+      .then((lead) => setLeadCache((prev) => ({ ...prev, [leadId]: lead })))
+      .catch((err) => console.error('Error fetching lead for chat card:', err))
+      .finally(() => leadFetchesInFlightRef.current.delete(leadId));
+  }, [token, leadCache]);
 
   const editMessage = useCallback(async (messageId, conversationId, body) => {
     const updated = await editChatMessage(token, messageId, body);
@@ -269,7 +284,7 @@ export function ChatProvider({ children }) {
   const value = {
     conversations, presenceMap, messagesByConversation, typingMap, readReceipts, connected,
     refreshConversations, loadMessages, sendMessage, startConversation, sendTyping, markRead,
-    editMessage, removeMessage, uploadAttachment,
+    editMessage, removeMessage, uploadAttachment, leadCache, getLeadInfo,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

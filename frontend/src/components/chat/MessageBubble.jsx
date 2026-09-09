@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getChatAttachmentUrl } from '../../services/api';
+import { useChat } from '../../contexts/ChatContext';
 
 const currentUserId = Number(localStorage.getItem('userId'));
 const token = localStorage.getItem('token');
@@ -29,6 +30,14 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(message.body || '');
   const [saving, setSaving] = useState(false);
+  const { leadCache, getLeadInfo } = useChat();
+  const leadInfo = message.lead_id ? leadCache[message.lead_id] : null;
+
+  // Fetch-once-per-lead: getLeadInfo itself no-ops if this lead is already cached or already
+  // being fetched by another bubble, so N messages linked to the same lead cost one request.
+  useEffect(() => {
+    if (message.lead_id && !leadInfo) getLeadInfo(message.lead_id);
+  }, [message.lead_id, leadInfo, getLeadInfo]);
 
   const handleSaveEdit = async () => {
     const body = editText.trim();
@@ -59,6 +68,21 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
     <div className={`chat-message-row ${isMine ? 'outbound' : 'inbound'}`}>
       <div className={`chat-message-bubble ${isMine ? 'outbound' : 'inbound'} ${isDeleted ? 'deleted' : ''}`}>
         {!isMine && !isDeleted && <div className="chat-message-sender">{message.sender_name}</div>}
+
+        {message.lead_id && !isDeleted && (
+          <div className="chat-lead-card">
+            <span className="chat-lead-card-tag">Lead</span>
+            {leadInfo ? (
+              <span className="chat-lead-card-details">
+                <span className="chat-lead-card-name">{leadInfo.name}</span>
+                {leadInfo.company && <span className="chat-lead-card-company">{leadInfo.company}</span>}
+                <span className="chat-lead-card-status">{leadInfo.status}</span>
+              </span>
+            ) : (
+              <span className="chat-lead-card-details">Loading...</span>
+            )}
+          </div>
+        )}
 
         {repliedToMessage && !isDeleted && (
           <div className="chat-reply-preview">
