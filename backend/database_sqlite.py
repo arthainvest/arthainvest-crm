@@ -1328,6 +1328,13 @@ def init_db():
             cursor.execute("ALTER TABLE messages ADD COLUMN lead_id INTEGER")
         except sqlite3.OperationalError:
             pass
+        # Phase 2B-ii: same pattern, independent column, for the CRM contact a message is about.
+        # Kept separate from lead_id rather than a generic entity_type/entity_id pointer - see
+        # database_mysql.py's matching column for the full rationale.
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN contact_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
         # No FULLTEXT equivalent needed here - /api/chat/search falls back to a plain LIKE on
         # SQLite (see chat_routes.py), which is fine at this team's scale.
 

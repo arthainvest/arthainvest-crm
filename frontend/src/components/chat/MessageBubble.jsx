@@ -30,14 +30,20 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(message.body || '');
   const [saving, setSaving] = useState(false);
-  const { leadCache, getLeadInfo } = useChat();
+  const { leadCache, getLeadInfo, contactCache, getContactInfo } = useChat();
   const leadInfo = message.lead_id ? leadCache[message.lead_id] : null;
+  const contactInfo = message.contact_id ? contactCache[message.contact_id] : null;
 
-  // Fetch-once-per-lead: getLeadInfo itself no-ops if this lead is already cached or already
-  // being fetched by another bubble, so N messages linked to the same lead cost one request.
+  // Fetch-once-per-lead/contact: getLeadInfo/getContactInfo themselves no-op if the record is
+  // already cached or already being fetched by another bubble, so N messages linked to the same
+  // lead/contact cost one request total, not N.
   useEffect(() => {
     if (message.lead_id && !leadInfo) getLeadInfo(message.lead_id);
   }, [message.lead_id, leadInfo, getLeadInfo]);
+
+  useEffect(() => {
+    if (message.contact_id && !contactInfo) getContactInfo(message.contact_id);
+  }, [message.contact_id, contactInfo, getContactInfo]);
 
   const handleSaveEdit = async () => {
     const body = editText.trim();
@@ -72,11 +78,30 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
         {message.lead_id && !isDeleted && (
           <div className="chat-lead-card">
             <span className="chat-lead-card-tag">Lead</span>
-            {leadInfo ? (
+            {leadInfo?.__notFound ? (
+              <span className="chat-lead-card-details chat-lead-card-unavailable">No longer available</span>
+            ) : leadInfo ? (
               <span className="chat-lead-card-details">
                 <span className="chat-lead-card-name">{leadInfo.name}</span>
                 {leadInfo.company && <span className="chat-lead-card-company">{leadInfo.company}</span>}
                 <span className="chat-lead-card-status">{leadInfo.status}</span>
+              </span>
+            ) : (
+              <span className="chat-lead-card-details">Loading...</span>
+            )}
+          </div>
+        )}
+
+        {message.contact_id && !isDeleted && (
+          <div className="chat-lead-card">
+            <span className="chat-lead-card-tag">Contact</span>
+            {contactInfo?.__notFound ? (
+              <span className="chat-lead-card-details chat-lead-card-unavailable">No longer available</span>
+            ) : contactInfo ? (
+              <span className="chat-lead-card-details">
+                <span className="chat-lead-card-name">{contactInfo.name}</span>
+                {contactInfo.company && <span className="chat-lead-card-company">{contactInfo.company}</span>}
+                <span className="chat-lead-card-status">{contactInfo.status}</span>
               </span>
             ) : (
               <span className="chat-lead-card-details">Loading...</span>

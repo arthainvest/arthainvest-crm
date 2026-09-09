@@ -445,6 +445,8 @@
 
 .chat-message-bubble.outbound .chat-lead-card-status { background: rgba(255, 255, 255, 0.2); }
 
+.chat-lead-card-unavailable { font-style: italic; opacity: 0.7; }
+
 /* ---- Edited / deleted state ---- */
 
 .chat-edited-label { font-style: italic; opacity: 0.8; margin-right: 4px; }

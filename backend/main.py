@@ -3017,6 +3017,24 @@ async def get_upcoming_renewals(token: str = Query(None)):
         ))
     return results
 
+@app.get("/api/contacts/{contact_id}", response_model=ContactResponse)
+async def get_contact(contact_id: int, token: str = Query(None)):
+    """Get single contact - same existence-then-fetch shape as get_lead, added for Phase 2B-ii
+    so Connect's contact-linked message card has a single-record endpoint to fetch, mirroring
+    what Leads already had for the Phase 2B-i lead card. Must stay below GET /api/contacts/
+    renewals (and any other literal-suffix GET under /api/contacts), for the same routing
+    reason that endpoint's own docstring already calls out."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+        contact = fetch_contact_with_member_name(cursor, contact_id)
+
+    return contact
+
 @app.post("/api/contacts", response_model=ContactResponse)
 async def create_contact(contact: ContactCreate, token: str = Query(None)):
     """Create a new contact"""

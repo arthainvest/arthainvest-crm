@@ -305,6 +305,10 @@
   color: #388E3C;
 }
 
+.contact-row-actions .btn-action.connect {
+  color: #1976d2;
+}
+
 .contact-row-actions .btn-action:hover {
   transform: scale(1.15);
 }

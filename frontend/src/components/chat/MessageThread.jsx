@@ -21,7 +21,7 @@ function typingLabel(conversation, typingUserIds) {
   return `${names.length} people are typing...`;
 }
 
-export default function MessageThread({ conversation, onBack, initialLeadContext, onLeadContextConsumed }) {
+export default function MessageThread({ conversation, onBack, initialLinkContext, onLinkContextConsumed }) {
   const {
     messagesByConversation, presenceMap, typingMap, sendMessage, sendTyping, markRead,
     editMessage, removeMessage, uploadAttachment,
@@ -33,15 +33,20 @@ export default function MessageThread({ conversation, onBack, initialLeadContext
   const messagesEndRef = useRef(null);
   const lastMarkedReadIdRef = useRef(0);
   const [replyTo, setReplyTo] = useState(null);
-  // Phase 2B-i: "Discuss in Connect" (see LeadsList.jsx) hands off a lead via ChatPage's
-  // navigation state; this component owns the actual composer-facing state from there, exactly
-  // mirroring how `replyTo` above works - set once, attached to the next message sent, then
-  // cleared. `initialLeadContext` only seeds the very first render of a freshly-selected
-  // conversation (this component remounts on conversation switch via ChatPage's `key` prop).
-  const [leadContext, setLeadContext] = useState(initialLeadContext || null);
+  // Phase 2B-i/2B-ii: "Discuss in Connect" (see LeadsList.jsx/Contacts.jsx) hands off a CRM
+  // record via ChatPage's navigation state as { type: 'lead'|'contact', id, name }; this
+  // component owns the actual composer-facing state from there, exactly mirroring how
+  // `replyTo` above works - set once, attached to the next message sent, then cleared.
+  // `initialLinkContext` only seeds the very first render of a freshly-selected conversation
+  // (this component remounts on conversation switch via ChatPage's `key` prop). Kept as one
+  // typed value rather than separate leadContext/contactContext state, since at most one is
+  // ever active at a time and handleSend below just reads `.type` to know which id to send -
+  // this is a UI-state-shape convenience only, not the DB/backend link model, which keeps
+  // lead_id and contact_id fully independent columns.
+  const [linkContext, setLinkContext] = useState(initialLinkContext || null);
 
   useEffect(() => {
-    if (initialLeadContext) onLeadContextConsumed?.();
+    if (initialLinkContext) onLinkContextConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -73,9 +78,11 @@ export default function MessageThread({ conversation, onBack, initialLeadContext
   const typing = typingLabel(conversation, typingUserIds);
 
   const handleSend = async (body) => {
-    await sendMessage(conversation.id, body, replyTo?.id ?? null, leadContext?.id ?? null);
+    const leadId = linkContext?.type === 'lead' ? linkContext.id : null;
+    const contactId = linkContext?.type === 'contact' ? linkContext.id : null;
+    await sendMessage(conversation.id, body, replyTo?.id ?? null, leadId, contactId);
     setReplyTo(null);
-    setLeadContext(null);
+    setLinkContext(null);
   };
   const handleTyping = (isTyping) => sendTyping(conversation.id, isTyping);
   const handleAttach = (file) => uploadAttachment(conversation.id, file);
@@ -127,8 +134,8 @@ export default function MessageThread({ conversation, onBack, initialLeadContext
         onAttach={handleAttach}
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
-        leadContext={leadContext}
-        onCancelLeadContext={() => setLeadContext(null)}
+        linkContext={linkContext}
+        onCancelLinkContext={() => setLinkContext(null)}
       />
     </>
   );

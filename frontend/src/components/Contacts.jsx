@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getContactsList, createContact, updateContact, deleteContact, assignContact, getTeam,
   getContactNotes, createContactNote, updateContactNote, deleteContactNote,
@@ -83,6 +84,7 @@ const parseImportDate = (raw) => {
 };
 
 export default function Contacts() {
+  const navigate = useNavigate();
   const [activeCall, setActiveCall] = useState(null);  // { id, name } - drives the Complete Call modal
   const [contacts, setContacts] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
@@ -432,6 +434,14 @@ export default function Contacts() {
     setShowDigi(true);
   };
 
+  // Phase 2B-ii: mirrors LeadsList.jsx's handleDiscussInConnect exactly - only navigation state
+  // is passed, no conversation is created or looked up here. The user picks or starts the
+  // actual conversation on the Connect page itself (see ChatPage.jsx's pendingLinkContext), so
+  // this can never spawn a duplicate one.
+  const handleDiscussInConnect = (contact) => {
+    navigate('/connect', { state: { contactContext: { id: contact.id, name: contact.name } } });
+  };
+
   const handleAddContactClick = () => {
     setEditingContactId(null);
     setContactForm(emptyContactForm);
@@ -765,6 +775,7 @@ export default function Contacts() {
                   </button>
                   <button className="btn-action digilocker" onClick={() => handleDigi(contact)} title="Client Documents">🔐</button>
                   <button className="btn-action notes" onClick={() => handleNotes(contact)} title="Notes & Follow-up">📝</button>
+                  <button className="btn-action connect" onClick={() => handleDiscussInConnect(contact)} title="Discuss in Connect">💬</button>
                 </div>
 
                 <div className="contact-row-corner">

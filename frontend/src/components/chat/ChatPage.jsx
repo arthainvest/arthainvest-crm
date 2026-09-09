@@ -22,12 +22,21 @@ export default function ChatPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
-  // Phase 2B-i: "Discuss in Connect" (LeadsList.jsx) navigates here with a lead attached via
-  // router state rather than creating/opening a conversation itself - the user still picks or
-  // starts the actual conversation through the existing flows below, so this never risks
-  // creating duplicate conversations. Handed to MessageThread once a conversation is selected;
-  // cleared once MessageThread confirms it took ownership (see onLeadContextConsumed).
-  const [pendingLeadContext, setPendingLeadContext] = useState(location.state?.leadContext || null);
+  // Phase 2B-i/2B-ii: "Discuss in Connect" (LeadsList.jsx, Contacts.jsx) navigates here with a
+  // CRM record attached via router state rather than creating/opening a conversation itself -
+  // the user still picks or starts the actual conversation through the existing flows below, so
+  // this never risks creating duplicate conversations. `type` distinguishes which entity it is
+  // (lead_id vs contact_id are independent columns - see the 2B-ii design notes); the two
+  // pieces of navigation state are read here but never both exist at once in practice, since a
+  // single row action can only ever start one of them. Handed to MessageThread once a
+  // conversation is selected; cleared once MessageThread confirms it took ownership (see
+  // onLinkContextConsumed).
+  const initialLinkContext = location.state?.leadContext
+    ? { type: 'lead', ...location.state.leadContext }
+    : location.state?.contactContext
+      ? { type: 'contact', ...location.state.contactContext }
+      : null;
+  const [pendingLinkContext, setPendingLinkContext] = useState(initialLinkContext);
 
   useEffect(() => {
     refreshConversations();
@@ -138,8 +147,8 @@ export default function ChatPage() {
         <div className="chat-thread-pane">
           {!selectedConversation ? (
             <div className="chat-thread-empty">
-              {pendingLeadContext ? (
-                <p>Discussing <strong>{pendingLeadContext.name}</strong> - select a conversation, or start a new one.</p>
+              {pendingLinkContext ? (
+                <p>Discussing <strong>{pendingLinkContext.name}</strong> - select a conversation, or start a new one.</p>
               ) : (
                 <p>Select a conversation, or start a new one.</p>
               )}
@@ -148,8 +157,8 @@ export default function ChatPage() {
             <MessageThread
               key={selectedConversation.id}
               conversation={selectedConversation}
-              initialLeadContext={pendingLeadContext}
-              onLeadContextConsumed={() => setPendingLeadContext(null)}
+              initialLinkContext={pendingLinkContext}
+              onLinkContextConsumed={() => setPendingLinkContext(null)}
               onBack={() => {
                 setSelectedId(null);
                 navigate('/connect', { replace: true });

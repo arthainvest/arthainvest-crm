@@ -1,8 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   getChatWebSocketUrl, getChatConversations, getChatMessages, sendChatMessageRest, createChatConversation,
-  markChatConversationRead, editChatMessage, deleteChatMessage, uploadChatAttachment, getLead,
+  markChatConversationRead, editChatMessage, deleteChatMessage, uploadChatAttachment, getLead, getContact,
 } from '../services/api';
+
+// Sentinel cached in place of a real record when the fetch failed (404/deleted/error) - lets
+// MessageBubble render "No longer available" instead of hanging on "Loading..." forever, for
+// both leadCache and contactCache below.
+const RECORD_NOT_FOUND = { __notFound: true };
 
 const currentUserId = Number(localStorage.getItem('userId'));
 
@@ -25,9 +30,11 @@ export function ChatProvider({ children }) {
   const [readReceipts, setReadReceipts] = useState({}); // conversation_id -> { user_id: up_to_message_id }
   const [connected, setConnected] = useState(false);
   const [leadCache, setLeadCache] = useState({}); // lead_id -> lead record, so N messages linked to the same lead only ever fetch it once
+  const [contactCache, setContactCache] = useState({}); // contact_id -> contact record, same shape as leadCache (Phase 2B-ii) - kept as an independent cache rather than merged into leadCache, since a Lead and a Contact are different record types with different fields even though the fetch-once-and-cache mechanics are identical.
 
   const wsRef = useRef(null);
   const leadFetchesInFlightRef = useRef(new Set());
+  const contactFetchesInFlightRef = useRef(new Set());
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef(null);
   const heartbeatTimerRef = useRef(null);
@@ -191,20 +198,20 @@ export function ChatProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const sendMessage = useCallback(async (conversationId, body, replyToMessageId = null, leadId = null) => {
+  const sendMessage = useCallback(async (conversationId, body, replyToMessageId = null, leadId = null, contactId = null) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       // Fire-and-forget - the server broadcasts the committed row back over this same socket
       // (handleServerEvent above appends it once the 'new_message' event round-trips).
       wsRef.current.send(JSON.stringify({
         event: 'send_message',
-        data: { conversation_id: conversationId, body, reply_to_message_id: replyToMessageId, lead_id: leadId },
+        data: { conversation_id: conversationId, body, reply_to_message_id: replyToMessageId, lead_id: leadId, contact_id: contactId },
       }));
       return;
     }
     // WebSocket not connected (e.g. mid-reconnect after a Render restart) - REST fallback goes
     // through the same backend _create_message() path. Unlike the WS path, the sender has no
     // live socket to receive their own broadcast back on, so append the response directly.
-    const message = await sendChatMessageRest(token, conversationId, body, replyToMessageId, leadId);
+    const message = await sendChatMessageRest(token, conversationId, body, replyToMessageId, leadId, contactId);
     setMessagesByConversation((prev) => {
       const existing = prev[conversationId] || [];
       if (existing.some((m) => m.id === message.id)) return prev;
@@ -216,14 +223,36 @@ export function ChatProvider({ children }) {
   // the same lead (e.g. a long back-and-forth about one prospect) issues exactly one request,
   // not N - both the cache-hit check and the in-flight guard live here rather than in
   // MessageBubble, since multiple bubbles for the same lead can mount around the same tick.
+  // On a fetch failure (the lead was deleted, or a transient error), the sentinel is cached
+  // instead of leaving the id permanently uncached - without this, MessageBubble's card would
+  // retry-and-fail (or just show "Loading...") forever, since a falsy cache miss looks
+  // identical to "never tried yet" (Phase 2B-ii fix, applied here to both leads and contacts).
   const getLeadInfo = useCallback((leadId) => {
     if (!leadId || leadCache[leadId] || leadFetchesInFlightRef.current.has(leadId)) return;
     leadFetchesInFlightRef.current.add(leadId);
     getLead(leadId, token)
       .then((lead) => setLeadCache((prev) => ({ ...prev, [leadId]: lead })))
-      .catch((err) => console.error('Error fetching lead for chat card:', err))
+      .catch((err) => {
+        console.error('Error fetching lead for chat card:', err);
+        setLeadCache((prev) => ({ ...prev, [leadId]: RECORD_NOT_FOUND }));
+      })
       .finally(() => leadFetchesInFlightRef.current.delete(leadId));
   }, [token, leadCache]);
+
+  // Phase 2B-ii: same fetch-once-and-cache mechanics as getLeadInfo, against the independent
+  // contactCache - not unified into one generic "linked record" fetcher, since Lead and Contact
+  // are different record shapes fetched from different endpoints (see the 2B-ii design notes).
+  const getContactInfo = useCallback((contactId) => {
+    if (!contactId || contactCache[contactId] || contactFetchesInFlightRef.current.has(contactId)) return;
+    contactFetchesInFlightRef.current.add(contactId);
+    getContact(contactId, token)
+      .then((contact) => setContactCache((prev) => ({ ...prev, [contactId]: contact })))
+      .catch((err) => {
+        console.error('Error fetching contact for chat card:', err);
+        setContactCache((prev) => ({ ...prev, [contactId]: RECORD_NOT_FOUND }));
+      })
+      .finally(() => contactFetchesInFlightRef.current.delete(contactId));
+  }, [token, contactCache]);
 
   const editMessage = useCallback(async (messageId, conversationId, body) => {
     const updated = await editChatMessage(token, messageId, body);
@@ -284,7 +313,7 @@ export function ChatProvider({ children }) {
   const value = {
     conversations, presenceMap, messagesByConversation, typingMap, readReceipts, connected,
     refreshConversations, loadMessages, sendMessage, startConversation, sendTyping, markRead,
-    editMessage, removeMessage, uploadAttachment, leadCache, getLeadInfo,
+    editMessage, removeMessage, uploadAttachment, leadCache, getLeadInfo, contactCache, getContactInfo,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
