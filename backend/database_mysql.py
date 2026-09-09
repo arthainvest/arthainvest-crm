@@ -1043,6 +1043,66 @@ def init_db():
         """)
         _create_index_if_missing(cursor, "idx_messages_conversation_created", "messages", "conversation_id, id")
 
+        # Phase 2A-iii: reply-to reference, and edit/delete state. deleted_at + a cleared body
+        # is a soft delete - the row (and its pre-delete content) survives in message_edits
+        # below, so "delete" is functionally real for other users (body shows as removed) but
+        # never destroys the audit trail, per the same principle Phase 1's call-recording
+        # design already established for this app.
+        _add_column_if_missing(cursor, "messages", "reply_to_message_id", "INT")
+        _add_column_if_missing(cursor, "messages", "edited_at", "DATETIME")
+        _add_column_if_missing(cursor, "messages", "deleted_at", "DATETIME")
+        # FULLTEXT lets MySQL's MATCH/AGAINST power /api/chat/search; db_compat-style branching
+        # falls back to LIKE on SQLite (see chat_routes.py), which is fine at this team's scale.
+        try:
+            cursor.execute("ALTER TABLE messages ADD FULLTEXT INDEX idx_messages_body_fts (body)")
+        except pymysql.err.OperationalError as e:
+            if e.args[0] != 1061:  # 1061 = ER_DUP_KEYNAME, same idempotency guard as _create_index_if_missing
+                raise
+
+        # Audit trail for message edit/delete (Phase 2A-iii) - the pre-edit/pre-delete body is
+        # written here BEFORE messages.body is ever mutated, so content is never silently lost.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS message_edits (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                message_id INT NOT NULL,
+                edited_by INT NOT NULL,
+                previous_body TEXT,
+                edit_type VARCHAR(20) NOT NULL,
+                edited_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_message_edits_message_id", "message_edits", "message_id")
+
+        # @mentions (Phase 2A-iii) - resolved and validated server-side against real conversation
+        # membership when a message is created, never trusted from the client as-is.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS message_mentions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                message_id INT NOT NULL,
+                mentioned_user_id INT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_message_mentions_message_id", "message_mentions", "message_id")
+        _create_index_if_missing(cursor, "idx_message_mentions_user_id", "message_mentions", "mentioned_user_id")
+
+        # File/image attachments (Phase 2A-iii) - same DB-blob-plus-authenticated-stream-
+        # endpoint pattern as contact_documents/calls.recording_file_data, since Render's free
+        # tier has no persistent disk.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS message_attachments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                message_id INT NOT NULL,
+                file_name VARCHAR(255) NOT NULL,
+                content_type VARCHAR(100),
+                file_size INT,
+                file_data LONGBLOB,
+                uploaded_by INT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _create_index_if_missing(cursor, "idx_message_attachments_message_id", "message_attachments", "message_id")
+
         conn.commit()
 
         _ensure_integrations_catalog(cursor, conn)

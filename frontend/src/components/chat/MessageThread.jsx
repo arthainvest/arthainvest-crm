@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '../../contexts/ChatContext';
 import MessageBubble from './MessageBubble';
 import MessageComposer from './MessageComposer';
@@ -22,13 +22,23 @@ function typingLabel(conversation, typingUserIds) {
 }
 
 export default function MessageThread({ conversation, onBack }) {
-  const { messagesByConversation, presenceMap, typingMap, sendMessage, sendTyping, markRead } = useChat();
+  const {
+    messagesByConversation, presenceMap, typingMap, sendMessage, sendTyping, markRead,
+    editMessage, removeMessage, uploadAttachment,
+  } = useChat();
   // Read the raw (possibly undefined) value for the effect dependency below - falling back to
   // a literal [] here would create a new array reference every render, re-triggering the
   // scroll effect on every render rather than only when the messages actually change.
   const messages = messagesByConversation[conversation.id];
   const messagesEndRef = useRef(null);
   const lastMarkedReadIdRef = useRef(0);
+  const [replyTo, setReplyTo] = useState(null);
+
+  const messagesById = useMemo(() => {
+    const map = {};
+    (messages || []).forEach((m) => { map[m.id] = m; });
+    return map;
+  }, [messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -51,8 +61,14 @@ export default function MessageThread({ conversation, onBack }) {
   const typingUserIds = (typingMap[conversation.id] || []).filter((id) => id !== currentUserId);
   const typing = typingLabel(conversation, typingUserIds);
 
-  const handleSend = (body) => sendMessage(conversation.id, body);
+  const handleSend = async (body) => {
+    await sendMessage(conversation.id, body, replyTo?.id ?? null);
+    setReplyTo(null);
+  };
   const handleTyping = (isTyping) => sendTyping(conversation.id, isTyping);
+  const handleAttach = (file) => uploadAttachment(conversation.id, file);
+  const handleEdit = (messageId, body) => editMessage(messageId, conversation.id, body);
+  const handleDelete = (messageId) => removeMessage(messageId, conversation.id);
 
   return (
     <>
@@ -77,14 +93,29 @@ export default function MessageThread({ conversation, onBack }) {
         {!messages || messages.length === 0 ? (
           <p className="no-data">No messages yet. Say hello.</p>
         ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
+          messages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              repliedToMessage={msg.reply_to_message_id ? messagesById[msg.reply_to_message_id] : null}
+              onReply={setReplyTo}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          ))
         )}
         <div ref={messagesEndRef} />
       </div>
 
       {typing && <div className="chat-typing-indicator">{typing}</div>}
 
-      <MessageComposer onSend={handleSend} onTyping={handleTyping} />
+      <MessageComposer
+        onSend={handleSend}
+        onTyping={handleTyping}
+        onAttach={handleAttach}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
+      />
     </>
   );
 }

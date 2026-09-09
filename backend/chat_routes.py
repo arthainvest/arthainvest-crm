@@ -18,18 +18,40 @@ Design notes (see the approved Phase 2 plan for the full rationale):
   optimization layered on top of a row that already exists.
 """
 import os
+import re
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 
 from auth import decode_token
-from schemas import ChatUserResponse, ConversationCreate, ConversationResponse, MarkReadRequest, MessageCreate, MessageResponse
+from schemas import (
+    ChatUserResponse, ConversationCreate, ConversationResponse, MarkReadRequest,
+    MessageAttachmentResponse, MessageCreate, MessageEditRequest, MessageResponse,
+)
 
-if os.getenv("DATABASE_URL"):
+IS_MYSQL = bool(os.getenv("DATABASE_URL"))
+if IS_MYSQL:
     from database_mysql import get_db
 else:
     from database_sqlite import get_db
+
+# Attachments (Phase 2A-iii): validated allow-list rather than accepting anything, and a size
+# ceiling generous enough for a scanned document or a phone photo without inviting someone to
+# park large files in the database (Render's free tier has no persistent disk, so every
+# attachment lives here as a LONGBLOB - see message_attachments in database_mysql.py).
+ALLOWED_ATTACHMENT_CONTENT_TYPES = {
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+}
+MAX_ATTACHMENT_SIZE_BYTES = 15 * 1024 * 1024  # 15 MB
+
+_MENTION_RE = re.compile(r"@(\w+)")
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 ws_router = APIRouter()
@@ -155,26 +177,134 @@ def _co_member_ids(cursor, user_id: int):
     return [row["user_id"] for row in cursor.fetchall()]
 
 
-async def _create_message(conn, cursor, conversation_id: int, sender_id: int, body: str, message_type: str = "text") -> dict:
-    """Writes the message, updates the conversation's last_message_at, then broadcasts it to
-    every current member - the one path both the WebSocket handler and the REST send endpoint
-    go through, so the two can never diverge."""
+def _extract_mentions(cursor, conversation_id: int, body: str):
+    """Parses @username tokens out of a message body and resolves them against real,
+    currently-active members of THIS conversation - never trusted from the client, and never
+    resolves to someone who isn't actually in the conversation (mentioning an outsider is not
+    possible, there's no one for the notification to reach anyway)."""
+    if not body:
+        return []
+    usernames = {m.lower() for m in _MENTION_RE.findall(body)}
+    if not usernames:
+        return []
+    placeholders = ",".join(["?"] * len(usernames))
     cursor.execute(
-        "INSERT INTO messages (conversation_id, sender_id, body, message_type, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
-        (conversation_id, sender_id, body, message_type),
+        f"""
+        SELECT users.id FROM users
+        JOIN conversation_members ON conversation_members.user_id = users.id
+        WHERE conversation_members.conversation_id = ? AND conversation_members.left_at IS NULL
+        AND LOWER(users.username) IN ({placeholders})
+        """,
+        (conversation_id, *usernames),
+    )
+    return [row["id"] for row in cursor.fetchall()]
+
+
+def _row_to_message_dict(cursor, message_id: int) -> dict:
+    """Assembles the full MessageResponse shape for one message - mentions and attachments are
+    separate queries (this codebase's convention throughout, matching _conversation_to_dict's
+    members lookup) rather than a join, since a message has at most a handful of either."""
+    cursor.execute(
+        "SELECT messages.*, users.full_name as sender_name FROM messages JOIN users ON users.id = messages.sender_id WHERE messages.id = ?",
+        (message_id,),
+    )
+    message = dict(cursor.fetchone())
+    cursor.execute("SELECT mentioned_user_id FROM message_mentions WHERE message_id = ?", (message_id,))
+    message["mentioned_user_ids"] = [row["mentioned_user_id"] for row in cursor.fetchall()]
+    cursor.execute(
+        "SELECT id, message_id, file_name, content_type, file_size, uploaded_by, created_at FROM message_attachments WHERE message_id = ?",
+        (message_id,),
+    )
+    message["attachments"] = [dict(row) for row in cursor.fetchall()]
+    return message
+
+
+def _enrich_messages(cursor, rows: list) -> list:
+    """Batch-attaches mentioned_user_ids/attachments to a list of raw message rows (from
+    `messages.*`) in 2 extra queries total, regardless of list size - used by get_messages and
+    search, where per-row lookups (as in _row_to_message_dict) would be N+1."""
+    messages = [dict(r) for r in rows]
+    message_ids = [m["id"] for m in messages]
+    if not message_ids:
+        return messages
+
+    placeholders = ",".join(["?"] * len(message_ids))
+    mentions_by_msg = {}
+    cursor.execute(f"SELECT message_id, mentioned_user_id FROM message_mentions WHERE message_id IN ({placeholders})", tuple(message_ids))
+    for row in cursor.fetchall():
+        mentions_by_msg.setdefault(row["message_id"], []).append(row["mentioned_user_id"])
+
+    attachments_by_msg = {}
+    cursor.execute(
+        f"SELECT id, message_id, file_name, content_type, file_size, uploaded_by, created_at FROM message_attachments WHERE message_id IN ({placeholders})",
+        tuple(message_ids),
+    )
+    for row in cursor.fetchall():
+        attachments_by_msg.setdefault(row["message_id"], []).append(dict(row))
+
+    for m in messages:
+        m["mentioned_user_ids"] = mentions_by_msg.get(m["id"], [])
+        m["attachments"] = attachments_by_msg.get(m["id"], [])
+    return messages
+
+
+def _require_sender(cursor, message_id: int, user_id: int) -> dict:
+    """Only the original sender may edit or delete a message - never another employee, even an
+    admin (an admin's oversight comes from the message_edits audit trail, not delete-override
+    power - see the Phase 2A-iii design notes)."""
+    cursor.execute("SELECT * FROM messages WHERE id = ?", (message_id,))
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Message not found")
+    msg = dict(row)
+    if msg["deleted_at"]:
+        raise HTTPException(status_code=400, detail="This message has already been deleted")
+    if msg["sender_id"] != user_id:
+        raise HTTPException(status_code=403, detail="You can only edit or delete your own messages")
+    return msg
+
+
+def _valid_reply_target(cursor, conversation_id: int, reply_to_message_id: Optional[int]) -> bool:
+    """A reply reference is valid only if it points to a real message in the SAME conversation
+    as the new message - never trusted from the client. Deliberately returns a plain bool
+    rather than distinguishing "doesn't exist" from "exists in a different conversation": both
+    must fail identically, so this can never be used to probe whether a message ID exists in a
+    conversation the caller isn't a member of."""
+    if reply_to_message_id is None:
+        return True
+    cursor.execute(
+        "SELECT 1 FROM messages WHERE id = ? AND conversation_id = ?",
+        (reply_to_message_id, conversation_id),
+    )
+    return cursor.fetchone() is not None
+
+
+async def _create_message(
+    conn, cursor, conversation_id: int, sender_id: int, body: str,
+    message_type: str = "text", reply_to_message_id: Optional[int] = None,
+) -> dict:
+    """Writes the message, resolves @mentions, updates the conversation's last_message_at, then
+    broadcasts it to every current member - the one path the WebSocket handler, the REST send
+    endpoint, and the attachment-upload endpoint all go through, so none of them can diverge."""
+    cursor.execute(
+        "INSERT INTO messages (conversation_id, sender_id, body, message_type, reply_to_message_id, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+        (conversation_id, sender_id, body, message_type, reply_to_message_id),
     )
     message_id = cursor.lastrowid
     cursor.execute(
         "UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (conversation_id,),
     )
+
+    for mentioned_user_id in _extract_mentions(cursor, conversation_id, body):
+        cursor.execute(
+            "INSERT INTO message_mentions (message_id, mentioned_user_id, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            (message_id, mentioned_user_id),
+        )
+
     conn.commit()
 
-    cursor.execute(
-        "SELECT messages.*, users.full_name as sender_name FROM messages JOIN users ON users.id = messages.sender_id WHERE messages.id = ?",
-        (message_id,),
-    )
-    message = dict(cursor.fetchone())
+    message = _row_to_message_dict(cursor, message_id)
 
     cursor.execute(
         "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL",
@@ -378,7 +508,7 @@ async def get_messages(
         params.append(limit)
 
         cursor.execute(query, tuple(params))
-        rows = [dict(row) for row in cursor.fetchall()]
+        rows = _enrich_messages(cursor, cursor.fetchall())
 
     if after_id is None:
         rows.reverse()
@@ -394,7 +524,198 @@ async def send_message_rest(conversation_id: int, payload: MessageCreate, token:
     with get_db() as conn:
         cursor = conn.cursor()
         _require_member(cursor, conversation_id, user["user_id"])
-        return await _create_message(conn, cursor, conversation_id, user["user_id"], payload.body.strip())
+        if not _valid_reply_target(cursor, conversation_id, payload.reply_to_message_id):
+            raise HTTPException(status_code=400, detail="Invalid reply_to_message_id")
+        return await _create_message(
+            conn, cursor, conversation_id, user["user_id"], payload.body.strip(),
+            reply_to_message_id=payload.reply_to_message_id,
+        )
+
+
+@router.put("/messages/{message_id}", response_model=MessageResponse)
+async def edit_message(message_id: int, payload: MessageEditRequest, token: str = Query(None)):
+    """Only the sender may edit their own message. The pre-edit body is written to
+    message_edits BEFORE messages.body is touched, so nothing is ever silently lost."""
+    user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        msg = _require_sender(cursor, message_id, user["user_id"])
+        cursor.execute(
+            "INSERT INTO message_edits (message_id, edited_by, previous_body, edit_type, edited_at) VALUES (?, ?, ?, 'edit', CURRENT_TIMESTAMP)",
+            (message_id, user["user_id"], msg["body"]),
+        )
+        cursor.execute(
+            "UPDATE messages SET body = ?, edited_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (payload.body.strip(), message_id),
+        )
+        conn.commit()
+
+        updated = _row_to_message_dict(cursor, message_id)
+        cursor.execute(
+            "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL",
+            (msg["conversation_id"],),
+        )
+        member_ids = [row["user_id"] for row in cursor.fetchall()]
+
+    await broadcast_to_users(member_ids, {"event": "message_edited", "data": updated})
+    return updated
+
+
+@router.delete("/messages/{message_id}", response_model=MessageResponse)
+async def delete_message(message_id: int, token: str = Query(None)):
+    """Soft delete only - the row (and its pre-delete content) survives in message_edits, so
+    this is a real audit trail, not silent deletion, while still making the message show as
+    removed for every other reader (body cleared, deleted_at set)."""
+    user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        msg = _require_sender(cursor, message_id, user["user_id"])
+        cursor.execute(
+            "INSERT INTO message_edits (message_id, edited_by, previous_body, edit_type, edited_at) VALUES (?, ?, ?, 'delete', CURRENT_TIMESTAMP)",
+            (message_id, user["user_id"], msg["body"]),
+        )
+        cursor.execute(
+            "UPDATE messages SET body = NULL, deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (message_id,),
+        )
+        conn.commit()
+
+        updated = _row_to_message_dict(cursor, message_id)
+        cursor.execute(
+            "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL",
+            (msg["conversation_id"],),
+        )
+        member_ids = [row["user_id"] for row in cursor.fetchall()]
+
+    await broadcast_to_users(member_ids, {"event": "message_deleted", "data": updated})
+    return updated
+
+
+@router.post("/conversations/{conversation_id}/attachments", response_model=MessageResponse)
+async def upload_attachment(
+    conversation_id: int,
+    file: UploadFile = File(...),
+    body: str = Form(""),
+    token: str = Query(None),
+):
+    """Uploads a file/image as a new message - reuses the same DB-blob-plus-authenticated-
+    stream pattern as contact_documents/calls.recording_file_data (see message_attachments in
+    database_mysql.py), since Render's free tier has no persistent disk."""
+    user = get_current_user(token)
+    data = await file.read()
+    if len(data) > MAX_ATTACHMENT_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail=f"File too large - max {MAX_ATTACHMENT_SIZE_BYTES // (1024 * 1024)} MB")
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in ALLOWED_ATTACHMENT_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"File type '{content_type}' is not allowed")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        _require_member(cursor, conversation_id, user["user_id"])
+
+        message_type = "image" if content_type.startswith("image/") else "file"
+        cursor.execute(
+            "INSERT INTO messages (conversation_id, sender_id, body, message_type, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+            (conversation_id, user["user_id"], body.strip() or None, message_type),
+        )
+        message_id = cursor.lastrowid
+        cursor.execute(
+            "INSERT INTO message_attachments (message_id, file_name, content_type, file_size, file_data, uploaded_by, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+            (message_id, file.filename, content_type, len(data), data, user["user_id"]),
+        )
+        cursor.execute(
+            "UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (conversation_id,),
+        )
+        conn.commit()
+
+        message = _row_to_message_dict(cursor, message_id)
+        cursor.execute(
+            "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL",
+            (conversation_id,),
+        )
+        member_ids = [row["user_id"] for row in cursor.fetchall()]
+
+    await broadcast_to_users(member_ids, {"event": "new_message", "data": message})
+    return message
+
+
+@router.get("/attachments/{attachment_id}/content")
+async def get_attachment_content(attachment_id: int, token: str = Query(None)):
+    """Streams an attachment's bytes back - gated on membership in the conversation the
+    attachment's message belongs to, never a public/unauthenticated URL. Once the parent
+    message is deleted, content retrieval is blocked here too (same 404 as a missing
+    attachment, so a deleted one is never distinguishable from one that never existed) - the
+    underlying row and file bytes are left untouched, so the audit trail is unaffected."""
+    user = get_current_user(token)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT message_attachments.*, messages.conversation_id, messages.deleted_at FROM message_attachments "
+            "JOIN messages ON messages.id = message_attachments.message_id WHERE message_attachments.id = ?",
+            (attachment_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Attachment not found")
+        attachment = dict(row)
+        _require_member(cursor, attachment["conversation_id"], user["user_id"])
+        if attachment["deleted_at"]:
+            raise HTTPException(status_code=404, detail="Attachment not found")
+
+    return Response(
+        content=bytes(attachment["file_data"]),
+        media_type=attachment["content_type"] or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{attachment["file_name"]}"'},
+    )
+
+
+@router.get("/search", response_model=list[MessageResponse])
+async def search_messages(
+    q: str = Query(..., min_length=1),
+    conversation_id: Optional[int] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    token: str = Query(None),
+):
+    """Full-text search on MySQL (FULLTEXT/MATCH...AGAINST), a plain LIKE fallback on SQLite -
+    always scoped to conversations the caller is actually a member of, even for an admin, and
+    always excludes soft-deleted messages. `conversation_id` narrows to one conversation the
+    caller must already belong to."""
+    user = get_current_user(token)
+    if conversation_id is not None:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            _require_member(cursor, conversation_id, user["user_id"])
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        query = """
+            SELECT messages.*, users.full_name as sender_name
+            FROM messages JOIN users ON users.id = messages.sender_id
+            WHERE messages.conversation_id IN (
+                SELECT conversation_id FROM conversation_members WHERE user_id = ? AND left_at IS NULL
+            )
+            AND messages.deleted_at IS NULL
+        """
+        params = [user["user_id"]]
+
+        if IS_MYSQL:
+            query += " AND MATCH(messages.body) AGAINST (? IN NATURAL LANGUAGE MODE)"
+            params.append(q)
+        else:
+            query += " AND messages.body LIKE ?"
+            params.append(f"%{q}%")
+
+        if conversation_id is not None:
+            query += " AND messages.conversation_id = ?"
+            params.append(conversation_id)
+
+        query += " ORDER BY messages.id DESC LIMIT ?"
+        params.append(limit)
+
+        cursor.execute(query, tuple(params))
+        return _enrich_messages(cursor, cursor.fetchall())
 
 
 @router.post("/conversations/{conversation_id}/read")
@@ -437,6 +758,7 @@ async def websocket_endpoint(websocket: WebSocket):
             if event == "send_message":
                 conversation_id = data.get("conversation_id")
                 body = (data.get("body") or "").strip()
+                reply_to_message_id = data.get("reply_to_message_id")
                 if not conversation_id or not body:
                     await websocket.send_json({"event": "error", "data": {"message": "conversation_id and body are required"}})
                     continue
@@ -449,7 +771,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not cursor.fetchone():
                         await websocket.send_json({"event": "error", "data": {"message": "Not a member of this conversation"}})
                         continue
-                    await _create_message(conn, cursor, conversation_id, user_id, body)
+                    if not _valid_reply_target(cursor, conversation_id, reply_to_message_id):
+                        await websocket.send_json({"event": "error", "data": {"message": "Invalid reply_to_message_id"}})
+                        continue
+                    await _create_message(conn, cursor, conversation_id, user_id, body, reply_to_message_id=reply_to_message_id)
 
             elif event in ("typing_start", "typing_stop"):
                 conversation_id = data.get("conversation_id")

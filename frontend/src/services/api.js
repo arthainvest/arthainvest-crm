@@ -1054,14 +1054,47 @@ export const getChatMessages = async (token, conversationId, { afterId = null, b
 };
 
 // REST fallback for sending a message when the WebSocket isn't connected - see ChatContext.jsx.
-export const sendChatMessageRest = async (token, conversationId, body) => {
-  const response = await api.post(`/api/chat/conversations/${conversationId}/messages?token=${token}`, { body });
+export const sendChatMessageRest = async (token, conversationId, body, replyToMessageId = null) => {
+  const response = await api.post(`/api/chat/conversations/${conversationId}/messages?token=${token}`, {
+    body, reply_to_message_id: replyToMessageId,
+  });
   return response.data;
 };
 
 // REST fallback for marking a conversation read when the WebSocket isn't connected - see ChatContext.jsx.
 export const markChatConversationRead = async (token, conversationId, upToMessageId) => {
   const response = await api.post(`/api/chat/conversations/${conversationId}/read?token=${token}`, { up_to_message_id: upToMessageId });
+  return response.data;
+};
+
+// ===== Phase 2A-iii: edit/delete, attachments, search =====
+
+export const editChatMessage = async (token, messageId, body) => {
+  const response = await api.put(`/api/chat/messages/${messageId}?token=${token}`, { body });
+  return response.data;
+};
+
+export const deleteChatMessage = async (token, messageId) => {
+  const response = await api.delete(`/api/chat/messages/${messageId}?token=${token}`);
+  return response.data;
+};
+
+export const uploadChatAttachment = async (token, conversationId, file, body = '') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('body', body);
+  const response = await api.post(`/api/chat/conversations/${conversationId}/attachments?token=${token}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const getChatAttachmentUrl = (token, attachmentId) => `${API_URL}/api/chat/attachments/${attachmentId}/content?token=${token}`;
+
+export const searchChatMessages = async (token, q, conversationId = null) => {
+  const params = new URLSearchParams({ token, q });
+  if (conversationId != null) params.append('conversation_id', String(conversationId));
+  const response = await api.get(`/api/chat/search?${params.toString()}`);
   return response.data;
 };
 

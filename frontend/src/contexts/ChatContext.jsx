@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   getChatWebSocketUrl, getChatConversations, getChatMessages, sendChatMessageRest, createChatConversation,
-  markChatConversationRead,
+  markChatConversationRead, editChatMessage, deleteChatMessage, uploadChatAttachment,
 } from '../services/api';
 
 const currentUserId = Number(localStorage.getItem('userId'));
@@ -124,6 +124,16 @@ export function ChatProvider({ children }) {
     } else if (event.event === 'read_receipt') {
       const { conversation_id: convId, user_id: userId, up_to_message_id: upToId } = event.data;
       setReadReceipts((prev) => ({ ...prev, [convId]: { ...(prev[convId] || {}), [userId]: upToId } }));
+    } else if (event.event === 'message_edited' || event.event === 'message_deleted') {
+      // Conversation-list preview isn't patched here - if the edited/deleted message happened
+      // to be the last one, the next reconnect's refreshConversations() catches it up. Not
+      // worth a wrong guess about which was "last" from inside a single message event.
+      const msg = event.data;
+      setMessagesByConversation((prev) => {
+        const existing = prev[msg.conversation_id];
+        if (!existing) return prev;
+        return { ...prev, [msg.conversation_id]: existing.map((m) => (m.id === msg.id ? msg : m)) };
+      });
     }
     // 'pong'/'error' need no state change here.
   }, []);
@@ -179,22 +189,54 @@ export function ChatProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const sendMessage = useCallback(async (conversationId, body) => {
+  const sendMessage = useCallback(async (conversationId, body, replyToMessageId = null) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       // Fire-and-forget - the server broadcasts the committed row back over this same socket
       // (handleServerEvent above appends it once the 'new_message' event round-trips).
-      wsRef.current.send(JSON.stringify({ event: 'send_message', data: { conversation_id: conversationId, body } }));
+      wsRef.current.send(JSON.stringify({
+        event: 'send_message',
+        data: { conversation_id: conversationId, body, reply_to_message_id: replyToMessageId },
+      }));
       return;
     }
     // WebSocket not connected (e.g. mid-reconnect after a Render restart) - REST fallback goes
     // through the same backend _create_message() path. Unlike the WS path, the sender has no
     // live socket to receive their own broadcast back on, so append the response directly.
-    const message = await sendChatMessageRest(token, conversationId, body);
+    const message = await sendChatMessageRest(token, conversationId, body, replyToMessageId);
     setMessagesByConversation((prev) => {
       const existing = prev[conversationId] || [];
       if (existing.some((m) => m.id === message.id)) return prev;
       return { ...prev, [conversationId]: [...existing, message] };
     });
+  }, [token]);
+
+  const editMessage = useCallback(async (messageId, conversationId, body) => {
+    const updated = await editChatMessage(token, messageId, body);
+    setMessagesByConversation((prev) => {
+      const existing = prev[conversationId];
+      if (!existing) return prev;
+      return { ...prev, [conversationId]: existing.map((m) => (m.id === messageId ? updated : m)) };
+    });
+    return updated;
+  }, [token]);
+
+  const removeMessage = useCallback(async (messageId, conversationId) => {
+    const updated = await deleteChatMessage(token, messageId);
+    setMessagesByConversation((prev) => {
+      const existing = prev[conversationId];
+      if (!existing) return prev;
+      return { ...prev, [conversationId]: existing.map((m) => (m.id === messageId ? updated : m)) };
+    });
+    return updated;
+  }, [token]);
+
+  const uploadAttachment = useCallback(async (conversationId, file, body = '') => {
+    const message = await uploadChatAttachment(token, conversationId, file, body);
+    // The uploader also gets their own new_message broadcast back over their live socket (the
+    // backend broadcasts to every member including the sender), so no optimistic append here -
+    // matches how sendMessage's WS path behaves. If the socket happens to be down, the message
+    // still appears on the next reconnect's catch-up fetch, same safety net as everywhere else.
+    return message;
   }, [token]);
 
   const startConversation = useCallback(async (type, memberUserIds, name = null) => {
@@ -227,6 +269,7 @@ export function ChatProvider({ children }) {
   const value = {
     conversations, presenceMap, messagesByConversation, typingMap, readReceipts, connected,
     refreshConversations, loadMessages, sendMessage, startConversation, sendTyping, markRead,
+    editMessage, removeMessage, uploadAttachment,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

@@ -1302,6 +1302,70 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id, id)")
 
+        # Phase 2A-iii: reply-to reference, and edit/delete state. deleted_at + a cleared body
+        # is a soft delete - the row (and its pre-delete content) survives in message_edits
+        # below, so "delete" is functionally real for other users (body shows as removed) but
+        # never destroys the audit trail, per the same principle Phase 1's call-recording
+        # design already established for this app.
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN reply_to_message_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN edited_at TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN deleted_at TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+        # No FULLTEXT equivalent needed here - /api/chat/search falls back to a plain LIKE on
+        # SQLite (see chat_routes.py), which is fine at this team's scale.
+
+        # Audit trail for message edit/delete (Phase 2A-iii) - the pre-edit/pre-delete body is
+        # written here BEFORE messages.body is ever mutated, so content is never silently lost.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS message_edits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL,
+                edited_by INTEGER NOT NULL,
+                previous_body TEXT,
+                edit_type TEXT NOT NULL,
+                edited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_edits_message_id ON message_edits(message_id)")
+
+        # @mentions (Phase 2A-iii) - resolved and validated server-side against real conversation
+        # membership when a message is created, never trusted from the client as-is.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS message_mentions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL,
+                mentioned_user_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_mentions_message_id ON message_mentions(message_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_mentions_user_id ON message_mentions(mentioned_user_id)")
+
+        # File/image attachments (Phase 2A-iii) - same DB-blob-plus-authenticated-stream-
+        # endpoint pattern as contact_documents/calls.recording_file_data, since Render's free
+        # tier has no persistent disk.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS message_attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL,
+                file_name TEXT NOT NULL,
+                content_type TEXT,
+                file_size INTEGER,
+                file_data BLOB,
+                uploaded_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_attachments_message_id ON message_attachments(message_id)")
+
         conn.commit()
 
         _ensure_chat_channels(cursor, conn)

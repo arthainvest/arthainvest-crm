@@ -1423,12 +1423,30 @@ class MarkReadRequest(BaseModel):
 
 class MessageCreate(BaseModel):
     body: str = Field(..., min_length=1, max_length=10000)
+    reply_to_message_id: Optional[int] = None
+
+class MessageEditRequest(BaseModel):
+    body: str = Field(..., min_length=1, max_length=10000)
+
+class MessageAttachmentResponse(BaseModel):
+    id: int
+    message_id: int
+    file_name: str
+    content_type: Optional[str] = None
+    file_size: Optional[int] = None
+    uploaded_by: Optional[int] = None
+    created_at: datetime
 
 class MessageResponse(BaseModel):
     id: int
     conversation_id: int
     sender_id: int
     sender_name: str
-    body: str
+    body: Optional[str] = None
     message_type: str
+    reply_to_message_id: Optional[int] = None
+    edited_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
+    mentioned_user_ids: List[int] = []
+    attachments: List[MessageAttachmentResponse] = []
     created_at: datetime
