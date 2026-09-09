@@ -22,20 +22,22 @@ export default function ChatPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
-  // Phase 2B-i/2B-ii: "Discuss in Connect" (LeadsList.jsx, Contacts.jsx) navigates here with a
-  // CRM record attached via router state rather than creating/opening a conversation itself -
-  // the user still picks or starts the actual conversation through the existing flows below, so
-  // this never risks creating duplicate conversations. `type` distinguishes which entity it is
-  // (lead_id vs contact_id are independent columns - see the 2B-ii design notes); the two
-  // pieces of navigation state are read here but never both exist at once in practice, since a
-  // single row action can only ever start one of them. Handed to MessageThread once a
-  // conversation is selected; cleared once MessageThread confirms it took ownership (see
-  // onLinkContextConsumed).
+  // Phase 2B-i/2B-ii/2B-iii: "Discuss in Connect" (LeadsList.jsx, Contacts.jsx, Pipeline.jsx)
+  // navigates here with a CRM record attached via router state rather than creating/opening a
+  // conversation itself - the user still picks or starts the actual conversation through the
+  // existing flows below, so this never risks creating duplicate conversations. `type`
+  // distinguishes which entity it is (lead_id/contact_id/deal_id are independent columns - see
+  // the 2B-ii/2B-iii design notes); the three pieces of navigation state are read here but
+  // never more than one exists at once in practice, since a single row action can only ever
+  // start one of them. Handed to MessageThread once a conversation is selected; cleared once
+  // MessageThread confirms it took ownership (see onLinkContextConsumed).
   const initialLinkContext = location.state?.leadContext
     ? { type: 'lead', ...location.state.leadContext }
     : location.state?.contactContext
       ? { type: 'contact', ...location.state.contactContext }
-      : null;
+      : location.state?.dealContext
+        ? { type: 'deal', ...location.state.dealContext }
+        : null;
   const [pendingLinkContext, setPendingLinkContext] = useState(initialLinkContext);
 
   useEffect(() => {

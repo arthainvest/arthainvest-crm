@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   getChatWebSocketUrl, getChatConversations, getChatMessages, sendChatMessageRest, createChatConversation,
-  markChatConversationRead, editChatMessage, deleteChatMessage, uploadChatAttachment, getLead, getContact,
+  markChatConversationRead, editChatMessage, deleteChatMessage, uploadChatAttachment, getLead, getContact, getDeal,
 } from '../services/api';
 
 // Sentinel cached in place of a real record when the fetch failed (404/deleted/error) - lets
@@ -31,10 +31,12 @@ export function ChatProvider({ children }) {
   const [connected, setConnected] = useState(false);
   const [leadCache, setLeadCache] = useState({}); // lead_id -> lead record, so N messages linked to the same lead only ever fetch it once
   const [contactCache, setContactCache] = useState({}); // contact_id -> contact record, same shape as leadCache (Phase 2B-ii) - kept as an independent cache rather than merged into leadCache, since a Lead and a Contact are different record types with different fields even though the fetch-once-and-cache mechanics are identical.
+  const [dealCache, setDealCache] = useState({}); // deal_id -> deal record, same shape again (Phase 2B-iii) - third independent cache, not a generic one, per the same rationale.
 
   const wsRef = useRef(null);
   const leadFetchesInFlightRef = useRef(new Set());
   const contactFetchesInFlightRef = useRef(new Set());
+  const dealFetchesInFlightRef = useRef(new Set());
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef(null);
   const heartbeatTimerRef = useRef(null);
@@ -198,20 +200,20 @@ export function ChatProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const sendMessage = useCallback(async (conversationId, body, replyToMessageId = null, leadId = null, contactId = null) => {
+  const sendMessage = useCallback(async (conversationId, body, replyToMessageId = null, leadId = null, contactId = null, dealId = null) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       // Fire-and-forget - the server broadcasts the committed row back over this same socket
       // (handleServerEvent above appends it once the 'new_message' event round-trips).
       wsRef.current.send(JSON.stringify({
         event: 'send_message',
-        data: { conversation_id: conversationId, body, reply_to_message_id: replyToMessageId, lead_id: leadId, contact_id: contactId },
+        data: { conversation_id: conversationId, body, reply_to_message_id: replyToMessageId, lead_id: leadId, contact_id: contactId, deal_id: dealId },
       }));
       return;
     }
     // WebSocket not connected (e.g. mid-reconnect after a Render restart) - REST fallback goes
     // through the same backend _create_message() path. Unlike the WS path, the sender has no
     // live socket to receive their own broadcast back on, so append the response directly.
-    const message = await sendChatMessageRest(token, conversationId, body, replyToMessageId, leadId, contactId);
+    const message = await sendChatMessageRest(token, conversationId, body, replyToMessageId, leadId, contactId, dealId);
     setMessagesByConversation((prev) => {
       const existing = prev[conversationId] || [];
       if (existing.some((m) => m.id === message.id)) return prev;
@@ -253,6 +255,20 @@ export function ChatProvider({ children }) {
       })
       .finally(() => contactFetchesInFlightRef.current.delete(contactId));
   }, [token, contactCache]);
+
+  // Phase 2B-iii: same fetch-once-and-cache mechanics again, against the independent
+  // dealCache - third instance of the identical pattern, not a generic fetcher.
+  const getDealInfo = useCallback((dealId) => {
+    if (!dealId || dealCache[dealId] || dealFetchesInFlightRef.current.has(dealId)) return;
+    dealFetchesInFlightRef.current.add(dealId);
+    getDeal(dealId, token)
+      .then((deal) => setDealCache((prev) => ({ ...prev, [dealId]: deal })))
+      .catch((err) => {
+        console.error('Error fetching deal for chat card:', err);
+        setDealCache((prev) => ({ ...prev, [dealId]: RECORD_NOT_FOUND }));
+      })
+      .finally(() => dealFetchesInFlightRef.current.delete(dealId));
+  }, [token, dealCache]);
 
   const editMessage = useCallback(async (messageId, conversationId, body) => {
     const updated = await editChatMessage(token, messageId, body);
@@ -314,6 +330,7 @@ export function ChatProvider({ children }) {
     conversations, presenceMap, messagesByConversation, typingMap, readReceipts, connected,
     refreshConversations, loadMessages, sendMessage, startConversation, sendTyping, markRead,
     editMessage, removeMessage, uploadAttachment, leadCache, getLeadInfo, contactCache, getContactInfo,
+    dealCache, getDealInfo,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

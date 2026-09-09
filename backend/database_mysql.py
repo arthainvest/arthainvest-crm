@@ -1063,6 +1063,11 @@ def init_db():
         # every other multi-entity-link table in this schema (meetings, tasks, calls) already
         # uses one nullable column per entity kind, not a generic pointer.
         _add_column_if_missing(cursor, "messages", "contact_id", "INT")
+        # Phase 2B-iii: same pattern again, independent column, for the CRM deal (loan
+        # application) a message is about. Third instance of the same one-column-per-entity
+        # convention - still no polymorphic entity_type/entity_id pointer, per the same
+        # rationale as contact_id above (and now proven twice, not just once).
+        _add_column_if_missing(cursor, "messages", "deal_id", "INT")
         # FULLTEXT lets MySQL's MATCH/AGAINST power /api/chat/search; db_compat-style branching
         # falls back to LIKE on SQLite (see chat_routes.py), which is fine at this team's scale.
         try:

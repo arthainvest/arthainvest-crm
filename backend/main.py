@@ -1533,6 +1533,23 @@ async def get_deals(stage: str = Query(None), lead_id: int = Query(None), assign
 
     return deals
 
+@app.get("/api/deals/{deal_id}", response_model=DealResponse)
+async def get_deal(deal_id: int, token: str = Query(None)):
+    """Get single deal - same existence-then-fetch shape as get_lead/get_contact, added for
+    Phase 2B-iii so Connect's deal-linked message card has a single-record endpoint to fetch.
+    No literal-path sibling route (like /api/contacts/renewals) exists under /api/deals, so
+    unlike get_contact this has no route-ordering hazard to avoid."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Deal not found")
+        deal = fetch_deal_with_member_name(cursor, deal_id)
+
+    return deal
+
 VALID_STAGES = ['new', 'qualified', 'proposal', 'negotiation', 'closed']
 
 @app.post("/api/deals", response_model=DealResponse)

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getDeals, getLeads, createDeal, createLead, getTeam, assignDeal, updateDealProcessStatus, getDealQuotations, getCompanies, linkDealCompany, getDealDocuments, updateDealDocument, sendWhatsApp } from '../services/api';
 import { LOAN_PRODUCTS } from '../constants/loanProducts';
 import '../styles/Pipeline.css';
@@ -10,6 +11,7 @@ const FolderIcon = () => (
 );
 
 export default function Pipeline() {
+  const navigate = useNavigate();
   const PROCESS_STATUS_OPTIONS = [
     'Document Collection', 'Login', 'Under Verification', 'Approved', 'Sanction',
     'Disbursement Pending', 'Disbursed', 'Hold', 'Rejected', 'Closed - Lost'
@@ -230,6 +232,14 @@ export default function Pipeline() {
     }
   };
 
+  // Phase 2B-iii: mirrors LeadsList.jsx/Contacts.jsx's handleDiscussInConnect exactly - only
+  // navigation state is passed, no conversation is created or looked up here. The user picks
+  // or starts the actual conversation on the Connect page itself (see ChatPage.jsx's
+  // pendingLinkContext), so this can never spawn a duplicate one.
+  const handleDiscussInConnect = (deal) => {
+    navigate('/connect', { state: { dealContext: { id: deal.id, name: deal.name } } });
+  };
+
   const handleDocumentCheck = async (dealId, doc) => {
     const wasChecked = uploadedDocs[dealId]?.[doc] || false;
     const nowChecked = !wasChecked;
@@ -349,12 +359,13 @@ export default function Pipeline() {
                   <th>Company</th>
                   <th>Status</th>
                   <th>Quotations</th>
+                  <th>Connect</th>
                 </tr>
               </thead>
               <tbody>
                 {deals.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="no-data">No deals yet. Add one to get started.</td>
+                    <td colSpan={9} className="no-data">No deals yet. Add one to get started.</td>
                   </tr>
                 )}
                 {deals.map((deal) => {
@@ -418,6 +429,16 @@ export default function Pipeline() {
                           title="View quotations linked to this deal"
                         >
                           📋 {deal.quotationCount || 0}
+                        </button>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-action connect"
+                          onClick={() => handleDiscussInConnect(deal)}
+                          title="Discuss in Connect"
+                        >
+                          💬
                         </button>
                       </td>
                     </tr>

@@ -308,17 +308,32 @@ def _valid_contact_target(cursor, contact_id: Optional[int]) -> bool:
     return cursor.fetchone() is not None
 
 
+def _valid_deal_target(cursor, deal_id: Optional[int]) -> bool:
+    """A deal link is valid only if it references a real deal. Same existence-only shape as
+    _valid_lead_target/_valid_contact_target - third independent column, not a generic
+    "linked CRM record" check, per the same Phase 2B-ii/2B-iii design notes: one column per
+    entity, no polymorphic abstraction until the pattern demonstrably needs it (still doesn't,
+    three instances in). Permission model inherits GET /api/deals's existing semantics (any
+    authenticated employee can view any deal) - no new deal-level permission system is
+    introduced; that's the same Phase 2D deferral as leads and contacts."""
+    if deal_id is None:
+        return True
+    cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
+    return cursor.fetchone() is not None
+
+
 async def _create_message(
     conn, cursor, conversation_id: int, sender_id: int, body: str,
     message_type: str = "text", reply_to_message_id: Optional[int] = None,
     lead_id: Optional[int] = None, contact_id: Optional[int] = None,
+    deal_id: Optional[int] = None,
 ) -> dict:
     """Writes the message, resolves @mentions, updates the conversation's last_message_at, then
     broadcasts it to every current member - the one path the WebSocket handler, the REST send
     endpoint, and the attachment-upload endpoint all go through, so none of them can diverge."""
     cursor.execute(
-        "INSERT INTO messages (conversation_id, sender_id, body, message_type, reply_to_message_id, lead_id, contact_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-        (conversation_id, sender_id, body, message_type, reply_to_message_id, lead_id, contact_id),
+        "INSERT INTO messages (conversation_id, sender_id, body, message_type, reply_to_message_id, lead_id, contact_id, deal_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+        (conversation_id, sender_id, body, message_type, reply_to_message_id, lead_id, contact_id, deal_id),
     )
     message_id = cursor.lastrowid
     cursor.execute(
@@ -560,10 +575,12 @@ async def send_message_rest(conversation_id: int, payload: MessageCreate, token:
             raise HTTPException(status_code=400, detail="Invalid lead_id")
         if not _valid_contact_target(cursor, payload.contact_id):
             raise HTTPException(status_code=400, detail="Invalid contact_id")
+        if not _valid_deal_target(cursor, payload.deal_id):
+            raise HTTPException(status_code=400, detail="Invalid deal_id")
         return await _create_message(
             conn, cursor, conversation_id, user["user_id"], payload.body.strip(),
             reply_to_message_id=payload.reply_to_message_id, lead_id=payload.lead_id,
-            contact_id=payload.contact_id,
+            contact_id=payload.contact_id, deal_id=payload.deal_id,
         )
 
 
@@ -796,6 +813,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 reply_to_message_id = data.get("reply_to_message_id")
                 lead_id = data.get("lead_id")
                 contact_id = data.get("contact_id")
+                deal_id = data.get("deal_id")
                 if not conversation_id or not body:
                     await websocket.send_json({"event": "error", "data": {"message": "conversation_id and body are required"}})
                     continue
@@ -817,7 +835,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not _valid_contact_target(cursor, contact_id):
                         await websocket.send_json({"event": "error", "data": {"message": "Invalid contact_id"}})
                         continue
-                    await _create_message(conn, cursor, conversation_id, user_id, body, reply_to_message_id=reply_to_message_id, lead_id=lead_id, contact_id=contact_id)
+                    if not _valid_deal_target(cursor, deal_id):
+                        await websocket.send_json({"event": "error", "data": {"message": "Invalid deal_id"}})
+                        continue
+                    await _create_message(conn, cursor, conversation_id, user_id, body, reply_to_message_id=reply_to_message_id, lead_id=lead_id, contact_id=contact_id, deal_id=deal_id)
 
             elif event in ("typing_start", "typing_stop"):
                 conversation_id = data.get("conversation_id")

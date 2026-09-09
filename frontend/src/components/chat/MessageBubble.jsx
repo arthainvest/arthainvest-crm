@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { getChatAttachmentUrl } from '../../services/api';
 import { useChat } from '../../contexts/ChatContext';
+import { LOAN_PRODUCTS } from '../../constants/loanProducts';
+
+// Same label convention as Contacts.jsx's dealLabel() - not extracted into a shared module for
+// one caller-pair, just replicated inline (see the 2B-iii design notes: extend, don't redesign).
+function dealCardLabel(deal) {
+  const productInfo = LOAN_PRODUCTS.find((p) => p.id === deal.loan_product);
+  return `${productInfo?.name || deal.loan_product} · ₹${(deal.deal_value || 0).toLocaleString('en-IN')} · ${deal.process_status || 'Login'}`;
+}
 
 const currentUserId = Number(localStorage.getItem('userId'));
 const token = localStorage.getItem('token');
@@ -30,13 +38,14 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(message.body || '');
   const [saving, setSaving] = useState(false);
-  const { leadCache, getLeadInfo, contactCache, getContactInfo } = useChat();
+  const { leadCache, getLeadInfo, contactCache, getContactInfo, dealCache, getDealInfo } = useChat();
   const leadInfo = message.lead_id ? leadCache[message.lead_id] : null;
   const contactInfo = message.contact_id ? contactCache[message.contact_id] : null;
+  const dealInfo = message.deal_id ? dealCache[message.deal_id] : null;
 
-  // Fetch-once-per-lead/contact: getLeadInfo/getContactInfo themselves no-op if the record is
-  // already cached or already being fetched by another bubble, so N messages linked to the same
-  // lead/contact cost one request total, not N.
+  // Fetch-once-per-lead/contact/deal: getLeadInfo/getContactInfo/getDealInfo themselves no-op if
+  // the record is already cached or already being fetched by another bubble, so N messages
+  // linked to the same record cost one request total, not N.
   useEffect(() => {
     if (message.lead_id && !leadInfo) getLeadInfo(message.lead_id);
   }, [message.lead_id, leadInfo, getLeadInfo]);
@@ -44,6 +53,10 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
   useEffect(() => {
     if (message.contact_id && !contactInfo) getContactInfo(message.contact_id);
   }, [message.contact_id, contactInfo, getContactInfo]);
+
+  useEffect(() => {
+    if (message.deal_id && !dealInfo) getDealInfo(message.deal_id);
+  }, [message.deal_id, dealInfo, getDealInfo]);
 
   const handleSaveEdit = async () => {
     const body = editText.trim();
@@ -102,6 +115,22 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
                 <span className="chat-lead-card-name">{contactInfo.name}</span>
                 {contactInfo.company && <span className="chat-lead-card-company">{contactInfo.company}</span>}
                 <span className="chat-lead-card-status">{contactInfo.status}</span>
+              </span>
+            ) : (
+              <span className="chat-lead-card-details">Loading...</span>
+            )}
+          </div>
+        )}
+
+        {message.deal_id && !isDeleted && (
+          <div className="chat-lead-card">
+            <span className="chat-lead-card-tag">Deal</span>
+            {dealInfo?.__notFound ? (
+              <span className="chat-lead-card-details chat-lead-card-unavailable">No longer available</span>
+            ) : dealInfo ? (
+              <span className="chat-lead-card-details">
+                <span className="chat-lead-card-name">{dealCardLabel(dealInfo)}</span>
+                {dealInfo.contact_name && <span className="chat-lead-card-company">{dealInfo.contact_name}</span>}
               </span>
             ) : (
               <span className="chat-lead-card-details">Loading...</span>

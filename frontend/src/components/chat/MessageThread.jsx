@@ -80,7 +80,8 @@ export default function MessageThread({ conversation, onBack, initialLinkContext
   const handleSend = async (body) => {
     const leadId = linkContext?.type === 'lead' ? linkContext.id : null;
     const contactId = linkContext?.type === 'contact' ? linkContext.id : null;
-    await sendMessage(conversation.id, body, replyTo?.id ?? null, leadId, contactId);
+    const dealId = linkContext?.type === 'deal' ? linkContext.id : null;
+    await sendMessage(conversation.id, body, replyTo?.id ?? null, leadId, contactId, dealId);
     setReplyTo(null);
     setLinkContext(null);
   };
