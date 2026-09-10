@@ -642,6 +642,11 @@ export const getTasksByTeamMember = async (token, teamMemberId) => {
   return response.data;
 };
 
+export const getTask = async (id, token) => {
+  const response = await api.get(`/api/tasks/${id}?token=${token}`);
+  return response.data;
+};
+
 export const createTask = async (token, taskData) => {
   const response = await api.post(`/api/tasks?token=${token}`, taskData);
   return response.data;
@@ -1064,9 +1069,9 @@ export const getChatMessages = async (token, conversationId, { afterId = null, b
 };
 
 // REST fallback for sending a message when the WebSocket isn't connected - see ChatContext.jsx.
-export const sendChatMessageRest = async (token, conversationId, body, replyToMessageId = null, leadId = null, contactId = null, dealId = null) => {
+export const sendChatMessageRest = async (token, conversationId, body, replyToMessageId = null, leadId = null, contactId = null, dealId = null, taskId = null) => {
   const response = await api.post(`/api/chat/conversations/${conversationId}/messages?token=${token}`, {
-    body, reply_to_message_id: replyToMessageId, lead_id: leadId, contact_id: contactId, deal_id: dealId,
+    body, reply_to_message_id: replyToMessageId, lead_id: leadId, contact_id: contactId, deal_id: dealId, task_id: taskId,
   });
   return response.data;
 };

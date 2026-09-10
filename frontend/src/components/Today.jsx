@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getTasks, getHighPriorityTasks, createTask, updateTask, deleteTask,
   getMeetings, createMeeting, updateMeeting, deleteMeeting,
@@ -20,6 +21,7 @@ const emptyTaskForm = { title: '', priority: 'Normal', assigned_team_member_id: 
 const emptyMeetingForm = { title: '', meeting_time: '', lead_id: '', contact_id: '', location: '', notes: '', assigned_team_member_id: '' };
 
 export default function Today() {
+  const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState(() => formatDateISO(new Date()));
   const [activeTab, setActiveTab] = useState('tasks');
   const [highPriorityOnly, setHighPriorityOnly] = useState(false);
@@ -107,6 +109,14 @@ export default function Today() {
       console.error('Error deleting task:', err);
       alert('Failed to delete task. Please try again.');
     }
+  };
+
+  // Phase 2B-iv: mirrors Pipeline.jsx's/LeadsList.jsx's handleDiscussInConnect exactly - only
+  // navigation state is passed, no conversation is created or looked up here. The user picks
+  // or starts the actual conversation on the Connect page itself (see ChatPage.jsx's
+  // pendingLinkContext), so this can never spawn a duplicate one.
+  const handleDiscussInConnect = (task) => {
+    navigate('/connect', { state: { taskContext: { id: task.id, name: task.title } } });
   };
 
   const handleAddTask = async (e) => {
@@ -262,6 +272,14 @@ export default function Today() {
                 {task.assigned_team_member_name && (
                   <span className="today-assignee-badge">{task.assigned_team_member_name}</span>
                 )}
+                <button
+                  type="button"
+                  className="today-connect-btn"
+                  onClick={() => handleDiscussInConnect(task)}
+                  title="Discuss in Connect"
+                >
+                  💬
+                </button>
                 <button className="today-delete-btn" onClick={() => handleDeleteTask(task.id)} title="Delete">🗑️</button>
               </div>
             ))

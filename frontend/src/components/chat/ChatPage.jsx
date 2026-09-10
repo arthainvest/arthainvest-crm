@@ -37,7 +37,9 @@ export default function ChatPage() {
       ? { type: 'contact', ...location.state.contactContext }
       : location.state?.dealContext
         ? { type: 'deal', ...location.state.dealContext }
-        : null;
+        : location.state?.taskContext
+          ? { type: 'task', ...location.state.taskContext }
+          : null;
   const [pendingLinkContext, setPendingLinkContext] = useState(initialLinkContext);
 
   useEffect(() => {

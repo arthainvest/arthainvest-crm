@@ -1342,6 +1342,12 @@ def init_db():
             cursor.execute("ALTER TABLE messages ADD COLUMN deal_id INTEGER")
         except sqlite3.OperationalError:
             pass
+        # Phase 2B-iv: same pattern again, independent column, for the CRM task a message is
+        # about - see database_mysql.py's matching column for the full rationale.
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN task_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
         # No FULLTEXT equivalent needed here - /api/chat/search falls back to a plain LIKE on
         # SQLite (see chat_routes.py), which is fine at this team's scale.
 

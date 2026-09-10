@@ -447,6 +447,13 @@
 
 .chat-lead-card-unavailable { font-style: italic; opacity: 0.7; }
 
+/* Task card completion state (Phase 2B-iv) - a completed Task communicates "done", not a
+   pipeline stage, so it gets a strikethrough title and a green status pill rather than reusing
+   the neutral chat-lead-card-status treatment used by Lead/Contact/Deal cards. */
+.chat-task-card-completed { text-decoration: line-through; opacity: 0.75; }
+.chat-task-status-done { background: rgba(46, 125, 50, 0.18); color: #2e7d32; }
+.chat-message-bubble.outbound .chat-task-status-done { background: rgba(255, 255, 255, 0.3); color: inherit; }
+
 /* ---- Edited / deleted state ---- */
 
 .chat-edited-label { font-style: italic; opacity: 0.8; margin-right: 4px; }

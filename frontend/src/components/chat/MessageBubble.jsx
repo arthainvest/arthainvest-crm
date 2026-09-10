@@ -10,6 +10,23 @@ function dealCardLabel(deal) {
   return `${productInfo?.name || deal.loan_product} · ₹${(deal.deal_value || 0).toLocaleString('en-IN')} · ${deal.process_status || 'Login'}`;
 }
 
+// Task has no monetary value or pipeline stage, so it doesn't reuse dealCardLabel's
+// "product · value · status" template (see the 2B-iv design notes) - its own fields are due
+// date, priority, and a completed boolean, which gets its own visual treatment below rather
+// than being folded into this string.
+function taskCardLabel(task) {
+  const due = formatDueDate(task.due_date);
+  const priority = task.priority || 'Normal';
+  return `Due: ${due} · ${priority} Priority`;
+}
+
+function formatDueDate(dueDate) {
+  if (!dueDate) return '—';
+  const d = new Date(dueDate.includes('T') ? dueDate : `${dueDate}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dueDate;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 const currentUserId = Number(localStorage.getItem('userId'));
 const token = localStorage.getItem('token');
 
@@ -38,14 +55,15 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(message.body || '');
   const [saving, setSaving] = useState(false);
-  const { leadCache, getLeadInfo, contactCache, getContactInfo, dealCache, getDealInfo } = useChat();
+  const { leadCache, getLeadInfo, contactCache, getContactInfo, dealCache, getDealInfo, taskCache, getTaskInfo } = useChat();
   const leadInfo = message.lead_id ? leadCache[message.lead_id] : null;
   const contactInfo = message.contact_id ? contactCache[message.contact_id] : null;
   const dealInfo = message.deal_id ? dealCache[message.deal_id] : null;
+  const taskInfo = message.task_id ? taskCache[message.task_id] : null;
 
-  // Fetch-once-per-lead/contact/deal: getLeadInfo/getContactInfo/getDealInfo themselves no-op if
-  // the record is already cached or already being fetched by another bubble, so N messages
-  // linked to the same record cost one request total, not N.
+  // Fetch-once-per-lead/contact/deal/task: getLeadInfo/getContactInfo/getDealInfo/getTaskInfo
+  // themselves no-op if the record is already cached or already being fetched by another
+  // bubble, so N messages linked to the same record cost one request total, not N.
   useEffect(() => {
     if (message.lead_id && !leadInfo) getLeadInfo(message.lead_id);
   }, [message.lead_id, leadInfo, getLeadInfo]);
@@ -57,6 +75,10 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
   useEffect(() => {
     if (message.deal_id && !dealInfo) getDealInfo(message.deal_id);
   }, [message.deal_id, dealInfo, getDealInfo]);
+
+  useEffect(() => {
+    if (message.task_id && !taskInfo) getTaskInfo(message.task_id);
+  }, [message.task_id, taskInfo, getTaskInfo]);
 
   const handleSaveEdit = async () => {
     const body = editText.trim();
@@ -131,6 +153,25 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
               <span className="chat-lead-card-details">
                 <span className="chat-lead-card-name">{dealCardLabel(dealInfo)}</span>
                 {dealInfo.contact_name && <span className="chat-lead-card-company">{dealInfo.contact_name}</span>}
+              </span>
+            ) : (
+              <span className="chat-lead-card-details">Loading...</span>
+            )}
+          </div>
+        )}
+
+        {message.task_id && !isDeleted && (
+          <div className="chat-lead-card">
+            <span className="chat-lead-card-tag">Task</span>
+            {taskInfo?.__notFound ? (
+              <span className="chat-lead-card-details chat-lead-card-unavailable">No longer available</span>
+            ) : taskInfo ? (
+              <span className="chat-lead-card-details">
+                <span className={`chat-lead-card-name ${taskInfo.completed ? 'chat-task-card-completed' : ''}`}>{taskInfo.title}</span>
+                <span className="chat-lead-card-company">{taskCardLabel(taskInfo)}</span>
+                <span className={`chat-lead-card-status ${taskInfo.completed ? 'chat-task-status-done' : ''}`}>
+                  {taskInfo.completed ? '✓ Completed' : 'Pending'}
+                </span>
               </span>
             ) : (
               <span className="chat-lead-card-details">Loading...</span>

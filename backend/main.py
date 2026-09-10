@@ -3713,6 +3713,24 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
 
     return tasks
 
+@app.get("/api/tasks/{task_id}", response_model=TaskResponse)
+async def get_task(task_id: int, token: str = Query(None)):
+    """Get single task - same existence-then-fetch shape as get_lead/get_contact/get_deal, added
+    for Phase 2B-iv so Connect's task-linked message card has a single-record endpoint to fetch.
+    Every existing literal-path sibling under /api/tasks/ already has {task_id} as its first
+    segment (e.g. /api/tasks/{task_id}/leads), so unlike get_contact/get_insurance_policy this
+    route carries no route-ordering hazard regardless of placement."""
+    get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Task not found")
+        task = fetch_task_with_member_name(cursor, task_id)
+
+    return task
+
 @app.post("/api/tasks", response_model=TaskResponse)
 async def create_task(task: TaskCreate, token: str = Query(None)):
     """Add a new task"""

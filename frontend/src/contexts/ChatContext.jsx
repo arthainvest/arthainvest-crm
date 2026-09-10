@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   getChatWebSocketUrl, getChatConversations, getChatMessages, sendChatMessageRest, createChatConversation,
-  markChatConversationRead, editChatMessage, deleteChatMessage, uploadChatAttachment, getLead, getContact, getDeal,
+  markChatConversationRead, editChatMessage, deleteChatMessage, uploadChatAttachment, getLead, getContact, getDeal, getTask,
 } from '../services/api';
 
 // Sentinel cached in place of a real record when the fetch failed (404/deleted/error) - lets
@@ -32,11 +32,13 @@ export function ChatProvider({ children }) {
   const [leadCache, setLeadCache] = useState({}); // lead_id -> lead record, so N messages linked to the same lead only ever fetch it once
   const [contactCache, setContactCache] = useState({}); // contact_id -> contact record, same shape as leadCache (Phase 2B-ii) - kept as an independent cache rather than merged into leadCache, since a Lead and a Contact are different record types with different fields even though the fetch-once-and-cache mechanics are identical.
   const [dealCache, setDealCache] = useState({}); // deal_id -> deal record, same shape again (Phase 2B-iii) - third independent cache, not a generic one, per the same rationale.
+  const [taskCache, setTaskCache] = useState({}); // task_id -> task record, same shape again (Phase 2B-iv) - fourth independent cache, not a generic one, per the same rationale.
 
   const wsRef = useRef(null);
   const leadFetchesInFlightRef = useRef(new Set());
   const contactFetchesInFlightRef = useRef(new Set());
   const dealFetchesInFlightRef = useRef(new Set());
+  const taskFetchesInFlightRef = useRef(new Set());
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef(null);
   const heartbeatTimerRef = useRef(null);
@@ -200,20 +202,20 @@ export function ChatProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const sendMessage = useCallback(async (conversationId, body, replyToMessageId = null, leadId = null, contactId = null, dealId = null) => {
+  const sendMessage = useCallback(async (conversationId, body, replyToMessageId = null, leadId = null, contactId = null, dealId = null, taskId = null) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       // Fire-and-forget - the server broadcasts the committed row back over this same socket
       // (handleServerEvent above appends it once the 'new_message' event round-trips).
       wsRef.current.send(JSON.stringify({
         event: 'send_message',
-        data: { conversation_id: conversationId, body, reply_to_message_id: replyToMessageId, lead_id: leadId, contact_id: contactId, deal_id: dealId },
+        data: { conversation_id: conversationId, body, reply_to_message_id: replyToMessageId, lead_id: leadId, contact_id: contactId, deal_id: dealId, task_id: taskId },
       }));
       return;
     }
     // WebSocket not connected (e.g. mid-reconnect after a Render restart) - REST fallback goes
     // through the same backend _create_message() path. Unlike the WS path, the sender has no
     // live socket to receive their own broadcast back on, so append the response directly.
-    const message = await sendChatMessageRest(token, conversationId, body, replyToMessageId, leadId, contactId, dealId);
+    const message = await sendChatMessageRest(token, conversationId, body, replyToMessageId, leadId, contactId, dealId, taskId);
     setMessagesByConversation((prev) => {
       const existing = prev[conversationId] || [];
       if (existing.some((m) => m.id === message.id)) return prev;
@@ -269,6 +271,20 @@ export function ChatProvider({ children }) {
       })
       .finally(() => dealFetchesInFlightRef.current.delete(dealId));
   }, [token, dealCache]);
+
+  // Phase 2B-iv: same fetch-once-and-cache mechanics again, against the independent
+  // taskCache - fourth instance of the identical pattern, not a generic fetcher.
+  const getTaskInfo = useCallback((taskId) => {
+    if (!taskId || taskCache[taskId] || taskFetchesInFlightRef.current.has(taskId)) return;
+    taskFetchesInFlightRef.current.add(taskId);
+    getTask(taskId, token)
+      .then((task) => setTaskCache((prev) => ({ ...prev, [taskId]: task })))
+      .catch((err) => {
+        console.error('Error fetching task for chat card:', err);
+        setTaskCache((prev) => ({ ...prev, [taskId]: RECORD_NOT_FOUND }));
+      })
+      .finally(() => taskFetchesInFlightRef.current.delete(taskId));
+  }, [token, taskCache]);
 
   const editMessage = useCallback(async (messageId, conversationId, body) => {
     const updated = await editChatMessage(token, messageId, body);
@@ -330,7 +346,7 @@ export function ChatProvider({ children }) {
     conversations, presenceMap, messagesByConversation, typingMap, readReceipts, connected,
     refreshConversations, loadMessages, sendMessage, startConversation, sendTyping, markRead,
     editMessage, removeMessage, uploadAttachment, leadCache, getLeadInfo, contactCache, getContactInfo,
-    dealCache, getDealInfo,
+    dealCache, getDealInfo, taskCache, getTaskInfo,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
