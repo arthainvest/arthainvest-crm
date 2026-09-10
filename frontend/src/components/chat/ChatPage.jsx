@@ -39,7 +39,9 @@ export default function ChatPage() {
         ? { type: 'deal', ...location.state.dealContext }
         : location.state?.taskContext
           ? { type: 'task', ...location.state.taskContext }
-          : null;
+          : location.state?.quotationContext
+            ? { type: 'quotation', ...location.state.quotationContext }
+            : null;
   const [pendingLinkContext, setPendingLinkContext] = useState(initialLinkContext);
 
   useEffect(() => {

@@ -27,6 +27,16 @@ function formatDueDate(dueDate) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// Quotation already has a natural title (unlike Deal), so this follows the Lead/Contact card
+// shape (name = the record's own title, this label = supporting detail, status = pill) rather
+// than Deal's computed-name template. Reuses the same items[]/grand_total the existing
+// fetch_quotation_with_details() endpoint already returns - no duplicate total calculation.
+function quotationCardLabel(quotation) {
+  const itemCount = quotation.items?.length || 0;
+  const total = (quotation.grand_total || 0).toLocaleString('en-IN');
+  return `${quotation.quotation_number} · ₹${total} · ${itemCount} item${itemCount === 1 ? '' : 's'}`;
+}
+
 const currentUserId = Number(localStorage.getItem('userId'));
 const token = localStorage.getItem('token');
 
@@ -55,15 +65,17 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(message.body || '');
   const [saving, setSaving] = useState(false);
-  const { leadCache, getLeadInfo, contactCache, getContactInfo, dealCache, getDealInfo, taskCache, getTaskInfo } = useChat();
+  const { leadCache, getLeadInfo, contactCache, getContactInfo, dealCache, getDealInfo, taskCache, getTaskInfo, quotationCache, getQuotationInfo } = useChat();
   const leadInfo = message.lead_id ? leadCache[message.lead_id] : null;
   const contactInfo = message.contact_id ? contactCache[message.contact_id] : null;
   const dealInfo = message.deal_id ? dealCache[message.deal_id] : null;
   const taskInfo = message.task_id ? taskCache[message.task_id] : null;
+  const quotationInfo = message.quotation_id ? quotationCache[message.quotation_id] : null;
 
-  // Fetch-once-per-lead/contact/deal/task: getLeadInfo/getContactInfo/getDealInfo/getTaskInfo
-  // themselves no-op if the record is already cached or already being fetched by another
-  // bubble, so N messages linked to the same record cost one request total, not N.
+  // Fetch-once-per-lead/contact/deal/task/quotation: getLeadInfo/getContactInfo/getDealInfo/
+  // getTaskInfo/getQuotationInfo themselves no-op if the record is already cached or already
+  // being fetched by another bubble, so N messages linked to the same record cost one request
+  // total, not N.
   useEffect(() => {
     if (message.lead_id && !leadInfo) getLeadInfo(message.lead_id);
   }, [message.lead_id, leadInfo, getLeadInfo]);
@@ -79,6 +91,10 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
   useEffect(() => {
     if (message.task_id && !taskInfo) getTaskInfo(message.task_id);
   }, [message.task_id, taskInfo, getTaskInfo]);
+
+  useEffect(() => {
+    if (message.quotation_id && !quotationInfo) getQuotationInfo(message.quotation_id);
+  }, [message.quotation_id, quotationInfo, getQuotationInfo]);
 
   const handleSaveEdit = async () => {
     const body = editText.trim();
@@ -172,6 +188,23 @@ export default function MessageBubble({ message, repliedToMessage, onReply, onEd
                 <span className={`chat-lead-card-status ${taskInfo.completed ? 'chat-task-status-done' : ''}`}>
                   {taskInfo.completed ? '✓ Completed' : 'Pending'}
                 </span>
+              </span>
+            ) : (
+              <span className="chat-lead-card-details">Loading...</span>
+            )}
+          </div>
+        )}
+
+        {message.quotation_id && !isDeleted && (
+          <div className="chat-lead-card">
+            <span className="chat-lead-card-tag">Quotation</span>
+            {quotationInfo?.__notFound ? (
+              <span className="chat-lead-card-details chat-lead-card-unavailable">No longer available</span>
+            ) : quotationInfo ? (
+              <span className="chat-lead-card-details">
+                <span className="chat-lead-card-name">{quotationInfo.title}</span>
+                <span className="chat-lead-card-company">{quotationCardLabel(quotationInfo)}</span>
+                <span className="chat-lead-card-status">{quotationInfo.status}</span>
               </span>
             ) : (
               <span className="chat-lead-card-details">Loading...</span>

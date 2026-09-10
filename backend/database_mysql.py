@@ -1072,6 +1072,10 @@ def init_db():
         # about. Fourth instance of the same one-column-per-entity convention - still no
         # polymorphic entity_type/entity_id pointer, per the same rationale as deal_id above.
         _add_column_if_missing(cursor, "messages", "task_id", "INT")
+        # Phase 2B-v: same pattern again, independent column, for the CRM quotation a message is
+        # about. Fifth instance of the same one-column-per-entity convention - still no
+        # polymorphic entity_type/entity_id pointer, per the same rationale as task_id above.
+        _add_column_if_missing(cursor, "messages", "quotation_id", "INT")
         # FULLTEXT lets MySQL's MATCH/AGAINST power /api/chat/search; db_compat-style branching
         # falls back to LIKE on SQLite (see chat_routes.py), which is fine at this team's scale.
         try:

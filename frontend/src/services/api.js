@@ -815,6 +815,13 @@ export const getQuotation = async (token, id) => {
   return response.data;
 };
 
+// Phase 2B-v: getQuotation's argument order is (token, id) - the reverse of getLead/getContact/
+// getDeal/getTask's (id, token), which is what ChatContext.jsx's getXInfo callbacks all call
+// with. Rather than touch getQuotation's existing signature (it has other callers throughout
+// this file), this wrapper isolates the reversal to one call site so it can never be
+// accidentally swapped.
+export const getQuotationForChat = async (id, token) => getQuotation(token, id);
+
 export const createQuotation = async (token, quotationData) => {
   const response = await api.post(`/api/quotations?token=${token}`, quotationData);
   return response.data;
@@ -1069,9 +1076,9 @@ export const getChatMessages = async (token, conversationId, { afterId = null, b
 };
 
 // REST fallback for sending a message when the WebSocket isn't connected - see ChatContext.jsx.
-export const sendChatMessageRest = async (token, conversationId, body, replyToMessageId = null, leadId = null, contactId = null, dealId = null, taskId = null) => {
+export const sendChatMessageRest = async (token, conversationId, body, replyToMessageId = null, leadId = null, contactId = null, dealId = null, taskId = null, quotationId = null) => {
   const response = await api.post(`/api/chat/conversations/${conversationId}/messages?token=${token}`, {
-    body, reply_to_message_id: replyToMessageId, lead_id: leadId, contact_id: contactId, deal_id: dealId, task_id: taskId,
+    body, reply_to_message_id: replyToMessageId, lead_id: leadId, contact_id: contactId, deal_id: dealId, task_id: taskId, quotation_id: quotationId,
   });
   return response.data;
 };

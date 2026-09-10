@@ -1428,6 +1428,7 @@ class MessageCreate(BaseModel):
     contact_id: Optional[int] = None
     deal_id: Optional[int] = None
     task_id: Optional[int] = None
+    quotation_id: Optional[int] = None
 
 class MessageEditRequest(BaseModel):
     body: str = Field(..., min_length=1, max_length=10000)
@@ -1453,6 +1454,7 @@ class MessageResponse(BaseModel):
     contact_id: Optional[int] = None
     deal_id: Optional[int] = None
     task_id: Optional[int] = None
+    quotation_id: Optional[int] = None
     edited_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
     mentioned_user_ids: List[int] = []

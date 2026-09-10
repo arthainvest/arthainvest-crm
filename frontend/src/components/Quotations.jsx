@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getQuotations, createQuotation, updateQuotation, deleteQuotation, sendQuotation,
   getLeads, getContactsList, getDeals
@@ -24,6 +25,7 @@ const statusClass = (status) => (status || '').toLowerCase();
 const formatCurrency = (n) => `₹${(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export default function Quotations() {
+  const navigate = useNavigate();
   const [quotations, setQuotations] = useState([]);
   const [leads, setLeads] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -181,6 +183,14 @@ export default function Quotations() {
     }
   };
 
+  // Phase 2B-v: mirrors Pipeline.jsx's/Today.jsx's handleDiscussInConnect exactly - only
+  // navigation state is passed, no conversation is created or looked up here. The user picks
+  // or starts the actual conversation on the Connect page itself (see ChatPage.jsx's
+  // pendingLinkContext), so this can never spawn a duplicate one.
+  const handleDiscussInConnect = (quotation) => {
+    navigate('/connect', { state: { quotationContext: { id: quotation.id, name: quotation.title } } });
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this quotation?')) return;
     try {
@@ -215,6 +225,7 @@ export default function Quotations() {
                 <th>Grand Total</th>
                 <th>Status</th>
                 <th>Valid Until</th>
+                <th>Connect</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -242,6 +253,16 @@ export default function Quotations() {
                     </select>
                   </td>
                   <td>{q.valid_until || '-'}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn-action connect"
+                      onClick={() => handleDiscussInConnect(q)}
+                      title="Discuss in Connect"
+                    >
+                      💬
+                    </button>
+                  </td>
                   <td className="quotation-actions">
                     <button className="btn-small" onClick={() => openEditModal(q)}>Edit</button>
                     <button className="btn-small" onClick={() => handleSend(q.id)} disabled={sendingId === q.id}>

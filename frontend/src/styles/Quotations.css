@@ -17,6 +17,23 @@
 
 .no-data { text-align: center; color: var(--text-muted); padding: 40px; font-size: 14px; }
 
+.btn-action.connect {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #1976d2;
+  font-size: 16px;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.btn-action.connect:hover {
+  transform: scale(1.15);
+}
+
 .quotation-status-select {
   padding: 5px 22px 5px 10px;
   border-radius: 6px;
