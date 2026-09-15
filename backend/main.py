@@ -27,6 +27,10 @@ import storage
 import calling_providers
 import automations_scheduler
 import chat_routes
+from access_control import (
+    get_visibility_scope, scope_filter_sql, assert_record_visible, scoped_rows,
+    redact_if_not_visible, company_visibility_sql, is_company_visible, is_record_visible,
+)
 
 # DATABASE_URL is set in production (MySQL, e.g. Hostinger's Remote MySQL) and unset for
 # local dev - this is the one switch point for the whole app. See backend/database_mysql.py
@@ -235,16 +239,29 @@ def get_user_from_api_key(x_api_key: str = Header(None)):
 
     return dict(row)
 
-def fetch_deal_with_member_name(cursor, deal_id):
+def fetch_deal_with_member_name(cursor, deal_id, scope):
     """Read one deal back out joined against team_members, so the frontend gets the assigned
     employee's name alongside the raw id - avoids a second round-trip per row on the Pipeline
     table just to resolve id -> name. Also counts linked Quotations (same subquery pattern as
-    companies.contact_count) and resolves the linked Company's name and Contact's name, if any."""
+    companies.contact_count) and resolves the linked Company's name and Contact's name, if any.
+
+    `scope` is required (pass the caller's own get_visibility_scope() result, or None for an
+    admin) so cross-entity display fields can be redacted per the data-visibility security fix:
+    company_name never needs redaction here (this deal, if visible to the caller, already
+    satisfies company_visibility_sql's own "referenced by a visible Deal" clause by
+    construction), but contact_name/call_name/task_name each belong to an entity with its own
+    independent visibility rule that a visible Deal does NOT automatically satisfy - a Deal
+    Chirag can see may still reference a Contact/Call/Task that belongs to Amol, and that
+    record's name must not leak through this join. Every call site of this function must
+    already have confirmed deal_id itself is visible before calling it - this function assumes
+    that and only handles the LINKED entities' visibility, not the deal's own."""
     cursor.execute(
         """
         SELECT deals.*, team_members.name as assigned_team_member_name,
                companies.name as company_name, contacts.name as contact_name,
-               calls.name as call_name, tasks.title as task_name,
+               contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
+               calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+               tasks.title as task_name, tasks.created_by as _task_created_by, tasks.assigned_team_member_id as _task_assigned_team_member_id,
                (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
         FROM deals
         LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
@@ -256,23 +273,42 @@ def fetch_deal_with_member_name(cursor, deal_id):
         """,
         (deal_id,)
     )
-    return dict(cursor.fetchone())
+    row = dict(cursor.fetchone())
+    redact_if_not_visible(scope, row, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+    redact_if_not_visible(scope, row, ["call_name"], user_id_col="_call_created_by", team_member_id_col="_call_team_member_id")
+    redact_if_not_visible(scope, row, ["task_name"], user_id_col="_task_created_by", team_member_id_col="_task_assigned_team_member_id")
+    for k in ("_contact_created_by", "_contact_assigned_team_member_id", "_call_created_by", "_call_team_member_id", "_task_created_by", "_task_assigned_team_member_id"):
+        row.pop(k, None)
+    return row
 
-def fetch_lead_with_member_name(cursor, lead_id):
+def fetch_lead_with_member_name(cursor, lead_id, scope):
     """Same join-by-id pattern as fetch_deal_with_member_name, for leads - so admins/team
     leads can see which employee a lead is assigned to without a second round-trip. Also
-    resolves converted_contact_id's name, if this lead has been converted to a Contact."""
+    resolves converted_contact_id's name, if this lead has been converted to a Contact.
+
+    `scope` gates every cross-entity display field the same way fetch_deal_with_member_name
+    does: company_name is checked via is_company_visible (leads.company_id is a DIRECT link,
+    not covered by company_visibility_sql's own EXISTS-through-Contact/Deal clauses, unlike a
+    company shown via a Deal or Contact); every other joined name (converted contact, call,
+    task, quotation, the linked contact) is checked against that specific row's own ownership
+    columns. deal_label is a special case: it's built from the linked Deal's own fields PLUS
+    that Deal's ORIGINATING lead's name (deal_lead_name) - two independent visibility checks,
+    since a Deal being visible does not make its originating Lead visible too."""
     cursor.execute(
         """
         SELECT leads.*, team_members.name as assigned_team_member_name,
                converted_contact.name as converted_contact_name,
+               converted_contact.created_by as _cc_created_by, converted_contact.assigned_team_member_id as _cc_assigned_team_member_id,
                companies.name as company_name,
-               calls.name as call_name,
-               tasks.title as task_name,
-               quotations.title as quotation_title,
+               calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+               tasks.title as task_name, tasks.created_by as _task_created_by, tasks.assigned_team_member_id as _task_assigned_team_member_id,
+               quotations.title as quotation_title, quotations.created_by as _quotation_created_by,
                linked_contact.name as contact_name,
+               linked_contact.created_by as _lc_created_by, linked_contact.assigned_team_member_id as _lc_assigned_team_member_id,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
-               deal_leads.name as deal_lead_name
+               deals.owner_id as _deal_owner_id, deals.assigned_team_member_id as _deal_assigned_team_member_id,
+               deal_leads.name as deal_lead_name,
+               deal_leads.created_by as _deal_lead_created_by, deal_leads.assigned_team_member_id as _deal_lead_assigned_team_member_id
         FROM leads
         LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
         LEFT JOIN contacts AS converted_contact ON converted_contact.id = leads.converted_contact_id
@@ -289,27 +325,53 @@ def fetch_lead_with_member_name(cursor, lead_id):
     )
     row = cursor.fetchone()
     lead = dict(row)
-    if lead.get('deal_id'):
+
+    redact_if_not_visible(scope, lead, ["converted_contact_name"], user_id_col="_cc_created_by", team_member_id_col="_cc_assigned_team_member_id")
+    redact_if_not_visible(scope, lead, ["call_name"], user_id_col="_call_created_by", team_member_id_col="_call_team_member_id")
+    redact_if_not_visible(scope, lead, ["task_name"], user_id_col="_task_created_by", team_member_id_col="_task_assigned_team_member_id")
+    redact_if_not_visible(scope, lead, ["quotation_title"], user_id_col="_quotation_created_by")
+    redact_if_not_visible(scope, lead, ["contact_name"], user_id_col="_lc_created_by", team_member_id_col="_lc_assigned_team_member_id")
+    if scope is not None and lead.get('company_id') and not is_company_visible(cursor, scope, lead['company_id']):
+        lead['company_name'] = None
+
+    deal_visible = is_record_visible(scope, lead, user_id_cols=["_deal_owner_id"], team_member_id_cols=["_deal_assigned_team_member_id"])
+    deal_lead_visible = is_record_visible(scope, lead, user_id_cols=["_deal_lead_created_by"], team_member_id_cols=["_deal_lead_assigned_team_member_id"])
+    if lead.get('deal_id') and deal_visible:
+        deal_lead_name = lead.get('deal_lead_name') if deal_lead_visible else None
         lead['deal_label'] = (
-            f"{lead.get('deal_lead_name') or 'Deal'} - {lead.get('deal_loan_product') or ''} "
+            f"{deal_lead_name or 'Deal'} - {lead.get('deal_loan_product') or ''} "
             f"(Rs {lead.get('deal_deal_value') or 0:,.0f})"
         )
     else:
         lead['deal_label'] = None
+
+    for k in ("_cc_created_by", "_cc_assigned_team_member_id", "_call_created_by", "_call_team_member_id",
+              "_task_created_by", "_task_assigned_team_member_id", "_quotation_created_by",
+              "_lc_created_by", "_lc_assigned_team_member_id", "_deal_owner_id", "_deal_assigned_team_member_id",
+              "_deal_lead_created_by", "_deal_lead_assigned_team_member_id"):
+        lead.pop(k, None)
     return lead
 
-def fetch_contact_with_member_name(cursor, contact_id):
+def fetch_contact_with_member_name(cursor, contact_id, scope):
     """Same join-by-id pattern as fetch_deal_with_member_name, for contacts - so admins/team
     leads can see which employee owns each contact in the client book, and which Companies
     record (if any) they're linked to. Also resolves converted_from_lead_id's name, the
-    reverse of leads.converted_contact_id, if this contact originated from a converted lead."""
+    reverse of leads.converted_contact_id, if this contact originated from a converted lead.
+
+    `scope` gates the cross-entity display fields the same way fetch_deal_with_member_name
+    does: company_name never needs redaction here (this contact, if visible to the caller,
+    already satisfies company_visibility_sql's own "referenced by a visible Contact" clause by
+    construction), but converted_from_lead_name/quotation_title/call_name each belong to an
+    entity with its own independent visibility rule that a visible Contact does NOT
+    automatically satisfy."""
     cursor.execute(
         """
         SELECT contacts.*, team_members.name as assigned_team_member_name,
                companies.name as company_name,
                converted_from_lead.name as converted_from_lead_name,
-               quotations.title as quotation_title,
-               calls.name as call_name
+               converted_from_lead.created_by as _cfl_created_by, converted_from_lead.assigned_team_member_id as _cfl_assigned_team_member_id,
+               quotations.title as quotation_title, quotations.created_by as _quotation_created_by,
+               calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id
         FROM contacts
         LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
         LEFT JOIN companies ON companies.id = contacts.company_id
@@ -320,16 +382,29 @@ def fetch_contact_with_member_name(cursor, contact_id):
         """,
         (contact_id,)
     )
-    return dict(cursor.fetchone())
+    contact = dict(cursor.fetchone())
+    redact_if_not_visible(scope, contact, ["converted_from_lead_name"], user_id_col="_cfl_created_by", team_member_id_col="_cfl_assigned_team_member_id")
+    redact_if_not_visible(scope, contact, ["quotation_title"], user_id_col="_quotation_created_by")
+    redact_if_not_visible(scope, contact, ["call_name"], user_id_col="_call_created_by", team_member_id_col="_call_team_member_id")
+    for k in ("_cfl_created_by", "_cfl_assigned_team_member_id", "_quotation_created_by", "_call_created_by", "_call_team_member_id"):
+        contact.pop(k, None)
+    return contact
 
-def fetch_call_with_member_name(cursor, call_id):
+def fetch_call_with_member_name(cursor, call_id, scope):
     """Same join-by-id pattern as fetch_deal_with_member_name, for calls - so admins/team
     leads can see who made or handled each logged call, and which Lead/Contact record (if
-    any) it was about."""
+    any) it was about.
+
+    `scope` gates lead_name/contact_name (each an independently-visible entity - a visible
+    Call does not automatically make its linked Lead/Contact visible) and company_name (calls.
+    company_id is a DIRECT link, not covered by company_visibility_sql's own EXISTS-through-
+    Contact/Deal clauses, so it needs the explicit is_company_visible re-check rather than being
+    trivially safe like a company reached via a Deal or Contact)."""
     cursor.execute(
         """
         SELECT calls.*, team_members.name as team_member_name,
-               leads.name as lead_name, contacts.name as contact_name,
+               leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+               contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                companies.name as company_name
         FROM calls
         LEFT JOIN team_members ON team_members.id = calls.team_member_id
@@ -340,16 +415,31 @@ def fetch_call_with_member_name(cursor, call_id):
         """,
         (call_id,)
     )
-    return dict(cursor.fetchone())
+    call = dict(cursor.fetchone())
+    redact_if_not_visible(scope, call, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+    redact_if_not_visible(scope, call, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+    if scope is not None and call.get('company_id') and not is_company_visible(cursor, scope, call['company_id']):
+        call['company_name'] = None
+    for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id"):
+        call.pop(k, None)
+    return call
 
-def fetch_task_with_member_name(cursor, task_id):
+def fetch_task_with_member_name(cursor, task_id, scope):
     """Same join-by-id pattern as fetch_deal_with_member_name, for tasks - also resolves the
-    linked lead/contact name, if any, same as fetch_meeting_with_names."""
+    linked lead/contact name, if any, same as fetch_meeting_with_names.
+
+    `scope` gates lead_name/contact_name/call_name/quotation_title (each an independently-
+    visible entity - a visible Task does not automatically make any of these visible) and
+    company_name (tasks.company_id is a DIRECT link, not covered by company_visibility_sql's
+    own EXISTS-through-Contact/Deal clauses, so it needs the explicit is_company_visible
+    re-check)."""
     cursor.execute(
         """
         SELECT tasks.*, team_members.name as assigned_team_member_name,
-               leads.name as lead_name, contacts.name as contact_name,
-               calls.name as call_name, quotations.title as quotation_title,
+               leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+               contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
+               calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+               quotations.title as quotation_title, quotations.created_by as _quotation_created_by,
                companies.name as company_name
         FROM tasks
         LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
@@ -362,7 +452,17 @@ def fetch_task_with_member_name(cursor, task_id):
         """,
         (task_id,)
     )
-    return dict(cursor.fetchone())
+    task = dict(cursor.fetchone())
+    redact_if_not_visible(scope, task, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+    redact_if_not_visible(scope, task, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+    redact_if_not_visible(scope, task, ["call_name"], user_id_col="_call_created_by", team_member_id_col="_call_team_member_id")
+    redact_if_not_visible(scope, task, ["quotation_title"], user_id_col="_quotation_created_by")
+    if scope is not None and task.get('company_id') and not is_company_visible(cursor, scope, task['company_id']):
+        task['company_name'] = None
+    for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id",
+              "_call_created_by", "_call_team_member_id", "_quotation_created_by"):
+        task.pop(k, None)
+    return task
 
 def fetch_meeting_with_names(cursor, meeting_id):
     """Same join-by-id pattern as fetch_deal_with_member_name, for meetings - also resolves
@@ -953,18 +1053,25 @@ async def get_leads(
     """Get all leads, optionally filtered by status/source/assigned team member - the latter
     two power the Reports page's drill-downs (Lead Source ROI -> actual leads, Team
     Productivity -> a member's actual leads) without needing dedicated reverse-lookup routes."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
+    # See fetch_lead_with_member_name for why each of these cross-entity display fields needs
+    # its own redaction check (the extra _-prefixed columns are never exposed - LeadResponse
+    # doesn't declare them, and they're popped below anyway).
     base_query = """
         SELECT leads.*, team_members.name as assigned_team_member_name,
                converted_contact.name as converted_contact_name,
+               converted_contact.created_by as _cc_created_by, converted_contact.assigned_team_member_id as _cc_assigned_team_member_id,
                companies.name as company_name,
-               calls.name as call_name,
-               tasks.title as task_name,
-               quotations.title as quotation_title,
+               calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+               tasks.title as task_name, tasks.created_by as _task_created_by, tasks.assigned_team_member_id as _task_assigned_team_member_id,
+               quotations.title as quotation_title, quotations.created_by as _quotation_created_by,
                linked_contact.name as contact_name,
+               linked_contact.created_by as _lc_created_by, linked_contact.assigned_team_member_id as _lc_assigned_team_member_id,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
-               deal_leads.name as deal_lead_name
+               deals.owner_id as _deal_owner_id, deals.assigned_team_member_id as _deal_assigned_team_member_id,
+               deal_leads.name as deal_lead_name,
+               deal_leads.created_by as _deal_lead_created_by, deal_leads.assigned_team_member_id as _deal_lead_assigned_team_member_id
         FROM leads
         LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
         LEFT JOIN contacts AS converted_contact ON converted_contact.id = leads.converted_contact_id
@@ -997,17 +1104,39 @@ async def get_leads(
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["leads.created_by"], team_member_id_cols=["leads.assigned_team_member_id"])
+            conditions.append(clause)
+            params.extend(scope_params)
         query = base_query + (" AND " + " AND ".join(conditions) if conditions else "") + " ORDER BY leads.created_at DESC"
         cursor.execute(query, params)
         leads = [dict(row) for row in cursor.fetchall()]
         for lead in leads:
-            if lead.get('deal_id'):
+            redact_if_not_visible(scope, lead, ["converted_contact_name"], user_id_col="_cc_created_by", team_member_id_col="_cc_assigned_team_member_id")
+            redact_if_not_visible(scope, lead, ["call_name"], user_id_col="_call_created_by", team_member_id_col="_call_team_member_id")
+            redact_if_not_visible(scope, lead, ["task_name"], user_id_col="_task_created_by", team_member_id_col="_task_assigned_team_member_id")
+            redact_if_not_visible(scope, lead, ["quotation_title"], user_id_col="_quotation_created_by")
+            redact_if_not_visible(scope, lead, ["contact_name"], user_id_col="_lc_created_by", team_member_id_col="_lc_assigned_team_member_id")
+            if scope is not None and lead.get('company_id') and not is_company_visible(cursor, scope, lead['company_id']):
+                lead['company_name'] = None
+
+            deal_visible = is_record_visible(scope, lead, user_id_cols=["_deal_owner_id"], team_member_id_cols=["_deal_assigned_team_member_id"])
+            deal_lead_visible = is_record_visible(scope, lead, user_id_cols=["_deal_lead_created_by"], team_member_id_cols=["_deal_lead_assigned_team_member_id"])
+            if lead.get('deal_id') and deal_visible:
+                deal_lead_name = lead.get('deal_lead_name') if deal_lead_visible else None
                 lead['deal_label'] = (
-                    f"{lead.get('deal_lead_name') or 'Deal'} - {lead.get('deal_loan_product') or ''} "
+                    f"{deal_lead_name or 'Deal'} - {lead.get('deal_loan_product') or ''} "
                     f"(Rs {lead.get('deal_deal_value') or 0:,.0f})"
                 )
             else:
                 lead['deal_label'] = None
+
+            for k in ("_cc_created_by", "_cc_assigned_team_member_id", "_call_created_by", "_call_team_member_id",
+                      "_task_created_by", "_task_assigned_team_member_id", "_quotation_created_by",
+                      "_lc_created_by", "_lc_assigned_team_member_id", "_deal_owner_id", "_deal_assigned_team_member_id",
+                      "_deal_lead_created_by", "_deal_lead_assigned_team_member_id"):
+                lead.pop(k, None)
 
     return leads
 
@@ -1018,6 +1147,7 @@ async def create_lead(lead: LeadCreate, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute(
             """
             INSERT INTO leads (name, company, email, phone, product, source, created_by, status)
@@ -1029,7 +1159,7 @@ async def create_lead(lead: LeadCreate, token: str = Query(None)):
         conn.commit()
         lead_id = cursor.lastrowid
 
-        new_lead = fetch_lead_with_member_name(cursor, lead_id)
+        new_lead = fetch_lead_with_member_name(cursor, lead_id, scope)
 
     _fire_zapier_webhooks('lead.created', new_lead)
     _fire_slack_webhooks('lead.created', new_lead)
@@ -1038,14 +1168,17 @@ async def create_lead(lead: LeadCreate, token: str = Query(None)):
 @app.get("/api/leads/{lead_id}", response_model=LeadResponse)
 async def get_lead(lead_id: int, token: str = Query(None)):
     """Get single lead"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Lead not found")
-        lead = fetch_lead_with_member_name(cursor, lead_id)
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+        lead = fetch_lead_with_member_name(cursor, lead_id, scope)
 
     return lead
 
@@ -1053,13 +1186,16 @@ async def get_lead(lead_id: int, token: str = Query(None)):
 async def assign_lead(lead_id: int, assignment: LeadAssign, token: str = Query(None)):
     """Assign (or unassign, if team_member_id is null) a lead to a team member, so admins and
     the team lead can see who owns each lead."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if assignment.team_member_id is not None:
             cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (assignment.team_member_id,))
@@ -1072,7 +1208,7 @@ async def assign_lead(lead_id: int, assignment: LeadAssign, token: str = Query(N
         )
         conn.commit()
 
-        return fetch_lead_with_member_name(cursor, lead_id)
+        return fetch_lead_with_member_name(cursor, lead_id, scope)
 
 @app.post("/api/leads/{lead_id}/convert", response_model=ContactResponse)
 async def convert_lead_to_contact(lead_id: int, token: str = Query(None)):
@@ -1091,11 +1227,13 @@ async def convert_lead_to_contact(lead_id: int, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT * FROM leads WHERE id = ?", (lead_id,))
         lead = cursor.fetchone()
         if not lead:
             raise HTTPException(status_code=404, detail="Lead not found")
         lead = dict(lead)
+        assert_record_visible(scope, lead, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if lead.get('converted_contact_id'):
             raise HTTPException(status_code=400, detail="This lead has already been converted to a contact")
@@ -1122,14 +1260,14 @@ async def convert_lead_to_contact(lead_id: int, token: str = Query(None)):
         )
         conn.commit()
 
-        new_contact = fetch_contact_with_member_name(cursor, contact_id)
+        new_contact = fetch_contact_with_member_name(cursor, contact_id, scope)
 
     return new_contact
 
 @app.put("/api/leads/{lead_id}", response_model=LeadResponse)
 async def update_lead(lead_id: int, lead: LeadUpdate, token: str = Query(None)):
     """Update lead"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     updates = []
     values = []
@@ -1166,24 +1304,34 @@ async def update_lead(lead_id: int, lead: LeadUpdate, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(query, values)
         conn.commit()
 
-        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Lead not found")
-
-        updated_lead = fetch_lead_with_member_name(cursor, lead_id)
+        updated_lead = fetch_lead_with_member_name(cursor, lead_id, scope)
 
     return updated_lead
 
 @app.delete("/api/leads/{lead_id}")
 async def delete_lead(lead_id: int, token: str = Query(None)):
     """Delete lead"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("SELECT audio_url FROM lead_notes WHERE lead_id = ? AND audio_url IS NOT NULL", (lead_id,))
         audio_urls = [row['audio_url'] for row in cursor.fetchall()]
         cursor.execute("DELETE FROM lead_notes WHERE lead_id = ?", (lead_id,))
@@ -1198,13 +1346,16 @@ async def delete_lead(lead_id: int, token: str = Query(None)):
 @app.put("/api/leads/{lead_id}/call", response_model=LeadResponse)
 async def link_lead_call(lead_id: int, link: LeadCallAssign, token: str = Query(None)):
     """Link (or unlink, if call_id is null) a lead to a Call."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.call_id is not None:
             cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
@@ -1217,27 +1368,28 @@ async def link_lead_call(lead_id: int, link: LeadCallAssign, token: str = Query(
         )
         conn.commit()
 
-        return fetch_lead_with_member_name(cursor, lead_id)
+        return fetch_lead_with_member_name(cursor, lead_id, scope)
 
 @app.get("/api/calls/{call_id}/leads", response_model=list[LeadResponse])
 async def get_call_leads(call_id: int, token: str = Query(None)):
     """Leads directly linked to this Call."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Call not found")
 
-        cursor.execute(
-            "SELECT id FROM leads WHERE call_id = ? ORDER BY created_at DESC",
-            (call_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM leads WHERE call_id = ?", [call_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="created_at DESC",
         )
-        rows = cursor.fetchall()
         leads = []
         for row in rows:
-            lead = fetch_lead_with_member_name(cursor, row['id'])
+            lead = fetch_lead_with_member_name(cursor, row['id'], scope)
             if lead:
                 leads.append(lead)
 
@@ -1246,13 +1398,16 @@ async def get_call_leads(call_id: int, token: str = Query(None)):
 @app.put("/api/leads/{lead_id}/task", response_model=LeadResponse)
 async def link_lead_task(lead_id: int, link: LeadTaskAssign, token: str = Query(None)):
     """Link (or unlink, if task_id is null) a lead to a Task."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.task_id is not None:
             cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (link.task_id,))
@@ -1265,27 +1420,28 @@ async def link_lead_task(lead_id: int, link: LeadTaskAssign, token: str = Query(
         )
         conn.commit()
 
-        return fetch_lead_with_member_name(cursor, lead_id)
+        return fetch_lead_with_member_name(cursor, lead_id, scope)
 
 @app.get("/api/tasks/{task_id}/leads", response_model=list[LeadResponse])
 async def get_task_leads(task_id: int, token: str = Query(None)):
     """Leads directly linked to this Task."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Task not found")
 
-        cursor.execute(
-            "SELECT id FROM leads WHERE task_id = ? ORDER BY created_at DESC",
-            (task_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM leads WHERE task_id = ?", [task_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="created_at DESC",
         )
-        rows = cursor.fetchall()
         leads = []
         for row in rows:
-            lead = fetch_lead_with_member_name(cursor, row['id'])
+            lead = fetch_lead_with_member_name(cursor, row['id'], scope)
             if lead:
                 leads.append(lead)
 
@@ -1294,13 +1450,16 @@ async def get_task_leads(task_id: int, token: str = Query(None)):
 @app.put("/api/leads/{lead_id}/deal", response_model=LeadResponse)
 async def link_lead_deal(lead_id: int, link: LeadDealAssign, token: str = Query(None)):
     """Link (or unlink, if deal_id is null) a lead to a Deal."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.deal_id is not None:
             cursor.execute("SELECT 1 FROM deals WHERE id = ?", (link.deal_id,))
@@ -1313,27 +1472,28 @@ async def link_lead_deal(lead_id: int, link: LeadDealAssign, token: str = Query(
         )
         conn.commit()
 
-        return fetch_lead_with_member_name(cursor, lead_id)
+        return fetch_lead_with_member_name(cursor, lead_id, scope)
 
 @app.get("/api/deals/{deal_id}/leads", response_model=list[LeadResponse])
 async def get_deal_leads(deal_id: int, token: str = Query(None)):
     """Leads directly linked to this Deal."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Deal not found")
 
-        cursor.execute(
-            "SELECT id FROM leads WHERE deal_id = ? ORDER BY created_at DESC",
-            (deal_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM leads WHERE deal_id = ?", [deal_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="created_at DESC",
         )
-        rows = cursor.fetchall()
         leads = []
         for row in rows:
-            lead = fetch_lead_with_member_name(cursor, row['id'])
+            lead = fetch_lead_with_member_name(cursor, row['id'], scope)
             if lead:
                 leads.append(lead)
 
@@ -1342,13 +1502,16 @@ async def get_deal_leads(deal_id: int, token: str = Query(None)):
 @app.put("/api/leads/{lead_id}/company", response_model=LeadResponse)
 async def link_lead_company(lead_id: int, link: LeadCompanyAssign, token: str = Query(None)):
     """Link (or unlink, if company_id is null) a lead to a Company."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.company_id is not None:
             cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
@@ -1361,27 +1524,28 @@ async def link_lead_company(lead_id: int, link: LeadCompanyAssign, token: str = 
         )
         conn.commit()
 
-        return fetch_lead_with_member_name(cursor, lead_id)
+        return fetch_lead_with_member_name(cursor, lead_id, scope)
 
 @app.get("/api/companies/{company_id}/leads", response_model=list[LeadResponse])
 async def get_company_leads(company_id: int, token: str = Query(None)):
     """Leads linked to this Company."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Company not found")
 
-        cursor.execute(
-            "SELECT id FROM leads WHERE company_id = ? ORDER BY created_at DESC",
-            (company_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM leads WHERE company_id = ?", [company_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="created_at DESC",
         )
-        rows = cursor.fetchall()
         leads = []
         for row in rows:
-            lead = fetch_lead_with_member_name(cursor, row['id'])
+            lead = fetch_lead_with_member_name(cursor, row['id'], scope)
             if lead:
                 leads.append(lead)
 
@@ -1390,13 +1554,16 @@ async def get_company_leads(company_id: int, token: str = Query(None)):
 @app.put("/api/leads/{lead_id}/quotation", response_model=LeadResponse)
 async def link_lead_quotation(lead_id: int, link: LeadQuotationAssign, token: str = Query(None)):
     """Link (or unlink, if quotation_id is null) a lead to a Quotation."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.quotation_id is not None:
             cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (link.quotation_id,))
@@ -1409,27 +1576,28 @@ async def link_lead_quotation(lead_id: int, link: LeadQuotationAssign, token: st
         )
         conn.commit()
 
-        return fetch_lead_with_member_name(cursor, lead_id)
+        return fetch_lead_with_member_name(cursor, lead_id, scope)
 
 @app.get("/api/quotations/{quotation_id}/leads", response_model=list[LeadResponse])
 async def get_quotation_leads(quotation_id: int, token: str = Query(None)):
     """Leads linked to this Quotation."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Quotation not found")
 
-        cursor.execute(
-            "SELECT id FROM leads WHERE quotation_id = ? ORDER BY created_at DESC",
-            (quotation_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM leads WHERE quotation_id = ?", [quotation_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="created_at DESC",
         )
-        rows = cursor.fetchall()
         leads = []
         for row in rows:
-            lead = fetch_lead_with_member_name(cursor, row['id'])
+            lead = fetch_lead_with_member_name(cursor, row['id'], scope)
             if lead:
                 leads.append(lead)
 
@@ -1440,13 +1608,16 @@ async def link_lead_contact(lead_id: int, link: LeadContactAssign, token: str = 
     """Link (or unlink, if contact_id is null) a lead to a Contact - an ordinary reference to
     an existing Contact (e.g. a referral), distinct from the one-time "Convert Lead to
     Contact" flow which sets converted_contact_id instead."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM leads WHERE id = ?", (lead_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.contact_id is not None:
             cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
@@ -1459,27 +1630,28 @@ async def link_lead_contact(lead_id: int, link: LeadContactAssign, token: str = 
         )
         conn.commit()
 
-        return fetch_lead_with_member_name(cursor, lead_id)
+        return fetch_lead_with_member_name(cursor, lead_id, scope)
 
 @app.get("/api/contacts/{contact_id}/leads", response_model=list[LeadResponse])
 async def get_contact_leads(contact_id: int, token: str = Query(None)):
     """Leads linked to this Contact."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Contact not found")
 
-        cursor.execute(
-            "SELECT id FROM leads WHERE contact_id = ? ORDER BY created_at DESC",
-            (contact_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM leads WHERE contact_id = ?", [contact_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="created_at DESC",
         )
-        rows = cursor.fetchall()
         leads = []
         for row in rows:
-            lead = fetch_lead_with_member_name(cursor, row['id'])
+            lead = fetch_lead_with_member_name(cursor, row['id'], scope)
             if lead:
                 leads.append(lead)
 
@@ -1497,14 +1669,24 @@ async def get_deals(stage: str = Query(None), lead_id: int = Query(None), assign
     Matches get_team_analytics' exact OR-fallback (explicit assigned_team_member_id, or
     login-linked owner_id for legacy unassigned deals) so the drill-down's count and total
     never contradict those already-displayed figures."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
 
+        # contacts.created_by/assigned_team_member_id are selected under a _-prefixed alias
+        # (never exposed - DealResponse doesn't declare them, and they're popped below anyway)
+        # purely so each row can be redacted per-row after fetch: company_name never needs this
+        # (a Deal visible to the caller already satisfies company_visibility_sql's own "linked
+        # via a visible Deal" clause, by construction), but Contact has no such inherited-
+        # visibility rule - a Deal Chirag can see may still reference a Contact that belongs to
+        # Amol, and that Contact's name must not leak through this join. See the data-visibility
+        # security fix notes in access_control.py (redact_if_not_visible).
         base_query = """
             SELECT deals.*, team_members.name as assigned_team_member_name,
                    companies.name as company_name, contacts.name as contact_name,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                    (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
             FROM deals
             LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
@@ -1525,11 +1707,19 @@ async def get_deals(stage: str = Query(None), lead_id: int = Query(None), assign
             uid_param = row['user_id'] if row and row['user_id'] is not None else -1
             conditions.append("(deals.assigned_team_member_id = ? OR (deals.owner_id = ? AND deals.assigned_team_member_id IS NULL))")
             params.extend([assigned_team_member_id, uid_param])
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["deals.owner_id"], team_member_id_cols=["deals.assigned_team_member_id"])
+            conditions.append(clause)
+            params.extend(scope_params)
 
         query = base_query + (" WHERE " + " AND ".join(conditions) if conditions else "") + " ORDER BY deals.created_at DESC"
         cursor.execute(query, params)
 
         deals = [dict(row) for row in cursor.fetchall()]
+        for d in deals:
+            redact_if_not_visible(scope, d, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+            d.pop("_contact_created_by", None)
+            d.pop("_contact_assigned_team_member_id", None)
 
     return deals
 
@@ -1539,14 +1729,17 @@ async def get_deal(deal_id: int, token: str = Query(None)):
     Phase 2B-iii so Connect's deal-linked message card has a single-record endpoint to fetch.
     No literal-path sibling route (like /api/contacts/renewals) exists under /api/deals, so
     unlike get_contact this has no route-ordering hazard to avoid."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Deal not found")
-        deal = fetch_deal_with_member_name(cursor, deal_id)
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
+        deal = fetch_deal_with_member_name(cursor, deal_id, scope)
 
     return deal
 
@@ -1563,6 +1756,7 @@ async def create_deal(deal: DealCreate, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute(
             """
             INSERT INTO deals (lead_id, deal_value, probability, loan_product, stage, owner_id, company_id)
@@ -1572,24 +1766,26 @@ async def create_deal(deal: DealCreate, token: str = Query(None)):
         )
         conn.commit()
         deal_id = cursor.lastrowid
-        new_deal = fetch_deal_with_member_name(cursor, deal_id)
+        new_deal = fetch_deal_with_member_name(cursor, deal_id, scope)
 
     return new_deal
 
 @app.put("/api/deals/{deal_id}/move")
 async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
     """Move deal to different stage (Kanban drag-drop)"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     if move.stage not in VALID_STAGES:
         raise HTTPException(status_code=400, detail=f"Invalid stage. Must be one of {VALID_STAGES}")
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT stage FROM deals WHERE id = ?", (deal_id,))
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT stage, owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
         existing = cursor.fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, existing, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
         previous_stage = existing['stage']
 
         cursor.execute(
@@ -1601,7 +1797,7 @@ async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
         )
         conn.commit()
 
-        updated_deal = fetch_deal_with_member_name(cursor, deal_id)
+        updated_deal = fetch_deal_with_member_name(cursor, deal_id, scope)
 
     if move.stage == 'closed' and previous_stage != 'closed':
         _fire_zapier_webhooks('deal.closed', updated_deal)
@@ -1613,13 +1809,16 @@ async def move_deal(deal_id: int, move: DealMove, token: str = Query(None)):
 async def assign_deal(deal_id: int, assignment: DealAssign, token: str = Query(None)):
     """Assign (or unassign, if team_member_id is null) a deal to a team member, so admins and
     the team lead can see who's working each deal in the Pipeline table."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
 
         if assignment.team_member_id is not None:
             cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (assignment.team_member_id,))
@@ -1632,20 +1831,23 @@ async def assign_deal(deal_id: int, assignment: DealAssign, token: str = Query(N
         )
         conn.commit()
 
-        return fetch_deal_with_member_name(cursor, deal_id)
+        return fetch_deal_with_member_name(cursor, deal_id, scope)
 
 @app.put("/api/deals/{deal_id}/company", response_model=DealResponse)
 async def link_deal_company(deal_id: int, link: DealCompanyAssign, token: str = Query(None)):
     """Link (or unlink, if company_id is null) a deal to a Companies record - same
     dedicated-endpoint pattern as link_contact_company, needed because a generic PUT can't
     distinguish 'leave company_id alone' from 'clear it' once both are represented as null."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.company_id is not None:
             cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
@@ -1658,19 +1860,22 @@ async def link_deal_company(deal_id: int, link: DealCompanyAssign, token: str = 
         )
         conn.commit()
 
-        return fetch_deal_with_member_name(cursor, deal_id)
+        return fetch_deal_with_member_name(cursor, deal_id, scope)
 
 @app.put("/api/deals/{deal_id}/contact", response_model=DealResponse)
 async def link_deal_contact(deal_id: int, link: DealContactAssign, token: str = Query(None)):
     """Link (or unlink, if contact_id is null) a deal to a Contact - the Contact's own
     Activity Timeline then shows all the deal's activity (calls, tasks, etc)."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.contact_id is not None:
             cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
@@ -1683,23 +1888,30 @@ async def link_deal_contact(deal_id: int, link: DealContactAssign, token: str = 
         )
         conn.commit()
 
-        return fetch_deal_with_member_name(cursor, deal_id)
+        return fetch_deal_with_member_name(cursor, deal_id, scope)
 
 @app.get("/api/deals/{deal_id}/quotations", response_model=list[QuotationResponse])
 async def get_deal_quotations(deal_id: int, token: str = Query(None)):
     """Quotations linked to this deal - the reverse of quotations.deal_id, shown on the
     Pipeline page so a deal row can expand to show what's been quoted."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
 
-        cursor.execute("SELECT id FROM quotations WHERE deal_id = ? ORDER BY created_at DESC", (deal_id,))
-        ids = [r['id'] for r in cursor.fetchall()]
-        quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
+        rows = scoped_rows(
+            cursor, "SELECT id FROM quotations WHERE deal_id = ?", [deal_id], scope,
+            user_id_cols=["created_by"],
+            order_by="created_at DESC",
+        )
+        ids = [r['id'] for r in rows]
+        quotations = [fetch_quotation_with_details(cursor, qid, scope) for qid in ids]
 
     return quotations
 
@@ -1708,13 +1920,16 @@ async def update_deal_process_status(deal_id: int, payload: DealProcessStatusUpd
     """Update a deal's loan-specific sub-status (Login/Sanction/Hold/Disbursed), shown in the
     Pipeline "Sales Pipeline" table. Was frontend-only state before (reset to 'Login' on every
     page reload) - now persisted like everything else here."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
 
         cursor.execute(
             "UPDATE deals SET process_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -1722,7 +1937,7 @@ async def update_deal_process_status(deal_id: int, payload: DealProcessStatusUpd
         )
         conn.commit()
 
-        return fetch_deal_with_member_name(cursor, deal_id)
+        return fetch_deal_with_member_name(cursor, deal_id, scope)
 
 @app.get("/api/deals/{deal_id}/documents", response_model=list[DealDocumentResponse])
 async def get_deal_documents(deal_id: int, token: str = Query(None)):
@@ -1732,10 +1947,17 @@ async def get_deal_documents(deal_id: int, token: str = Query(None)):
     full required list per loan product (LOAN_DOCUMENTS in Pipeline.jsx) and merges this
     against it, so an untouched document simply isn't in this list yet rather than needing a
     row pre-created for every possible document on every deal."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("SELECT * FROM deal_documents WHERE deal_id = ?", (deal_id,))
         return [DealDocumentResponse(**dict(row)) for row in cursor.fetchall()]
 
@@ -1743,13 +1965,16 @@ async def get_deal_documents(deal_id: int, token: str = Query(None)):
 async def update_deal_document(deal_id: int, payload: DealDocumentUpdate, token: str = Query(None)):
     """Mark one required document collected/not-collected for a deal - replaces the old
     DigiLocker modal's checkbox, which only toggled local React state and reset on refresh."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
 
         collected_at = db_compat.sql_current_timestamp() if payload.collected else "NULL"
         cursor.execute(
@@ -1769,10 +1994,17 @@ async def update_deal_document(deal_id: int, payload: DealDocumentUpdate, token:
 @app.delete("/api/deals/{deal_id}")
 async def delete_deal(deal_id: int, token: str = Query(None)):
     """Delete a deal"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("DELETE FROM deals WHERE id = ?", (deal_id,))
         conn.commit()
 
@@ -1781,13 +2013,16 @@ async def delete_deal(deal_id: int, token: str = Query(None)):
 @app.put("/api/deals/{deal_id}/call", response_model=DealResponse)
 async def link_deal_call(deal_id: int, link: DealCallAssign, token: str = Query(None)):
     """Link (or unlink, if call_id is null) a deal to a Call."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.call_id is not None:
             cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
@@ -1800,27 +2035,28 @@ async def link_deal_call(deal_id: int, link: DealCallAssign, token: str = Query(
         )
         conn.commit()
 
-        return fetch_deal_with_member_name(cursor, deal_id)
+        return fetch_deal_with_member_name(cursor, deal_id, scope)
 
 @app.get("/api/calls/{call_id}/deals", response_model=list[DealResponse])
 async def get_call_deals(call_id: int, token: str = Query(None)):
     """Deals directly linked to this Call."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Call not found")
 
-        cursor.execute(
-            "SELECT id FROM deals WHERE call_id = ? ORDER BY updated_at DESC",
-            (call_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM deals WHERE call_id = ?", [call_id], scope,
+            user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="updated_at DESC",
         )
-        rows = cursor.fetchall()
         deals = []
         for row in rows:
-            deal = fetch_deal_with_member_name(cursor, row['id'])
+            deal = fetch_deal_with_member_name(cursor, row['id'], scope)
             if deal:
                 deals.append(deal)
 
@@ -1829,13 +2065,16 @@ async def get_call_deals(call_id: int, token: str = Query(None)):
 @app.put("/api/deals/{deal_id}/task", response_model=DealResponse)
 async def link_deal_task(deal_id: int, link: DealTaskAssign, token: str = Query(None)):
     """Link (or unlink, if task_id is null) a deal to a Task."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (deal_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Deal not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.task_id is not None:
             cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (link.task_id,))
@@ -1848,27 +2087,28 @@ async def link_deal_task(deal_id: int, link: DealTaskAssign, token: str = Query(
         )
         conn.commit()
 
-        return fetch_deal_with_member_name(cursor, deal_id)
+        return fetch_deal_with_member_name(cursor, deal_id, scope)
 
 @app.get("/api/tasks/{task_id}/deals", response_model=list[DealResponse])
 async def get_task_deals(task_id: int, token: str = Query(None)):
     """Deals directly linked to this Task."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Task not found")
 
-        cursor.execute(
-            "SELECT id FROM deals WHERE task_id = ? ORDER BY updated_at DESC",
-            (task_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM deals WHERE task_id = ?", [task_id], scope,
+            user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="updated_at DESC",
         )
-        rows = cursor.fetchall()
         deals = []
         for row in rows:
-            deal = fetch_deal_with_member_name(cursor, row['id'])
+            deal = fetch_deal_with_member_name(cursor, row['id'], scope)
             if deal:
                 deals.append(deal)
 
@@ -2402,10 +2642,19 @@ _CONTACT_DOCUMENT_SELECT_SQL = """
 
 @app.get("/api/contacts/{contact_id}/documents", response_model=list[ContactDocumentResponse])
 async def get_contact_documents(contact_id: int, token: str = Query(None)):
-    get_current_user(token)
+    """Contact sub-resource: access must never be broader than access to the parent Contact -
+    resolve parent, verify visibility, only then proceed (same rule as notes/ai-suggest)."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(
             _CONTACT_DOCUMENT_SELECT_SQL + " WHERE contact_documents.contact_id = ? ORDER BY contact_documents.created_at DESC",
             (contact_id,)
@@ -2420,9 +2669,12 @@ async def upload_contact_document(
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
     data = await file.read()
     use_db_storage = not os.getenv("S3_BUCKET_NAME")
@@ -2453,11 +2705,23 @@ async def upload_contact_document(
 async def get_contact_document_content(contact_id: int, document_id: int, token: str = Query(None)):
     """Streams a database-stored document's bytes back - only reached for documents saved
     without S3 configured (see upload_contact_document above); an S3-backed document's file_url
-    already points directly at the object storage URL and never hits this route."""
-    get_current_user(token)
+    already points directly at the object storage URL and never hits this route.
+
+    Parent-Contact visibility is checked BEFORE the document lookup, not after - so an
+    unauthorized caller gets the exact same 403 regardless of whether document_id is real,
+    never a signal (via a different status code or timing) that lets them infer whether a
+    given document exists under a Contact they can't see."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(
             "SELECT file_name, file_data, content_type FROM contact_documents WHERE id = ? AND contact_id = ?",
             (document_id, contact_id)
@@ -2476,10 +2740,17 @@ async def get_contact_document_content(contact_id: int, document_id: int, token:
 
 @app.delete("/api/contacts/{contact_id}/documents/{document_id}")
 async def delete_contact_document(contact_id: int, document_id: int, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(
             "SELECT file_url FROM contact_documents WHERE id = ? AND contact_id = ?", (document_id, contact_id)
         )
@@ -2976,12 +3247,17 @@ async def update_settings(settings: SettingsUpdate, token: str = Query(None)):
 async def get_contacts(token: str = Query(None), assigned_team_member_id: int = Query(None)):
     """Get all contacts, optionally filtered by assigned team member - powers the Reports
     page's Team Productivity drill-down (a member's actual contacts, not just a count)."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
+    # converted_from_lead_name needs its own redaction check (a visible Contact does not
+    # automatically make the Lead it originated from visible - see
+    # fetch_contact_with_member_name); company_name never does (this contact, if visible,
+    # already satisfies company_visibility_sql's own "referenced by a visible Contact" clause).
     base_query = """
         SELECT contacts.*, team_members.name as assigned_team_member_name,
                companies.name as company_name,
-               converted_from_lead.name as converted_from_lead_name
+               converted_from_lead.name as converted_from_lead_name,
+               converted_from_lead.created_by as _cfl_created_by, converted_from_lead.assigned_team_member_id as _cfl_assigned_team_member_id
         FROM contacts
         LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
         LEFT JOIN companies ON companies.id = contacts.company_id
@@ -2990,11 +3266,24 @@ async def get_contacts(token: str = Query(None), assigned_team_member_id: int = 
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        conditions = []
+        params = []
         if assigned_team_member_id is not None:
-            cursor.execute(base_query + " WHERE contacts.assigned_team_member_id = ? ORDER BY contacts.created_at DESC", (assigned_team_member_id,))
-        else:
-            cursor.execute(base_query + " ORDER BY contacts.created_at DESC")
+            conditions.append("contacts.assigned_team_member_id = ?")
+            params.append(assigned_team_member_id)
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["contacts.created_by"], team_member_id_cols=["contacts.assigned_team_member_id"])
+            conditions.append(clause)
+            params.extend(scope_params)
+
+        query = base_query + (" WHERE " + " AND ".join(conditions) if conditions else "") + " ORDER BY contacts.created_at DESC"
+        cursor.execute(query, params)
         contacts = [dict(row) for row in cursor.fetchall()]
+        for c in contacts:
+            redact_if_not_visible(scope, c, ["converted_from_lead_name"], user_id_col="_cfl_created_by", team_member_id_col="_cfl_assigned_team_member_id")
+            c.pop("_cfl_created_by", None)
+            c.pop("_cfl_assigned_team_member_id", None)
 
     return contacts
 
@@ -3004,23 +3293,30 @@ async def get_upcoming_renewals(token: str = Query(None)):
     sorted soonest first - the Dashboard's "Upcoming Renewals" widget. Registered before
     PUT/DELETE /api/contacts/{contact_id} isn't an issue (those are different methods), but
     this GET must stay above any future GET /api/contacts/{contact_id} route or FastAPI would
-    try to parse "renewals" as a contact_id."""
-    get_current_user(token)
+    try to parse "renewals" as a contact_id. Same Contacts visibility rule as get_contacts -
+    this was originally missed when the data-visibility feature was first wired up, since it's
+    a Dashboard widget rather than the main Contacts list, but it's the same contacts table and
+    the same PII (name/phone/email/bank/amount), so it gets the identical scope filter."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         _days_until_renewal = db_compat.sql_days_between("contacts.renewal_date", db_compat.sql_today())
-        cursor.execute(
-            f"""
+        query = f"""
             SELECT contacts.*, team_members.name as assigned_team_member_name,
                    CAST({_days_until_renewal} AS INTEGER) as days_until_renewal
             FROM contacts
             LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
             WHERE contacts.renewal_date IS NOT NULL
               AND {_days_until_renewal} <= 30
-            ORDER BY contacts.renewal_date ASC
-            """
-        )
+        """
+        params = []
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["contacts.created_by"], team_member_id_cols=["contacts.assigned_team_member_id"])
+            query += " AND " + clause
+            params = scope_params
+        cursor.execute(query + " ORDER BY contacts.renewal_date ASC", params)
         rows = [dict(r) for r in cursor.fetchall()]
 
     results = []
@@ -3041,14 +3337,17 @@ async def get_contact(contact_id: int, token: str = Query(None)):
     what Leads already had for the Phase 2B-i lead card. Must stay below GET /api/contacts/
     renewals (and any other literal-suffix GET under /api/contacts), for the same routing
     reason that endpoint's own docstring already calls out."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Contact not found")
-        contact = fetch_contact_with_member_name(cursor, contact_id)
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+        contact = fetch_contact_with_member_name(cursor, contact_id, scope)
 
     return contact
 
@@ -3059,6 +3358,7 @@ async def create_contact(contact: ContactCreate, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute(
             """
             INSERT INTO contacts (name, company, company_id, email, phone, city, amount, bank, status, renewal_date, created_by)
@@ -3070,7 +3370,7 @@ async def create_contact(contact: ContactCreate, token: str = Query(None)):
         conn.commit()
         contact_id = cursor.lastrowid
 
-        new_contact = fetch_contact_with_member_name(cursor, contact_id)
+        new_contact = fetch_contact_with_member_name(cursor, contact_id, scope)
 
     return new_contact
 
@@ -3082,7 +3382,16 @@ async def bulk_import_contacts(payload: ContactBulkImportRequest, token: str = Q
     for the entire batch instead of one per contact avoids that failure mode entirely, and is
     dramatically faster. Dedupes by phone number, both against contacts that already exist and
     against repeats within the same batch (a phone contacts export can contain the same number
-    saved under several different names)."""
+    saved under several different names).
+
+    Duplicate detection is scoped to the caller's own Contact visibility (found during the
+    final security audit): checking against every contact in the system regardless of who owns
+    it turned `skipped_duplicate` into a phone-number existence oracle against contacts outside
+    the caller's scope. Scoping the dedup check to only the caller's visible contacts means an
+    import that happens to match someone else's inaccessible contact is simply created as a new
+    row (a real, if unlikely, duplicate contact record) rather than silently rejected - creating
+    it is the only option that doesn't leak "someone already has this number." Admins are
+    unrestricted, same as everywhere else."""
     current_user = get_current_user(token)
 
     created = 0
@@ -3091,7 +3400,14 @@ async def bulk_import_contacts(payload: ContactBulkImportRequest, token: str = Q
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT phone FROM contacts WHERE phone IS NOT NULL AND phone != ''")
+        scope = get_visibility_scope(cursor, current_user)
+        query = "SELECT phone FROM contacts WHERE phone IS NOT NULL AND phone != ''"
+        params = []
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+            query += " AND " + clause
+            params = scope_params
+        cursor.execute(query, params)
         existing_phones = {row['phone'] for row in cursor.fetchall()}
 
         for contact in payload.contacts:
@@ -3120,7 +3436,7 @@ async def bulk_import_contacts(payload: ContactBulkImportRequest, token: str = Q
 @app.put("/api/contacts/{contact_id}", response_model=ContactResponse)
 async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Query(None)):
     """Update a contact"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     updates = []
     values = []
@@ -3139,14 +3455,17 @@ async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Q
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(f"UPDATE contacts SET {', '.join(updates)} WHERE id = ?", values)
         conn.commit()
 
-        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Contact not found")
-
-        updated_contact = fetch_contact_with_member_name(cursor, contact_id)
+        updated_contact = fetch_contact_with_member_name(cursor, contact_id, scope)
 
     return updated_contact
 
@@ -3154,13 +3473,16 @@ async def update_contact(contact_id: int, contact: ContactUpdate, token: str = Q
 async def assign_contact(contact_id: int, assignment: ContactAssign, token: str = Query(None)):
     """Assign (or unassign, if team_member_id is null) a contact to a team member, so admins
     and the team lead can see who owns each client in the contact book."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if assignment.team_member_id is not None:
             cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (assignment.team_member_id,))
@@ -3173,20 +3495,23 @@ async def assign_contact(contact_id: int, assignment: ContactAssign, token: str 
         )
         conn.commit()
 
-        return fetch_contact_with_member_name(cursor, contact_id)
+        return fetch_contact_with_member_name(cursor, contact_id, scope)
 
 @app.put("/api/contacts/{contact_id}/company", response_model=ContactResponse)
 async def link_contact_company(contact_id: int, link: ContactCompanyAssign, token: str = Query(None)):
     """Link (or unlink, if company_id is null) a contact to a Companies record - same
     dedicated-endpoint pattern as assign_contact, needed because a generic PUT can't
     distinguish 'leave company_id alone' from 'clear it' once both are represented as null."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.company_id is not None:
             cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
@@ -3199,15 +3524,22 @@ async def link_contact_company(contact_id: int, link: ContactCompanyAssign, toke
         )
         conn.commit()
 
-        return fetch_contact_with_member_name(cursor, contact_id)
+        return fetch_contact_with_member_name(cursor, contact_id, scope)
 
 @app.delete("/api/contacts/{contact_id}")
 async def delete_contact(contact_id: int, token: str = Query(None)):
     """Delete a contact"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("SELECT audio_url FROM contact_notes WHERE contact_id = ? AND audio_url IS NOT NULL", (contact_id,))
         audio_urls = [row['audio_url'] for row in cursor.fetchall()]
         cursor.execute("DELETE FROM contact_notes WHERE contact_id = ?", (contact_id,))
@@ -3223,11 +3555,19 @@ async def delete_contact(contact_id: int, token: str = Query(None)):
 
 @app.get("/api/contacts/{contact_id}/notes", response_model=list[ContactNoteResponse])
 async def get_contact_notes(contact_id: int, token: str = Query(None)):
-    """Get all notes for a contact"""
-    get_current_user(token)
+    """Get all notes for a contact. Access to a Contact sub-resource must never be broader than
+    access to the parent Contact - resolve parent, verify visibility, only then proceed."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("SELECT * FROM contact_notes WHERE contact_id = ? ORDER BY created_at DESC", (contact_id,))
         notes = [dict(row) for row in cursor.fetchall()]
 
@@ -3235,11 +3575,18 @@ async def get_contact_notes(contact_id: int, token: str = Query(None)):
 
 @app.post("/api/contacts/{contact_id}/notes", response_model=ContactNoteResponse)
 async def create_contact_note(contact_id: int, note: ContactNoteCreate, token: str = Query(None)):
-    """Add a note to a contact"""
-    get_current_user(token)
+    """Add a note to a contact. Same parent-visibility rule as get_contact_notes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(
             """
             INSERT INTO contact_notes (contact_id, call_datetime, next_conversation, transcript)
@@ -3257,8 +3604,8 @@ async def create_contact_note(contact_id: int, note: ContactNoteCreate, token: s
 
 @app.put("/api/contacts/{contact_id}/notes/{note_id}", response_model=ContactNoteResponse)
 async def update_contact_note(contact_id: int, note_id: int, note: ContactNoteUpdate, token: str = Query(None)):
-    """Update a contact note"""
-    get_current_user(token)
+    """Update a contact note. Same parent-visibility rule as get_contact_notes."""
+    current_user = get_current_user(token)
 
     updates = []
     values = []
@@ -3278,6 +3625,13 @@ async def update_contact_note(contact_id: int, note_id: int, note: ContactNoteUp
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(f"UPDATE contact_notes SET {', '.join(updates)} WHERE id = ? AND contact_id = ?", values)
         conn.commit()
 
@@ -3291,11 +3645,18 @@ async def update_contact_note(contact_id: int, note_id: int, note: ContactNoteUp
 
 @app.delete("/api/contacts/{contact_id}/notes/{note_id}")
 async def delete_contact_note(contact_id: int, note_id: int, token: str = Query(None)):
-    """Delete a contact note"""
-    get_current_user(token)
+    """Delete a contact note. Same parent-visibility rule as get_contact_notes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("SELECT audio_url FROM contact_notes WHERE id = ? AND contact_id = ?", (note_id, contact_id))
         existing = cursor.fetchone()
         cursor.execute("DELETE FROM contact_notes WHERE id = ? AND contact_id = ?", (note_id, contact_id))
@@ -3308,11 +3669,19 @@ async def delete_contact_note(contact_id: int, note_id: int, token: str = Query(
 
 @app.post("/api/contacts/{contact_id}/notes/{note_id}/audio", response_model=ContactNoteResponse)
 async def upload_note_audio(contact_id: int, note_id: int, token: str = Query(None), audio: UploadFile = File(...)):
-    """Attach a recorded voice note to a note, replacing any previous recording"""
-    get_current_user(token)
+    """Attach a recorded voice note to a note, replacing any previous recording. Same
+    parent-visibility rule as get_contact_notes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("SELECT audio_url FROM contact_notes WHERE id = ? AND contact_id = ?", (note_id, contact_id))
         existing = cursor.fetchone()
 
@@ -3343,15 +3712,19 @@ async def upload_note_audio(contact_id: int, note_id: int, token: str = Query(No
 
 @app.post("/api/contacts/{contact_id}/ai-suggest", response_model=AISummaryResponse)
 async def ai_suggest_contact_followup(contact_id: int, token: str = Query(None)):
-    """AI-drafted follow-up suggestion from a contact's note history, via Claude"""
-    get_current_user(token)
+    """AI-drafted follow-up suggestion from a contact's note history, via Claude. Must never
+    process or return information from a parent Contact the caller can't see - same
+    parent-visibility rule as get_contact_notes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM contacts WHERE id = ?", (contact_id,))
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT name, created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
         contact = cursor.fetchone()
         if not contact:
             raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, contact, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         cursor.execute("SELECT * FROM contact_notes WHERE contact_id = ? ORDER BY created_at DESC", (contact_id,))
         notes = [dict(row) for row in cursor.fetchall()]
@@ -3506,11 +3879,19 @@ async def detect_followup_date(payload: DetectDateRequest, token: str = Query(No
 
 @app.get("/api/leads/{lead_id}/notes", response_model=list[LeadNoteResponse])
 async def get_lead_notes(lead_id: int, token: str = Query(None)):
-    """Get all notes for a lead"""
-    get_current_user(token)
+    """Get all notes for a lead. Access to a Lead sub-resource must never be broader than
+    access to the parent Lead - resolve parent, verify visibility, only then proceed."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("SELECT * FROM lead_notes WHERE lead_id = ? ORDER BY created_at DESC", (lead_id,))
         notes = [dict(row) for row in cursor.fetchall()]
 
@@ -3518,11 +3899,18 @@ async def get_lead_notes(lead_id: int, token: str = Query(None)):
 
 @app.post("/api/leads/{lead_id}/notes", response_model=LeadNoteResponse)
 async def create_lead_note(lead_id: int, note: LeadNoteCreate, token: str = Query(None)):
-    """Add a note to a lead"""
-    get_current_user(token)
+    """Add a note to a lead. Same parent-visibility rule as get_lead_notes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(
             """
             INSERT INTO lead_notes (lead_id, call_datetime, next_conversation, transcript)
@@ -3540,8 +3928,8 @@ async def create_lead_note(lead_id: int, note: LeadNoteCreate, token: str = Quer
 
 @app.put("/api/leads/{lead_id}/notes/{note_id}", response_model=LeadNoteResponse)
 async def update_lead_note(lead_id: int, note_id: int, note: LeadNoteUpdate, token: str = Query(None)):
-    """Update a lead note"""
-    get_current_user(token)
+    """Update a lead note. Same parent-visibility rule as get_lead_notes."""
+    current_user = get_current_user(token)
 
     updates = []
     values = []
@@ -3561,6 +3949,13 @@ async def update_lead_note(lead_id: int, note_id: int, note: LeadNoteUpdate, tok
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(f"UPDATE lead_notes SET {', '.join(updates)} WHERE id = ? AND lead_id = ?", values)
         conn.commit()
 
@@ -3574,11 +3969,18 @@ async def update_lead_note(lead_id: int, note_id: int, note: LeadNoteUpdate, tok
 
 @app.delete("/api/leads/{lead_id}/notes/{note_id}")
 async def delete_lead_note(lead_id: int, note_id: int, token: str = Query(None)):
-    """Delete a lead note"""
-    get_current_user(token)
+    """Delete a lead note. Same parent-visibility rule as get_lead_notes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("SELECT audio_url FROM lead_notes WHERE id = ? AND lead_id = ?", (note_id, lead_id))
         existing = cursor.fetchone()
         cursor.execute("DELETE FROM lead_notes WHERE id = ? AND lead_id = ?", (note_id, lead_id))
@@ -3591,11 +3993,19 @@ async def delete_lead_note(lead_id: int, note_id: int, token: str = Query(None))
 
 @app.post("/api/leads/{lead_id}/notes/{note_id}/audio", response_model=LeadNoteResponse)
 async def upload_lead_note_audio(lead_id: int, note_id: int, token: str = Query(None), audio: UploadFile = File(...)):
-    """Attach a recorded voice note to a lead note, replacing any previous recording"""
-    get_current_user(token)
+    """Attach a recorded voice note to a lead note, replacing any previous recording. Same
+    parent-visibility rule as get_lead_notes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("SELECT audio_url FROM lead_notes WHERE id = ? AND lead_id = ?", (note_id, lead_id))
         existing = cursor.fetchone()
 
@@ -3623,15 +4033,19 @@ async def upload_lead_note_audio(lead_id: int, note_id: int, token: str = Query(
 
 @app.post("/api/leads/{lead_id}/ai-suggest", response_model=AISummaryResponse)
 async def ai_suggest_lead_followup(lead_id: int, token: str = Query(None)):
-    """AI-drafted follow-up suggestion from a lead's note history, via Claude"""
-    get_current_user(token)
+    """AI-drafted follow-up suggestion from a lead's note history, via Claude. Must never
+    process or return information from a parent Lead the caller can't see - same
+    parent-visibility rule as get_lead_notes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM leads WHERE id = ?", (lead_id,))
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT name, created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
         lead = cursor.fetchone()
         if not lead:
             raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, lead, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         cursor.execute("SELECT * FROM lead_notes WHERE lead_id = ? ORDER BY created_at DESC", (lead_id,))
         notes = [dict(row) for row in cursor.fetchall()]
@@ -3649,54 +4063,34 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
     filter, which isn't day-scoped - and assigned_team_member_id, an all-dates filter used by
     the Team/Reports pages' per-member drill-down so it matches what /api/analytics/team's
     tasks_completed figure actually counts (every task ever assigned to them, not just today's)."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        # The scope clause is computed once and ANDed into all three branches below (three
+        # independent hand-written WHERE clauses, not a shared conditions[] list like Leads/
+        # Deals) - the most mechanically error-prone edit in the whole data-visibility feature,
+        # per the approved plan, precisely because it has to be applied three times correctly
+        # rather than once.
+        scope_clause, scope_params = ("", []) if scope is None else scope_filter_sql(
+            scope, user_id_cols=["tasks.created_by"], team_member_id_cols=["tasks.assigned_team_member_id"]
+        )
+
         if assigned_team_member_id is not None:
-            cursor.execute(
-                """
-                SELECT tasks.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name,
-                       companies.name as company_name,
-                       calls.name as call_name, quotations.title as quotation_title
-                FROM tasks
-                LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
-                LEFT JOIN leads ON leads.id = tasks.lead_id
-                LEFT JOIN contacts ON contacts.id = tasks.contact_id
-                LEFT JOIN companies ON companies.id = tasks.company_id
-                LEFT JOIN calls ON calls.id = tasks.call_id
-                LEFT JOIN quotations ON quotations.id = tasks.quotation_id
-                WHERE tasks.assigned_team_member_id = ?
-                ORDER BY tasks.due_date DESC, tasks.created_at DESC
-                """,
-                (assigned_team_member_id,)
-            )
-        elif view == "high_priority":
-            cursor.execute(
-                """
-                SELECT tasks.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name,
-                       companies.name as company_name,
-                       calls.name as call_name, quotations.title as quotation_title
-                FROM tasks
-                LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
-                LEFT JOIN leads ON leads.id = tasks.lead_id
-                LEFT JOIN contacts ON contacts.id = tasks.contact_id
-                LEFT JOIN companies ON companies.id = tasks.company_id
-                LEFT JOIN calls ON calls.id = tasks.call_id
-                LEFT JOIN quotations ON quotations.id = tasks.quotation_id
-                WHERE tasks.priority = 'High' AND tasks.completed = 0
-                ORDER BY tasks.due_date ASC, tasks.created_at ASC
-                """
-            )
-        else:
+            where = "WHERE tasks.assigned_team_member_id = ?"
+            params = [assigned_team_member_id]
+            if scope_clause:
+                where += " AND " + scope_clause
+                params += scope_params
             cursor.execute(
                 f"""
                 SELECT tasks.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name,
+                       leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                       contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                        companies.name as company_name,
-                       calls.name as call_name, quotations.title as quotation_title
+                       calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+                       quotations.title as quotation_title, quotations.created_by as _quotation_created_by
                 FROM tasks
                 LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = tasks.lead_id
@@ -3704,12 +4098,74 @@ async def get_tasks(token: str = Query(None), date: str = Query(None), view: str
                 LEFT JOIN companies ON companies.id = tasks.company_id
                 LEFT JOIN calls ON calls.id = tasks.call_id
                 LEFT JOIN quotations ON quotations.id = tasks.quotation_id
-                WHERE tasks.due_date = COALESCE(?, {db_compat.sql_today()})
+                {where}
+                ORDER BY tasks.due_date DESC, tasks.created_at DESC
+                """,
+                params
+            )
+        elif view == "high_priority":
+            where = "WHERE tasks.priority = 'High' AND tasks.completed = 0"
+            params = []
+            if scope_clause:
+                where += " AND " + scope_clause
+                params += scope_params
+            cursor.execute(
+                f"""
+                SELECT tasks.*, team_members.name as assigned_team_member_name,
+                       leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                       contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
+                       companies.name as company_name,
+                       calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+                       quotations.title as quotation_title, quotations.created_by as _quotation_created_by
+                FROM tasks
+                LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+                LEFT JOIN leads ON leads.id = tasks.lead_id
+                LEFT JOIN contacts ON contacts.id = tasks.contact_id
+                LEFT JOIN companies ON companies.id = tasks.company_id
+                LEFT JOIN calls ON calls.id = tasks.call_id
+                LEFT JOIN quotations ON quotations.id = tasks.quotation_id
+                {where}
+                ORDER BY tasks.due_date ASC, tasks.created_at ASC
+                """,
+                params
+            )
+        else:
+            where = f"WHERE tasks.due_date = COALESCE(?, {db_compat.sql_today()})"
+            params = [date]
+            if scope_clause:
+                where += " AND " + scope_clause
+                params += scope_params
+            cursor.execute(
+                f"""
+                SELECT tasks.*, team_members.name as assigned_team_member_name,
+                       leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                       contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
+                       companies.name as company_name,
+                       calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+                       quotations.title as quotation_title, quotations.created_by as _quotation_created_by
+                FROM tasks
+                LEFT JOIN team_members ON team_members.id = tasks.assigned_team_member_id
+                LEFT JOIN leads ON leads.id = tasks.lead_id
+                LEFT JOIN contacts ON contacts.id = tasks.contact_id
+                LEFT JOIN companies ON companies.id = tasks.company_id
+                LEFT JOIN calls ON calls.id = tasks.call_id
+                LEFT JOIN quotations ON quotations.id = tasks.quotation_id
+                {where}
                 ORDER BY tasks.completed ASC, tasks.created_at ASC
                 """,
-                (date,)
+                params
             )
         tasks = [dict(row) for row in cursor.fetchall()]
+        for t in tasks:
+            redact_if_not_visible(scope, t, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            redact_if_not_visible(scope, t, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+            redact_if_not_visible(scope, t, ["call_name"], user_id_col="_call_created_by", team_member_id_col="_call_team_member_id")
+            redact_if_not_visible(scope, t, ["quotation_title"], user_id_col="_quotation_created_by")
+            if scope is not None and t.get('company_id') and not is_company_visible(cursor, scope, t['company_id']):
+                t['company_name'] = None
+            for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id",
+                      "_call_created_by", "_call_team_member_id", "_quotation_created_by"):
+                t.pop(k, None)
 
     return tasks
 
@@ -3720,14 +4176,17 @@ async def get_task(task_id: int, token: str = Query(None)):
     Every existing literal-path sibling under /api/tasks/ already has {task_id} as its first
     segment (e.g. /api/tasks/{task_id}/leads), so unlike get_contact/get_insurance_policy this
     route carries no route-ordering hazard regardless of placement."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM tasks WHERE id = ?", (task_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Task not found")
-        task = fetch_task_with_member_name(cursor, task_id)
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+        task = fetch_task_with_member_name(cursor, task_id, scope)
 
     return task
 
@@ -3738,20 +4197,21 @@ async def create_task(task: TaskCreate, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute(
             "INSERT INTO tasks (title, due_date, priority, created_by, assigned_team_member_id, lead_id, contact_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (task.title, task.due_date, task.priority or 'Normal', current_user['user_id'], task.assigned_team_member_id, task.lead_id, task.contact_id)
         )
         conn.commit()
         task_id = cursor.lastrowid
-        new_task = fetch_task_with_member_name(cursor, task_id)
+        new_task = fetch_task_with_member_name(cursor, task_id, scope)
 
     return new_task
 
 @app.put("/api/tasks/{task_id}", response_model=TaskResponse)
 async def update_task(task_id: int, task: TaskUpdate, token: str = Query(None)):
     """Update a task - including toggling it complete"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     updates = []
     values = []
@@ -3769,46 +4229,62 @@ async def update_task(task_id: int, task: TaskUpdate, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM tasks WHERE id = ?", (task_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Task not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", values)
         conn.commit()
 
-        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Task not found")
-
-        updated_task = fetch_task_with_member_name(cursor, task_id)
+        updated_task = fetch_task_with_member_name(cursor, task_id, scope)
 
     return updated_task
 
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: int, token: str = Query(None)):
     """Remove a task"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM tasks WHERE id = ?", (task_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Task not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         conn.commit()
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Task not found")
 
     return {"message": "Task deleted"}
 
 @app.put("/api/tasks/{task_id}/contact", response_model=TaskResponse)
 async def link_task_contact(task_id: int, link: TaskContactAssign, token: str = Query(None)):
-    """Link (or unlink, if contact_id is null) a task to a Contact."""
-    get_current_user(token)
+    """Link (or unlink, if contact_id is null) a task to a Contact. Both the Task and (when
+    linking, not unlinking) the target Contact must be visible to the caller before the
+    mutation runs - closes the previously-flagged gap where a Task's relationships could be
+    manipulated without the same authorization its own record already requires."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM tasks WHERE id = ?", (task_id,))
+        task_owner = cursor.fetchone()
+        if not task_owner:
             raise HTTPException(status_code=404, detail="Task not found")
+        assert_record_visible(scope, task_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.contact_id is not None:
-            cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (link.contact_id,))
+            contact_owner = cursor.fetchone()
+            if not contact_owner:
                 raise HTTPException(status_code=404, detail="Contact not found")
+            assert_record_visible(scope, contact_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         cursor.execute(
             "UPDATE tasks SET contact_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -3816,27 +4292,30 @@ async def link_task_contact(task_id: int, link: TaskContactAssign, token: str = 
         )
         conn.commit()
 
-        return fetch_task_with_member_name(cursor, task_id)
+        return fetch_task_with_member_name(cursor, task_id, scope)
 
 @app.get("/api/contacts/{contact_id}/tasks", response_model=list[TaskResponse])
 async def get_contact_tasks(contact_id: int, token: str = Query(None)):
-    """Tasks directly linked to this Contact."""
-    get_current_user(token)
+    """Tasks directly linked to this Contact - filtered to the caller's own Task visibility
+    scope, same as every other entity's reverse-lookup route, so an inaccessible Task can never
+    be discovered through this path even when the Contact id in the URL is itself visible."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Contact not found")
 
-        cursor.execute(
-            "SELECT id FROM tasks WHERE contact_id = ? ORDER BY due_date ASC, created_at DESC",
-            (contact_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM tasks WHERE contact_id = ?", [contact_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="due_date ASC, created_at DESC",
         )
-        rows = cursor.fetchall()
         tasks = []
         for row in rows:
-            task = fetch_task_with_member_name(cursor, row['id'])
+            task = fetch_task_with_member_name(cursor, row['id'], scope)
             if task:
                 tasks.append(task)
 
@@ -3844,19 +4323,25 @@ async def get_contact_tasks(contact_id: int, token: str = Query(None)):
 
 @app.put("/api/tasks/{task_id}/call", response_model=TaskResponse)
 async def link_task_call(task_id: int, link: TaskCallAssign, token: str = Query(None)):
-    """Link (or unlink, if call_id is null) a task to a Call."""
-    get_current_user(token)
+    """Link (or unlink, if call_id is null) a task to a Call. Same gate as link_task_contact:
+    both the Task and (when linking) the target Call must be visible first."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM tasks WHERE id = ?", (task_id,))
+        task_owner = cursor.fetchone()
+        if not task_owner:
             raise HTTPException(status_code=404, detail="Task not found")
+        assert_record_visible(scope, task_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.call_id is not None:
-            cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT created_by, team_member_id FROM calls WHERE id = ?", (link.call_id,))
+            call_owner = cursor.fetchone()
+            if not call_owner:
                 raise HTTPException(status_code=404, detail="Call not found")
+            assert_record_visible(scope, call_owner, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
 
         cursor.execute(
             "UPDATE tasks SET call_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -3864,27 +4349,29 @@ async def link_task_call(task_id: int, link: TaskCallAssign, token: str = Query(
         )
         conn.commit()
 
-        return fetch_task_with_member_name(cursor, task_id)
+        return fetch_task_with_member_name(cursor, task_id, scope)
 
 @app.get("/api/calls/{call_id}/tasks", response_model=list[TaskResponse])
 async def get_call_tasks(call_id: int, token: str = Query(None)):
-    """Tasks directly linked to this Call."""
-    get_current_user(token)
+    """Tasks directly linked to this Call - filtered to the caller's own Task visibility
+    scope, same as get_contact_tasks."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Call not found")
 
-        cursor.execute(
-            "SELECT id FROM tasks WHERE call_id = ? ORDER BY due_date ASC, created_at DESC",
-            (call_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM tasks WHERE call_id = ?", [call_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="due_date ASC, created_at DESC",
         )
-        rows = cursor.fetchall()
         tasks = []
         for row in rows:
-            task = fetch_task_with_member_name(cursor, row['id'])
+            task = fetch_task_with_member_name(cursor, row['id'], scope)
             if task:
                 tasks.append(task)
 
@@ -3892,19 +4379,26 @@ async def get_call_tasks(call_id: int, token: str = Query(None)):
 
 @app.put("/api/tasks/{task_id}/quotation", response_model=TaskResponse)
 async def link_task_quotation(task_id: int, link: TaskQuotationAssign, token: str = Query(None)):
-    """Link (or unlink, if quotation_id is null) a task to a Quotation."""
-    get_current_user(token)
+    """Link (or unlink, if quotation_id is null) a task to a Quotation. Same gate as
+    link_task_contact: both the Task and (when linking) the target Quotation must be visible
+    first (Quotation visibility is created-by only, per the confirmed rule)."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM tasks WHERE id = ?", (task_id,))
+        task_owner = cursor.fetchone()
+        if not task_owner:
             raise HTTPException(status_code=404, detail="Task not found")
+        assert_record_visible(scope, task_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.quotation_id is not None:
-            cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (link.quotation_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT created_by FROM quotations WHERE id = ?", (link.quotation_id,))
+            quotation_owner = cursor.fetchone()
+            if not quotation_owner:
                 raise HTTPException(status_code=404, detail="Quotation not found")
+            assert_record_visible(scope, quotation_owner, user_id_cols=["created_by"])
 
         cursor.execute(
             "UPDATE tasks SET quotation_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -3912,27 +4406,29 @@ async def link_task_quotation(task_id: int, link: TaskQuotationAssign, token: st
         )
         conn.commit()
 
-        return fetch_task_with_member_name(cursor, task_id)
+        return fetch_task_with_member_name(cursor, task_id, scope)
 
 @app.get("/api/quotations/{quotation_id}/tasks", response_model=list[TaskResponse])
 async def get_quotation_tasks(quotation_id: int, token: str = Query(None)):
-    """Tasks directly linked to this Quotation."""
-    get_current_user(token)
+    """Tasks directly linked to this Quotation - filtered to the caller's own Task visibility
+    scope, same as get_contact_tasks."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Quotation not found")
 
-        cursor.execute(
-            "SELECT id FROM tasks WHERE quotation_id = ? ORDER BY due_date ASC, created_at DESC",
-            (quotation_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM tasks WHERE quotation_id = ?", [quotation_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="due_date ASC, created_at DESC",
         )
-        rows = cursor.fetchall()
         tasks = []
         for row in rows:
-            task = fetch_task_with_member_name(cursor, row['id'])
+            task = fetch_task_with_member_name(cursor, row['id'], scope)
             if task:
                 tasks.append(task)
 
@@ -3940,19 +4436,29 @@ async def get_quotation_tasks(quotation_id: int, token: str = Query(None)):
 
 @app.put("/api/tasks/{task_id}/company", response_model=TaskResponse)
 async def link_task_company(task_id: int, link: TaskCompanyAssign, token: str = Query(None)):
-    """Link (or unlink, if company_id is null) a task to a Company."""
-    get_current_user(token)
+    """Link (or unlink, if company_id is null) a task to a Company. Same gate as
+    link_task_contact: both the Task and (when linking) the target Company must be visible
+    first, using the existing company_visibility_sql algorithm."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM tasks WHERE id = ?", (task_id,))
+        task_owner = cursor.fetchone()
+        if not task_owner:
             raise HTTPException(status_code=404, detail="Task not found")
+        assert_record_visible(scope, task_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.company_id is not None:
             cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
             if not cursor.fetchone():
                 raise HTTPException(status_code=404, detail="Company not found")
+            if scope is not None:
+                clause, scope_params = company_visibility_sql(scope)
+                cursor.execute(f"SELECT 1 FROM companies WHERE companies.id = ? AND {clause}", [link.company_id] + scope_params)
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=403, detail="You don't have access to this record")
 
         cursor.execute(
             "UPDATE tasks SET company_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -3960,27 +4466,29 @@ async def link_task_company(task_id: int, link: TaskCompanyAssign, token: str = 
         )
         conn.commit()
 
-        return fetch_task_with_member_name(cursor, task_id)
+        return fetch_task_with_member_name(cursor, task_id, scope)
 
 @app.get("/api/companies/{company_id}/tasks", response_model=list[TaskResponse])
 async def get_company_tasks(company_id: int, token: str = Query(None)):
-    """Tasks directly linked to this Company."""
-    get_current_user(token)
+    """Tasks directly linked to this Company - filtered to the caller's own Task visibility
+    scope, same as get_contact_tasks."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Company not found")
 
-        cursor.execute(
-            "SELECT id FROM tasks WHERE company_id = ? ORDER BY due_date ASC, created_at DESC",
-            (company_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM tasks WHERE company_id = ?", [company_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="due_date ASC, created_at DESC",
         )
-        rows = cursor.fetchall()
         tasks = []
         for row in rows:
-            task = fetch_task_with_member_name(cursor, row['id'])
+            task = fetch_task_with_member_name(cursor, row['id'], scope)
             if task:
                 tasks.append(task)
 
@@ -4377,16 +4885,22 @@ async def get_calls(token: str = Query(None), team_member_id: int = Query(None))
     get_team_analytics' OR-fallback exactly (explicit team_member_id, or login-linked
     created_by for legacy unassigned calls) so the drill-down's count never contradicts the
     "N Calls" figure already shown on the same card."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         _sweep_abandoned_calls(cursor)
         conn.commit()
 
+        # lead_name/contact_name each need their own redaction check (a visible Call does not
+        # automatically make its linked Lead/Contact visible - see fetch_call_with_member_name);
+        # company_name needs is_company_visible (calls.company_id is a direct link, not covered
+        # by company_visibility_sql's own EXISTS-through-Contact/Deal clauses).
         query = """
             SELECT calls.*, team_members.name as team_member_name,
-                   leads.name as lead_name, contacts.name as contact_name,
+                   leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                   contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                    companies.name as company_name
             FROM calls
             LEFT JOIN team_members ON team_members.id = calls.team_member_id
@@ -4394,16 +4908,30 @@ async def get_calls(token: str = Query(None), team_member_id: int = Query(None))
             LEFT JOIN contacts ON contacts.id = calls.contact_id
             LEFT JOIN companies ON companies.id = calls.company_id
         """
+        conditions = []
         params = []
         if team_member_id is not None:
             cursor.execute("SELECT user_id FROM team_members WHERE id = ?", (team_member_id,))
             row = cursor.fetchone()
             uid_param = row['user_id'] if row and row['user_id'] is not None else -1
-            query += " WHERE (calls.team_member_id = ? OR (calls.created_by = ? AND calls.team_member_id IS NULL))"
+            conditions.append("(calls.team_member_id = ? OR (calls.created_by = ? AND calls.team_member_id IS NULL))")
             params.extend([team_member_id, uid_param])
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["calls.created_by"], team_member_id_cols=["calls.team_member_id"])
+            conditions.append(clause)
+            params.extend(scope_params)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY calls.call_date DESC, calls.created_at DESC"
         cursor.execute(query, params)
         calls = [call_row_to_dict(row) for row in cursor.fetchall()]
+        for c in calls:
+            redact_if_not_visible(scope, c, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            redact_if_not_visible(scope, c, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+            if scope is not None and c.get('company_id') and not is_company_visible(cursor, scope, c['company_id']):
+                c['company_name'] = None
+            for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id"):
+                c.pop(k, None)
 
     return calls
 
@@ -4414,6 +4942,7 @@ async def create_call(call: CallCreate, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute(
             """
             INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id)
@@ -4425,7 +4954,7 @@ async def create_call(call: CallCreate, token: str = Query(None)):
         conn.commit()
         call_id = cursor.lastrowid
 
-        new_call = call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+        new_call = call_row_to_dict(fetch_call_with_member_name(cursor, call_id, scope))
 
     return new_call
 
@@ -4433,13 +4962,16 @@ async def create_call(call: CallCreate, token: str = Query(None)):
 async def assign_call(call_id: int, assignment: CallAssign, token: str = Query(None)):
     """Assign (or unassign, if team_member_id is null) a logged call to a team member, so
     admins and the team lead can see who made/handled each call after the fact."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, team_member_id FROM calls WHERE id = ?", (call_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Call not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
 
         if assignment.team_member_id is not None:
             cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (assignment.team_member_id,))
@@ -4452,7 +4984,7 @@ async def assign_call(call_id: int, assignment: CallAssign, token: str = Query(N
         )
         conn.commit()
 
-        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id, scope))
 
 _CALL_STATUS_TO_OUTCOME = {
     "no_answer": "No Answer",
@@ -4470,7 +5002,7 @@ async def complete_call(call_id: int, payload: CallCompleteRequest, token: str =
     _CALL_STATUS_TO_OUTCOME so Calls-by-Employee's Attempted/Connected counts stay meaningful
     without the caller having to know that vocabulary; 'completed' calls use whatever
     qualitative outcome (Interested/Not Interested/etc.) the rep picked."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     valid_statuses = {"completed", "no_answer", "busy", "failed", "cancelled", "unknown"}
     if payload.status not in valid_statuses:
@@ -4478,9 +5010,12 @@ async def complete_call(call_id: int, payload: CallCompleteRequest, token: str =
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM calls WHERE id = ?", (call_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, team_member_id FROM calls WHERE id = ?", (call_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Call not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
 
         outcome = payload.outcome if payload.status == "completed" else _CALL_STATUS_TO_OUTCOME[payload.status]
 
@@ -4494,7 +5029,7 @@ async def complete_call(call_id: int, payload: CallCompleteRequest, token: str =
         )
         conn.commit()
 
-        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id, scope))
 
 # Audio only, matching what a phone's own call-recording app typically produces - a video or
 # document upload here would just be a mislabeled document upload with extra steps.
@@ -4527,9 +5062,12 @@ async def upload_call_recording(call_id: int, token: str = Query(None), file: Up
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM calls WHERE id = ?", (call_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, team_member_id FROM calls WHERE id = ?", (call_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Call not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
 
         cursor.execute(
             f"""
@@ -4543,7 +5081,7 @@ async def upload_call_recording(call_id: int, token: str = Query(None), file: Up
         )
         conn.commit()
 
-        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id, scope))
 
 @app.get("/api/calls/{call_id}/recording")
 async def get_call_recording(call_id: int, token: str = Query(None)):
@@ -4554,14 +5092,16 @@ async def get_call_recording(call_id: int, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute(
-            "SELECT recording_file_name, recording_file_data, recording_content_type FROM calls WHERE id = ?",
+            "SELECT recording_file_name, recording_file_data, recording_content_type, created_by, team_member_id FROM calls WHERE id = ?",
             (call_id,)
         )
         row = cursor.fetchone()
 
     if not row or row['recording_file_data'] is None:
         raise HTTPException(status_code=404, detail="No recording uploaded for this call")
+    assert_record_visible(scope, row, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
 
     print(f"[audit] call recording {call_id} downloaded by user_id={current_user['user_id']}")
     file_data = bytes(row['recording_file_data'])
@@ -4588,10 +5128,17 @@ def _sweep_abandoned_calls(cursor):
 @app.delete("/api/calls/{call_id}")
 async def delete_call(call_id: int, token: str = Query(None)):
     """Delete a logged call"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, team_member_id FROM calls WHERE id = ?", (call_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Call not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
+
         cursor.execute("DELETE FROM calls WHERE id = ?", (call_id,))
         conn.commit()
 
@@ -4600,13 +5147,16 @@ async def delete_call(call_id: int, token: str = Query(None)):
 @app.put("/api/calls/{call_id}/contact", response_model=CallResponse)
 async def link_call_contact(call_id: int, link: CallContactAssign, token: str = Query(None)):
     """Link (or unlink, if contact_id is null) a call to a Contact."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, team_member_id FROM calls WHERE id = ?", (call_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Call not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
 
         if link.contact_id is not None:
             cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
@@ -4619,27 +5169,28 @@ async def link_call_contact(call_id: int, link: CallContactAssign, token: str = 
         )
         conn.commit()
 
-        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id, scope))
 
 @app.get("/api/contacts/{contact_id}/calls", response_model=list[CallResponse])
 async def get_contact_calls(contact_id: int, token: str = Query(None)):
     """Calls directly linked to this Contact."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Contact not found")
 
-        cursor.execute(
-            "SELECT id FROM calls WHERE contact_id = ? ORDER BY call_date DESC, created_at DESC",
-            (contact_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM calls WHERE contact_id = ?", [contact_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["team_member_id"],
+            order_by="call_date DESC, created_at DESC",
         )
-        rows = cursor.fetchall()
         calls = []
         for row in rows:
-            call = fetch_call_with_member_name(cursor, row['id'])
+            call = fetch_call_with_member_name(cursor, row['id'], scope)
             if call:
                 calls.append(call_row_to_dict(call))
 
@@ -4648,13 +5199,16 @@ async def get_contact_calls(contact_id: int, token: str = Query(None)):
 @app.put("/api/calls/{call_id}/company", response_model=CallResponse)
 async def link_call_company(call_id: int, link: CallCompanyAssign, token: str = Query(None)):
     """Link (or unlink, if company_id is null) a call to a Company."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, team_member_id FROM calls WHERE id = ?", (call_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Call not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
 
         if link.company_id is not None:
             cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
@@ -4667,27 +5221,28 @@ async def link_call_company(call_id: int, link: CallCompanyAssign, token: str = 
         )
         conn.commit()
 
-        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id))
+        return call_row_to_dict(fetch_call_with_member_name(cursor, call_id, scope))
 
 @app.get("/api/companies/{company_id}/calls", response_model=list[CallResponse])
 async def get_company_calls(company_id: int, token: str = Query(None)):
     """Calls directly linked to this Company."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Company not found")
 
-        cursor.execute(
-            "SELECT id FROM calls WHERE company_id = ? ORDER BY call_date DESC, created_at DESC",
-            (company_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM calls WHERE company_id = ?", [company_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["team_member_id"],
+            order_by="call_date DESC, created_at DESC",
         )
-        rows = cursor.fetchall()
         calls = []
         for row in rows:
-            call = fetch_call_with_member_name(cursor, row['id'])
+            call = fetch_call_with_member_name(cursor, row['id'], scope)
             if call:
                 calls.append(call_row_to_dict(call))
 
@@ -6090,11 +6645,18 @@ _COMPANY_WITH_CONTACT_COUNT_SQL = """
 
 @app.get("/api/companies", response_model=list[CompanyResponse])
 async def get_companies(token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(_COMPANY_WITH_CONTACT_COUNT_SQL + " ORDER BY companies.name ASC")
+        scope = get_visibility_scope(cursor, current_user)
+        query = _COMPANY_WITH_CONTACT_COUNT_SQL
+        params = []
+        if scope is not None:
+            clause, scope_params = company_visibility_sql(scope)
+            query += " WHERE " + clause
+            params = scope_params
+        cursor.execute(query + " ORDER BY companies.name ASC", params)
         rows = [dict(r) for r in cursor.fetchall()]
 
     return rows
@@ -6103,26 +6665,29 @@ async def get_companies(token: str = Query(None)):
 async def get_company_contacts(company_id: int, token: str = Query(None)):
     """Contacts linked to this Company record - the reverse of contacts.company_id, shown on
     the Companies page so a company row can expand to show who works there."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Company not found")
 
-        cursor.execute(
-            """
+        query = """
             SELECT contacts.*, team_members.name as assigned_team_member_name,
                    companies.name as company_name
             FROM contacts
             LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
             LEFT JOIN companies ON companies.id = contacts.company_id
             WHERE contacts.company_id = ?
-            ORDER BY contacts.name ASC
-            """,
-            (company_id,)
-        )
+        """
+        params = [company_id]
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["contacts.created_by"], team_member_id_cols=["contacts.assigned_team_member_id"])
+            query += " AND " + clause
+            params.extend(scope_params)
+        cursor.execute(query + " ORDER BY contacts.name ASC", params)
         rows = [dict(r) for r in cursor.fetchall()]
 
     return rows
@@ -6130,13 +6695,16 @@ async def get_company_contacts(company_id: int, token: str = Query(None)):
 @app.put("/api/contacts/{contact_id}/quotation", response_model=ContactResponse)
 async def link_contact_quotation(contact_id: int, link: ContactQuotationAssign, token: str = Query(None)):
     """Link (or unlink, if quotation_id is null) a contact to a Quotation."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.quotation_id is not None:
             cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (link.quotation_id,))
@@ -6149,27 +6717,28 @@ async def link_contact_quotation(contact_id: int, link: ContactQuotationAssign, 
         )
         conn.commit()
 
-        return fetch_contact_with_member_name(cursor, contact_id)
+        return fetch_contact_with_member_name(cursor, contact_id, scope)
 
 @app.get("/api/quotations/{quotation_id}/contacts", response_model=list[ContactResponse])
 async def get_quotation_contacts(quotation_id: int, token: str = Query(None)):
     """Contacts directly linked to this Quotation."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Quotation not found")
 
-        cursor.execute(
-            "SELECT id FROM contacts WHERE quotation_id = ? ORDER BY name ASC",
-            (quotation_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM contacts WHERE quotation_id = ?", [quotation_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="name ASC",
         )
-        rows = cursor.fetchall()
         contacts = []
         for row in rows:
-            contact = fetch_contact_with_member_name(cursor, row['id'])
+            contact = fetch_contact_with_member_name(cursor, row['id'], scope)
             if contact:
                 contacts.append(contact)
 
@@ -6178,90 +6747,113 @@ async def get_quotation_contacts(quotation_id: int, token: str = Query(None)):
 @app.put("/api/contacts/{contact_id}/call", response_model=ContactResponse)
 async def link_contact_call(contact_id: int, link: ContactCallAssign, token: str = Query(None)):
     """Link (or unlink, if call_id is null) a contact to a Call."""
-    get_current_user(token)
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
         if link.call_id is not None:
             cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
             if not cursor.fetchone():
                 raise HTTPException(status_code=404, detail="Call not found")
         cursor.execute("UPDATE contacts SET call_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (link.call_id, contact_id))
         conn.commit()
-        return fetch_contact_with_member_name(cursor, contact_id)
+        return fetch_contact_with_member_name(cursor, contact_id, scope)
 
 @app.get("/api/calls/{call_id}/contacts", response_model=list[ContactResponse])
 async def get_call_contacts(call_id: int, token: str = Query(None)):
     """Contacts directly linked to this Call."""
-    get_current_user(token)
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Call not found")
-        cursor.execute("SELECT id FROM contacts WHERE call_id = ? ORDER BY name ASC", (call_id,))
-        rows = cursor.fetchall()
-        contacts = [fetch_contact_with_member_name(cursor, row['id']) for row in rows if fetch_contact_with_member_name(cursor, row['id'])]
+        rows = scoped_rows(
+            cursor, "SELECT id FROM contacts WHERE call_id = ?", [call_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="name ASC",
+        )
+        contacts = [fetch_contact_with_member_name(cursor, row['id'], scope) for row in rows if fetch_contact_with_member_name(cursor, row['id'], scope)]
         return contacts
 
 @app.get("/api/companies/{company_id}/deals", response_model=list[DealResponse])
 async def get_company_deals(company_id: int, token: str = Query(None)):
     """Deals linked to this Company record - the reverse of deals.company_id, shown on the
     Companies page alongside linked contacts."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Company not found")
 
-        cursor.execute(
-            """
+        query = """
             SELECT deals.*, team_members.name as assigned_team_member_name,
                    companies.name as company_name, contacts.name as contact_name,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                    (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
             FROM deals
             LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
             LEFT JOIN companies ON companies.id = deals.company_id
             LEFT JOIN contacts ON contacts.id = deals.contact_id
             WHERE deals.company_id = ?
-            ORDER BY deals.created_at DESC
-            """,
-            (company_id,)
-        )
+        """
+        params = [company_id]
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["deals.owner_id"], team_member_id_cols=["deals.assigned_team_member_id"])
+            query += " AND " + clause
+            params.extend(scope_params)
+        cursor.execute(query + " ORDER BY deals.created_at DESC", params)
         rows = [dict(r) for r in cursor.fetchall()]
+        for r in rows:
+            redact_if_not_visible(scope, r, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+            r.pop("_contact_created_by", None)
+            r.pop("_contact_assigned_team_member_id", None)
 
     return rows
 
 @app.get("/api/contacts/{contact_id}/deals", response_model=list[DealResponse])
 async def get_contact_deals(contact_id: int, token: str = Query(None)):
     """Deals directly linked to this Contact record - the reverse of deals.contact_id."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Contact not found")
 
-        cursor.execute(
-            """
+        query = """
             SELECT deals.*, team_members.name as assigned_team_member_name,
                    companies.name as company_name, contacts.name as contact_name,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                    (SELECT COUNT(*) FROM quotations WHERE quotations.deal_id = deals.id) as quotation_count
             FROM deals
             LEFT JOIN team_members ON team_members.id = deals.assigned_team_member_id
             LEFT JOIN companies ON companies.id = deals.company_id
             LEFT JOIN contacts ON contacts.id = deals.contact_id
             WHERE deals.contact_id = ?
-            ORDER BY deals.created_at DESC
-            """,
-            (contact_id,)
-        )
+        """
+        params = [contact_id]
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["deals.owner_id"], team_member_id_cols=["deals.assigned_team_member_id"])
+            query += " AND " + clause
+            params.extend(scope_params)
+        cursor.execute(query + " ORDER BY deals.created_at DESC", params)
         rows = [dict(r) for r in cursor.fetchall()]
+        for r in rows:
+            redact_if_not_visible(scope, r, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+            r.pop("_contact_created_by", None)
+            r.pop("_contact_assigned_team_member_id", None)
 
     return rows
 
@@ -6273,39 +6865,52 @@ async def get_company_quotations(company_id: int, token: str = Query(None)):
     contacts/deals, completing the same reverse-lookup that Quotations.jsx already resolves
     forward. A quotation matching both paths (its own company_id AND its deal's company_id
     point here) is only counted once."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Company not found")
 
-        cursor.execute(
-            """
+        query = """
             SELECT DISTINCT quotations.id, quotations.created_at FROM quotations
             LEFT JOIN deals ON deals.id = quotations.deal_id
-            WHERE quotations.company_id = ? OR deals.company_id = ?
-            ORDER BY quotations.created_at DESC
-            """,
-            (company_id, company_id)
-        )
+            WHERE (quotations.company_id = ? OR deals.company_id = ?)
+        """
+        params = [company_id, company_id]
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["quotations.created_by"])
+            query += " AND " + clause
+            params.extend(scope_params)
+        cursor.execute(query + " ORDER BY quotations.created_at DESC", params)
         ids = [r['id'] for r in cursor.fetchall()]
-        quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
+        quotations = [fetch_quotation_with_details(cursor, qid, scope) for qid in ids]
 
     return quotations
 
 @app.get("/api/companies/{company_id}/team_members", response_model=list[TeamMemberResponse])
 async def get_company_team_members(company_id: int, token: str = Query(None)):
     """Team members who have worked with this Company - derived from all deals assigned to them
-    that have this company_id. Each team member appears once even if they have multiple deals."""
-    get_current_user(token)
+    that have this company_id. Each team member appears once even if they have multiple deals.
+
+    Company visibility is checked first (the existing company_visibility_sql algorithm) so a
+    caller can't take an inaccessible Company id and use this route to discover which employees
+    are associated with it."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Company not found")
+        if scope is not None:
+            clause, scope_params = company_visibility_sql(scope)
+            cursor.execute(f"SELECT 1 FROM companies WHERE companies.id = ? AND {clause}", [company_id] + scope_params)
+            if not cursor.fetchone():
+                raise HTTPException(status_code=403, detail="You don't have access to this record")
 
         cursor.execute(
             """
@@ -6340,7 +6945,7 @@ async def create_company(company: CompanyCreate, token: str = Query(None)):
 
 @app.put("/api/companies/{company_id}", response_model=CompanyResponse)
 async def update_company(company_id: int, company: CompanyUpdate, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     updates = []
     values = []
@@ -6358,22 +6963,40 @@ async def update_company(company_id: int, company: CompanyUpdate, token: str = Q
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+        if scope is not None:
+            clause, scope_params = company_visibility_sql(scope)
+            cursor.execute(f"SELECT 1 FROM companies WHERE companies.id = ? AND {clause}", [company_id] + scope_params)
+            if not cursor.fetchone():
+                raise HTTPException(status_code=403, detail="You don't have access to this record")
+
         cursor.execute(f"UPDATE companies SET {', '.join(updates)} WHERE id = ?", values)
         conn.commit()
 
         cursor.execute(_COMPANY_WITH_CONTACT_COUNT_SQL + " WHERE companies.id = ?", (company_id,))
         updated = cursor.fetchone()
-        if not updated:
-            raise HTTPException(status_code=404, detail="Company not found")
 
     return dict(updated)
 
 @app.delete("/api/companies/{company_id}")
 async def delete_company(company_id: int, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+        if scope is not None:
+            clause, scope_params = company_visibility_sql(scope)
+            cursor.execute(f"SELECT 1 FROM companies WHERE companies.id = ? AND {clause}", [company_id] + scope_params)
+            if not cursor.fetchone():
+                raise HTTPException(status_code=403, detail="You don't have access to this record")
+
         # Unlink first - otherwise contacts/deals.company_id is left pointing at a row that no
         # longer exists instead of a clean "not linked" state.
         cursor.execute("UPDATE contacts SET company_id = NULL WHERE company_id = ?", (company_id,))
@@ -6383,24 +7006,37 @@ async def delete_company(company_id: int, token: str = Query(None)):
 
     return {"message": "Company deleted"}
 
-def fetch_quotation_with_details(cursor, quotation_id):
+def fetch_quotation_with_details(cursor, quotation_id, scope):
     """Read one quotation back joined against its linked lead/contact name and (if linked) its
     Deal - resolved into a human-readable deal_label since a deal has no name of its own, just
     a lead + loan product + value - plus its line items and a computed grand_total.
     Quotations have no company_id or assigned_team_member_id of their own; a linked Deal's
     Company (deals.company_id) and assigned team member (deals.assigned_team_member_id) are
     both resolved here too, since neither was previously reachable without leaving to
-    Companies/Pipeline and finding the matching deal by hand."""
+    Companies/Pipeline and finding the matching deal by hand.
+
+    `scope` gates every cross-entity display field the same way fetch_deal_with_member_name and
+    fetch_lead_with_member_name do: lead_name/contact_name/call_name each belong to an
+    independently-visible entity; company_name is checked via is_company_visible regardless of
+    whether it resolved through quotations.company_id or the linked deal's company_id (neither
+    path is covered by company_visibility_sql's own EXISTS-through-Contact/Deal clauses the way
+    a company shown via a Deal or Contact directly would be, since Quotations aren't part of
+    that rule); deal_label needs the same two-tier check fetch_lead_with_member_name uses (is
+    the Deal itself visible, and separately, is the Deal's ORIGINATING lead visible - a visible
+    Deal does not make its originating Lead visible too)."""
     cursor.execute(
         """
-        SELECT quotations.*, leads.name as lead_name, contacts.name as contact_name,
+        SELECT quotations.*, leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+               contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+               deals.owner_id as _deal_owner_id, deals.assigned_team_member_id as _deal_assigned_team_member_id,
                deal_leads.name as deal_lead_name,
+               deal_leads.created_by as _deal_lead_created_by, deal_leads.assigned_team_member_id as _deal_lead_assigned_team_member_id,
                COALESCE(quotations.company_id, deals.company_id) as resolved_company_id,
                COALESCE(direct_companies.name, deals_companies.name) as company_name,
                deals.assigned_team_member_id as assigned_team_member_id,
                team_members.name as assigned_team_member_name,
-               calls.name as call_name
+               calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id
         FROM quotations
         LEFT JOIN leads ON leads.id = quotations.lead_id
         LEFT JOIN contacts ON contacts.id = quotations.contact_id
@@ -6424,13 +7060,29 @@ def fetch_quotation_with_details(cursor, quotation_id):
     # a distinct alias and remapped here so the resolved value (direct link, or the linked
     # Deal's Company as a fallback) is what actually reaches the response.
     quotation['company_id'] = quotation.pop('resolved_company_id')
-    if quotation.get('deal_id'):
+
+    redact_if_not_visible(scope, quotation, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+    redact_if_not_visible(scope, quotation, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+    redact_if_not_visible(scope, quotation, ["call_name"], user_id_col="_call_created_by", team_member_id_col="_call_team_member_id")
+    if scope is not None and quotation.get('company_id') and not is_company_visible(cursor, scope, quotation['company_id']):
+        quotation['company_name'] = None
+
+    deal_visible = is_record_visible(scope, quotation, user_id_cols=["_deal_owner_id"], team_member_id_cols=["_deal_assigned_team_member_id"])
+    deal_lead_visible = is_record_visible(scope, quotation, user_id_cols=["_deal_lead_created_by"], team_member_id_cols=["_deal_lead_assigned_team_member_id"])
+    if quotation.get('deal_id') and deal_visible:
+        deal_lead_name = quotation.get('deal_lead_name') if deal_lead_visible else None
         quotation['deal_label'] = (
-            f"{quotation.get('deal_lead_name') or 'Deal'} - {quotation.get('deal_loan_product') or ''} "
+            f"{deal_lead_name or 'Deal'} - {quotation.get('deal_loan_product') or ''} "
             f"(Rs {quotation.get('deal_deal_value') or 0:,.0f})"
         )
     else:
         quotation['deal_label'] = None
+
+    for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id",
+              "_deal_owner_id", "_deal_assigned_team_member_id", "_deal_lead_created_by", "_deal_lead_assigned_team_member_id",
+              "_call_created_by", "_call_team_member_id"):
+        quotation.pop(k, None)
+
     cursor.execute("SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY id ASC", (quotation_id,))
     items = [dict(r) for r in cursor.fetchall()]
     quotation['items'] = items
@@ -6441,25 +7093,31 @@ def fetch_quotation_with_details(cursor, quotation_id):
 
 @app.get("/api/quotations", response_model=list[QuotationResponse])
 async def get_quotations(token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM quotations ORDER BY created_at DESC")
-        ids = [r['id'] for r in cursor.fetchall()]
-        quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
+        scope = get_visibility_scope(cursor, current_user)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM quotations WHERE 1=1", [], scope,
+            user_id_cols=["created_by"], order_by="created_at DESC",
+        )
+        ids = [r['id'] for r in rows]
+        quotations = [fetch_quotation_with_details(cursor, qid, scope) for qid in ids]
 
     return quotations
 
 @app.get("/api/quotations/{quotation_id}", response_model=QuotationResponse)
 async def get_quotation(quotation_id: int, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        quotation = fetch_quotation_with_details(cursor, quotation_id)
+        scope = get_visibility_scope(cursor, current_user)
+        quotation = fetch_quotation_with_details(cursor, quotation_id, scope)
         if not quotation:
             raise HTTPException(status_code=404, detail="Quotation not found")
+        assert_record_visible(scope, quotation, user_id_cols=["created_by"])
 
     return quotation
 
@@ -6469,6 +7127,7 @@ async def create_quotation(quotation: QuotationCreate, token: str = Query(None))
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute(
             "INSERT INTO quotations (lead_id, contact_id, deal_id, title, valid_until, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (quotation.lead_id, quotation.contact_id, quotation.deal_id, quotation.title, quotation.valid_until, quotation.notes, current_user['user_id'])
@@ -6486,13 +7145,13 @@ async def create_quotation(quotation: QuotationCreate, token: str = Query(None))
             )
         conn.commit()
 
-        new_quotation = fetch_quotation_with_details(cursor, quotation_id)
+        new_quotation = fetch_quotation_with_details(cursor, quotation_id, scope)
 
     return new_quotation
 
 @app.put("/api/quotations/{quotation_id}", response_model=QuotationResponse)
 async def update_quotation(quotation_id: int, quotation: QuotationUpdate, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     updates = []
     values = []
@@ -6504,9 +7163,12 @@ async def update_quotation(quotation_id: int, quotation: QuotationUpdate, token:
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM quotations WHERE id = ?", (quotation_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Quotation not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
@@ -6522,16 +7184,23 @@ async def update_quotation(quotation_id: int, quotation: QuotationUpdate, token:
                 )
 
         conn.commit()
-        updated = fetch_quotation_with_details(cursor, quotation_id)
+        updated = fetch_quotation_with_details(cursor, quotation_id, scope)
 
     return updated
 
 @app.delete("/api/quotations/{quotation_id}")
 async def delete_quotation(quotation_id: int, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM quotations WHERE id = ?", (quotation_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Quotation not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
+
         cursor.execute("DELETE FROM quotation_items WHERE quotation_id = ?", (quotation_id,))
         cursor.execute("DELETE FROM quotations WHERE id = ?", (quotation_id,))
         conn.commit()
@@ -6543,13 +7212,15 @@ async def send_quotation(quotation_id: int, token: str = Query(None)):
     """Emails a formatted summary of the quotation to the linked lead/contact's address,
     reusing the same SMTP send (and communication_log/Activities feed) path as any other
     email. Moves a Draft quotation to Sent on a successful attempt."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        quotation = fetch_quotation_with_details(cursor, quotation_id)
+        scope = get_visibility_scope(cursor, current_user)
+        quotation = fetch_quotation_with_details(cursor, quotation_id, scope)
         if not quotation:
             raise HTTPException(status_code=404, detail="Quotation not found")
+        assert_record_visible(scope, quotation, user_id_cols=["created_by"])
 
         recipient_email = None
         recipient_name = None
@@ -6603,13 +7274,16 @@ async def send_quotation(quotation_id: int, token: str = Query(None)):
 @app.put("/api/quotations/{quotation_id}/contact", response_model=QuotationResponse)
 async def link_quotation_contact(quotation_id: int, link: QuotationContactAssign, token: str = Query(None)):
     """Link (or unlink, if contact_id is null) a quotation to a Contact."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM quotations WHERE id = ?", (quotation_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Quotation not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
 
         if link.contact_id is not None:
             cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
@@ -6622,38 +7296,42 @@ async def link_quotation_contact(quotation_id: int, link: QuotationContactAssign
         )
         conn.commit()
 
-        return fetch_quotation_with_details(cursor, quotation_id)
+        return fetch_quotation_with_details(cursor, quotation_id, scope)
 
 @app.get("/api/contacts/{contact_id}/quotations", response_model=list[QuotationResponse])
 async def get_contact_quotations(contact_id: int, token: str = Query(None)):
     """Quotations directly linked to this Contact."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (contact_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Contact not found")
 
-        cursor.execute(
-            "SELECT id FROM quotations WHERE contact_id = ? ORDER BY created_at DESC",
-            (contact_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM quotations WHERE contact_id = ?", [contact_id], scope,
+            user_id_cols=["created_by"], order_by="created_at DESC",
         )
-        ids = [r['id'] for r in cursor.fetchall()]
-        quotations = [fetch_quotation_with_details(cursor, qid) for qid in ids]
+        ids = [r['id'] for r in rows]
+        quotations = [fetch_quotation_with_details(cursor, qid, scope) for qid in ids]
 
     return quotations
 
 @app.put("/api/quotations/{quotation_id}/company", response_model=QuotationResponse)
 async def link_quotation_company(quotation_id: int, link: QuotationCompanyAssign, token: str = Query(None)):
     """Link (or unlink, if company_id is null) a quotation to a Company."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM quotations WHERE id = ?", (quotation_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Quotation not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
 
         if link.company_id is not None:
             cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
@@ -6666,18 +7344,21 @@ async def link_quotation_company(quotation_id: int, link: QuotationCompanyAssign
         )
         conn.commit()
 
-        return fetch_quotation_with_details(cursor, quotation_id)
+        return fetch_quotation_with_details(cursor, quotation_id, scope)
 
 @app.put("/api/quotations/{quotation_id}/call", response_model=QuotationResponse)
 async def link_quotation_call(quotation_id: int, link: QuotationCallAssign, token: str = Query(None)):
     """Link (or unlink, if call_id is null) a quotation to a Call."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM quotations WHERE id = ?", (quotation_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Quotation not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
 
         if link.call_id is not None:
             cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
@@ -6690,27 +7371,27 @@ async def link_quotation_call(quotation_id: int, link: QuotationCallAssign, toke
         )
         conn.commit()
 
-        return fetch_quotation_with_details(cursor, quotation_id)
+        return fetch_quotation_with_details(cursor, quotation_id, scope)
 
 @app.get("/api/calls/{call_id}/quotations", response_model=list[QuotationResponse])
 async def get_call_quotations(call_id: int, token: str = Query(None)):
     """Quotations directly linked to this Call."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Call not found")
 
-        cursor.execute(
-            "SELECT id FROM quotations WHERE call_id = ? ORDER BY created_at DESC",
-            (call_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM quotations WHERE call_id = ?", [call_id], scope,
+            user_id_cols=["created_by"], order_by="created_at DESC",
         )
-        rows = cursor.fetchall()
         quotations = []
         for row in rows:
-            quotation = fetch_quotation_with_details(cursor, row['id'])
+            quotation = fetch_quotation_with_details(cursor, row['id'], scope)
             if quotation:
                 quotations.append(quotation)
 
@@ -6719,13 +7400,16 @@ async def get_call_quotations(call_id: int, token: str = Query(None)):
 @app.put("/api/quotations/{quotation_id}/deal", response_model=QuotationResponse)
 async def link_quotation_deal(quotation_id: int, link: QuotationDealAssign, token: str = Query(None)):
     """Link (or unlink, if deal_id is null) a quotation to a Deal."""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM quotations WHERE id = ?", (quotation_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Quotation not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
 
         if link.deal_id is not None:
             cursor.execute("SELECT 1 FROM deals WHERE id = ?", (link.deal_id,))
@@ -6738,7 +7422,7 @@ async def link_quotation_deal(quotation_id: int, link: QuotationDealAssign, toke
         )
         conn.commit()
 
-        return fetch_quotation_with_details(cursor, quotation_id)
+        return fetch_quotation_with_details(cursor, quotation_id, scope)
 
 @app.post("/api/marketing/mailchimp/sync", response_model=MailchimpSyncResponse)
 async def sync_mailchimp(token: str = Query(None)):
@@ -7003,7 +7687,11 @@ async def create_lead_via_api_key(lead: PublicLeadCreate, x_api_key: str = Heade
         conn.commit()
         lead_id = cursor.lastrowid
 
-        new_lead = fetch_lead_with_member_name(cursor, lead_id)
+        # No logged-in employee here (API-key auth, not a JWT) - scope=None (admin-equivalent,
+        # no redaction) is correct: this is a system/webhook integration acting on behalf of
+        # the whole account, not a specific employee's restricted view, and a freshly created
+        # lead has no linked contact/call/task/quotation/deal yet for anything to redact anyway.
+        new_lead = fetch_lead_with_member_name(cursor, lead_id, None)
 
     return new_lead
 
@@ -7668,15 +8356,24 @@ def _get_valid_google_access_token(cursor, user_id):
 
 @app.post("/api/integrations/google-sheets/export", response_model=GoogleSheetsExportResponse)
 async def google_sheets_export(payload: GoogleSheetsExportRequest, token: str = Query(None)):
-    """Writes every contact or lead to the given sheet, overwriting whatever's currently
-    there (values.update with a fixed range starting at A1) - same header row and column
-    order as the CSV export, deliberately, so the two stay interchangeable."""
+    """Writes every VISIBLE contact or lead to the given sheet, overwriting whatever's
+    currently there (values.update with a fixed range starting at A1) - same header row and
+    column order as the CSV export, deliberately, so the two stay interchangeable.
+
+    Scoped to the caller's own Contact/Lead visibility (found during the final security audit):
+    exporting the full, unfiltered table to an employee-controlled Google Sheet was a bulk
+    data-exfiltration path that completely bypassed the access-control model just because the
+    destination was external rather than a CRM page. Admins are unrestricted, same as
+    everywhere else. The visibility WHERE clause is applied directly in the SELECT, before any
+    row is built or written - never fetch-then-filter, so an inaccessible row is never even
+    read into this function's memory, let alone written to the sheet."""
     current_user = get_current_user(token)
     if payload.entity not in ('contacts', 'leads'):
         raise HTTPException(status_code=400, detail="entity must be 'contacts' or 'leads'")
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         access_token = _get_valid_google_access_token(cursor, current_user['user_id'])
         conn.commit()  # persists a refreshed access token, if _get_valid_google_access_token refreshed one
         if not access_token:
@@ -7684,12 +8381,18 @@ async def google_sheets_export(payload: GoogleSheetsExportRequest, token: str = 
 
         if payload.entity == 'contacts':
             headers = _CONTACT_EXPORT_HEADERS
-            cursor.execute("""
+            query = """
                 SELECT contacts.*, companies.name as company_name, team_members.name as assigned_team_member_name
                 FROM contacts
                 LEFT JOIN companies ON companies.id = contacts.company_id
                 LEFT JOIN team_members ON team_members.id = contacts.assigned_team_member_id
-            """)
+            """
+            params = []
+            if scope is not None:
+                clause, scope_params = scope_filter_sql(scope, user_id_cols=["contacts.created_by"], team_member_id_cols=["contacts.assigned_team_member_id"])
+                query += " WHERE " + clause
+                params = scope_params
+            cursor.execute(query, params)
             rows = [
                 [r['name'], r['company_name'] or r['company'] or '', r['email'] or '', r['phone'] or '',
                  r['city'] or '', r['score'] if r['score'] is not None else '', r['amount'] if r['amount'] is not None else '',
@@ -7698,11 +8401,17 @@ async def google_sheets_export(payload: GoogleSheetsExportRequest, token: str = 
             ]
         else:
             headers = _LEAD_EXPORT_HEADERS
-            cursor.execute("""
+            query = """
                 SELECT leads.*, team_members.name as assigned_team_member_name
                 FROM leads
                 LEFT JOIN team_members ON team_members.id = leads.assigned_team_member_id
-            """)
+            """
+            params = []
+            if scope is not None:
+                clause, scope_params = scope_filter_sql(scope, user_id_cols=["leads.created_by"], team_member_id_cols=["leads.assigned_team_member_id"])
+                query += " WHERE " + clause
+                params = scope_params
+            cursor.execute(query, params)
             rows = [
                 [r['name'], r['company'] or '', r['email'] or '', r['phone'] or '',
                  r['status'] or '', r['ai_score'] if r['ai_score'] is not None else '', r['assigned_team_member_name'] or '']
@@ -8172,15 +8881,20 @@ async def voice_agent_webhook(payload: dict):
 
 TEAM_ROLE_ORDER = {"admin": 0, "team_lead": 1, "location_head": 2, "business_manager": 3, "employee": 4}
 
-def _team_member_row_to_dict(row):
+def _team_member_row_to_dict(row, names_by_id=None):
     """calling_enabled/recording_enabled/active are stored as 0/1 (MySQL TINYINT / SQLite
     INTEGER) - cast to real bool here so TeamMemberResponse validates cleanly, same pattern as
-    the integrations catalog's `connected` field."""
+    the integrations catalog's `connected` field. `names_by_id` (optional, {team_members.id:
+    name}) resolves reports_to into a display name for the Team UI's dropdown; omit it when the
+    caller doesn't need the name (e.g. a single freshly-created/updated row where showing the
+    id alone is fine)."""
     m = dict(row)
     m['calling_enabled'] = bool(m.get('calling_enabled', 1))
     m['recording_enabled'] = bool(m.get('recording_enabled', 0))
     m['active'] = bool(m.get('active', 1))
     m['phone_verification_status'] = m.get('phone_verification_status') or 'unverified'
+    if names_by_id is not None:
+        m['reports_to_name'] = names_by_id.get(m.get('reports_to'))
     return m
 
 @app.get("/api/team", response_model=list[TeamMemberResponse])
@@ -8191,7 +8905,9 @@ async def get_team(token: str = Query(None)):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM team_members")
-        members = [_team_member_row_to_dict(row) for row in cursor.fetchall()]
+        rows = cursor.fetchall()
+        names_by_id = {r['id']: r['name'] for r in rows}
+        members = [_team_member_row_to_dict(row, names_by_id) for row in rows]
 
     members.sort(key=lambda m: (TEAM_ROLE_ORDER.get(m['role'], 99), m['name']))
     return members
@@ -8221,8 +8937,8 @@ async def create_team_member(member: TeamMemberCreate, token: str = Query(None))
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO team_members (name, role, email, phone) VALUES (?, ?, ?, ?)",
-            (member.name, member.role, member.email, member.phone)
+            "INSERT INTO team_members (name, role, email, phone, reports_to) VALUES (?, ?, ?, ?, ?)",
+            (member.name, member.role, member.email, member.phone, member.reports_to)
         )
         conn.commit()
         cursor.execute("SELECT * FROM team_members WHERE id = ?", (cursor.lastrowid,))
@@ -8238,7 +8954,7 @@ async def update_team_member(member_id: int, member: TeamMemberUpdate, token: st
 
     field_map = {
         'name': member.name, 'role': member.role, 'email': member.email, 'phone': member.phone,
-        'user_id': member.user_id,
+        'user_id': member.user_id, 'reports_to': member.reports_to,
         'calling_enabled': None if member.calling_enabled is None else int(member.calling_enabled),
         'recording_enabled': None if member.recording_enabled is None else int(member.recording_enabled),
         'active': None if member.active is None else int(member.active),
@@ -8379,26 +9095,35 @@ async def get_team_analytics(token: str = Query(None)):
 async def get_team_member_companies(team_member_id: int, token: str = Query(None)):
     """Companies this team member has worked with - derived from all deals assigned to them
     (explicitly via assigned_team_member_id, or via legacy login-linked owner_id). Each company
-    appears once even if they have multiple deals with the same company."""
-    get_current_user(token)
+    appears once even if they have multiple deals with the same company.
+
+    Filtered to the CALLER's own company-visibility scope (found during the final security
+    audit - the mirror image of get_company_team_members: that endpoint could leak which
+    employees work at an inaccessible Company, and this one could equally leak which companies
+    an inaccessible peer/report has worked with). A company only appears here if the caller
+    could also see it via GET /api/companies."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT user_id FROM team_members WHERE id = ?", (team_member_id,))
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Team member not found")
         uid = row['user_id'] if row['user_id'] is not None else -1
 
-        cursor.execute(
-            """
+        query = """
             SELECT DISTINCT companies.* FROM companies
             INNER JOIN deals ON deals.company_id = companies.id
-            WHERE deals.assigned_team_member_id = ? OR (deals.owner_id = ? AND deals.assigned_team_member_id IS NULL)
-            ORDER BY companies.name
-            """,
-            (team_member_id, uid)
-        )
+            WHERE (deals.assigned_team_member_id = ? OR (deals.owner_id = ? AND deals.assigned_team_member_id IS NULL))
+        """
+        params = [team_member_id, uid]
+        if scope is not None:
+            clause, scope_params = company_visibility_sql(scope)
+            query += " AND " + clause
+            params += scope_params
+        cursor.execute(query + " ORDER BY companies.name", params)
         companies = [dict(row) for row in cursor.fetchall()]
 
     return companies

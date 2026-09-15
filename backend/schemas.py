@@ -919,6 +919,7 @@ class TeamMemberCreate(BaseModel):
     role: str  # admin, team_lead, location_head, employee
     email: Optional[str] = None
     phone: Optional[str] = None  # canonical personal calling number (Phase 1)
+    reports_to: Optional[int] = None  # this member's manager's team_members.id (data-visibility feature)
 
 class TeamMemberUpdate(BaseModel):
     name: Optional[str] = None
@@ -929,6 +930,7 @@ class TeamMemberUpdate(BaseModel):
     recording_enabled: Optional[bool] = None
     active: Optional[bool] = None
     user_id: Optional[int] = None  # links this roster entry to a login account (see get_my_team_member)
+    reports_to: Optional[int] = None  # this member's manager's team_members.id (data-visibility feature)
 
 class TeamMemberResponse(BaseModel):
     id: int
@@ -943,6 +945,8 @@ class TeamMemberResponse(BaseModel):
     active: bool = True
     phone_verification_status: str = "unverified"
     phone_verified_at: Optional[datetime] = None
+    reports_to: Optional[int] = None
+    reports_to_name: Optional[str] = None
 
 class TeamProductivityRow(BaseModel):
     id: int

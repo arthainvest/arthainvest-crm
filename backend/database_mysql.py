@@ -599,6 +599,10 @@ def init_db():
         _add_column_if_missing(cursor, "team_members", "active", "TINYINT(1) DEFAULT 1")
         _add_column_if_missing(cursor, "team_members", "phone_verification_status", "VARCHAR(20) DEFAULT 'unverified'")
         _add_column_if_missing(cursor, "team_members", "phone_verified_at", "DATETIME")
+        # Data-visibility feature: the team_members.id this member reports to (one level only -
+        # a manager sees their direct reports' records, not a transitive chain). Plain INT, no
+        # FK, matching every other column on this table.
+        _add_column_if_missing(cursor, "team_members", "reports_to", "INT")
 
         # Bridges triggering a Priti (Vapi) voice call and Vapi's later end-of-call-report
         # webhook, which only carries the call's own id. Its PK isn't named `id` (the one

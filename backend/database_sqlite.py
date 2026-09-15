@@ -736,6 +736,11 @@ def init_db():
             "ALTER TABLE team_members ADD COLUMN active INTEGER DEFAULT 1",
             "ALTER TABLE team_members ADD COLUMN phone_verification_status TEXT DEFAULT 'unverified'",
             "ALTER TABLE team_members ADD COLUMN phone_verified_at TIMESTAMP",
+            # Data-visibility feature: the team_members.id this member reports to (one level
+            # only - a manager sees their direct reports' records, not a transitive chain). No
+            # FK, matching the rest of this file's additive columns - FK clauses in this file
+            # are inert anyway since PRAGMA foreign_keys is never turned on.
+            "ALTER TABLE team_members ADD COLUMN reports_to INTEGER",
         ]:
             try:
                 cursor.execute(ddl)

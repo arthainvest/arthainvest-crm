@@ -18,7 +18,7 @@ const ROLE_LABELS = {
 
 const ROLE_ORDER = ['admin', 'team_lead', 'location_head', 'business_manager', 'employee'];
 
-const emptyForm = { name: '', role: 'employee', email: '', phone: '', calling_enabled: true, recording_enabled: false, active: true };
+const emptyForm = { name: '', role: 'employee', email: '', phone: '', calling_enabled: true, recording_enabled: false, active: true, reports_to: null };
 
 export default function Team() {
   const [members, setMembers] = useState([]);
@@ -63,7 +63,7 @@ export default function Team() {
     setForm({
       name: member.name, role: member.role, email: member.email || '', phone: member.phone || '',
       calling_enabled: member.calling_enabled !== false, recording_enabled: !!member.recording_enabled,
-      active: member.active !== false
+      active: member.active !== false, reports_to: member.reports_to || null
     });
     setShowForm(true);
   };
@@ -336,6 +336,18 @@ export default function Team() {
                   <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                     {ROLE_ORDER.map((role) => (
                       <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Reports To</label>
+                  <select
+                    value={form.reports_to ?? ''}
+                    onChange={(e) => setForm({ ...form, reports_to: e.target.value ? Number(e.target.value) : null })}
+                  >
+                    <option value="">— None —</option>
+                    {members.filter((m) => m.id !== editingId).map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
                   </select>
                 </div>

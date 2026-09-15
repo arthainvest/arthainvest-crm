@@ -9,6 +9,8 @@ since that part genuinely is this codebase's own logic and needs no external ser
 """
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 
 def test_connect_returns_not_configured_without_credentials(auth_client):
     resp = auth_client.get("/api/integrations/google/connect")
@@ -258,3 +260,189 @@ def test_import_empty_sheet_reports_no_rows(auth_client, client, monkeypatch):
     assert resp.status_code == 200
     data = resp.json()
     assert data["created"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Security fix: export must respect the caller's Contact/Lead visibility scope,
+# not dump the whole table just because the destination is external.
+# ---------------------------------------------------------------------------
+
+def _register_and_login(client, admin_token, username, role="employee"):
+    resp = client.post(
+        f"/api/auth/register?token={admin_token}",
+        json={"username": username, "email": f"{username}@example.com",
+              "password": "pass12345", "full_name": username, "role": role},
+    )
+    assert resp.status_code == 200, resp.text
+    user_id = resp.json()["id"]
+    login = client.post("/api/auth/login", json={"username": username, "password": "pass12345"})
+    assert login.status_code == 200
+    return user_id, login.json()["access_token"]
+
+
+class _TokenedClient:
+    def __init__(self, client, token):
+        self._c = client
+        self._token = token
+
+    def _url(self, path):
+        sep = '&' if '?' in path else '?'
+        return f"{path}{sep}token={self._token}"
+
+    def get(self, path, **kw):
+        return self._c.get(self._url(path), **kw)
+
+    def post(self, path, **kw):
+        return self._c.post(self._url(path), **kw)
+
+    def put(self, path, **kw):
+        return self._c.put(self._url(path), **kw)
+
+
+def _connect_fake_google_account_as(export_client, client, monkeypatch):
+    """Same as _connect_fake_google_account, but for an arbitrary employee's client rather
+    than always the seeded admin, so a non-admin can have their own Google connection."""
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "fake-client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "fake-client-secret")
+    monkeypatch.setenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/integrations/google/callback")
+    fake_token_response = MagicMock()
+    fake_token_response.json.return_value = {"access_token": "a", "refresh_token": "r", "expires_in": 3600}
+    fake_token_response.raise_for_status = MagicMock()
+    fake_userinfo_response = MagicMock()
+    fake_userinfo_response.json.return_value = {"email": f"{export_client._token[:8]}@example.com"}
+    fake_userinfo_response.raise_for_status = MagicMock()
+    with patch("requests.post", return_value=fake_token_response), \
+         patch("requests.get", return_value=fake_userinfo_response):
+        client.get("/api/integrations/google/callback", params={"code": "c", "state": export_client._token}, follow_redirects=False)
+
+
+def _export(export_client, entity, client, monkeypatch):
+    """Runs the export with requests.put mocked, returns (response_json, captured_rows)."""
+    _connect_fake_google_account_as(export_client, client, monkeypatch)
+    fake_put_response = MagicMock()
+    fake_put_response.status_code = 200
+    captured = {}
+
+    def fake_put(url, headers=None, params=None, json=None, timeout=None):
+        captured['body'] = json
+        return fake_put_response
+
+    with patch("requests.put", side_effect=fake_put):
+        resp = export_client.post("/api/integrations/google-sheets/export", json={
+            "spreadsheet_id": "fake-sheet-id", "sheet_name": "Sheet1", "entity": entity
+        })
+    return resp.json(), captured.get('body', {}).get('values', [])
+
+
+@pytest.fixture()
+def export_hierarchy(client, auth_client, auth_token):
+    """A manager (Samiksha-equivalent) with two direct reports (Chirag/Amol-equivalent),
+    mirroring the reporting structure the core access-control feature was built and tested
+    against, but self-contained in this file rather than importing the other test module's
+    fixture."""
+    samiksha_uid, samiksha_token = _register_and_login(client, auth_token, "samiksha_sheets")
+    chirag_uid, chirag_token = _register_and_login(client, auth_token, "chirag_sheets")
+    amol_uid, amol_token = _register_and_login(client, auth_token, "amol_sheets")
+
+    samiksha_tm = auth_client.post("/api/team", json={"name": "Samiksha Sheets", "role": "employee"}).json()
+    chirag_tm = auth_client.post("/api/team", json={"name": "Chirag Sheets", "role": "employee"}).json()
+    amol_tm = auth_client.post("/api/team", json={"name": "Amol Sheets", "role": "employee"}).json()
+    auth_client.put(f"/api/team/{samiksha_tm['id']}", json={"user_id": samiksha_uid})
+    auth_client.put(f"/api/team/{chirag_tm['id']}", json={"user_id": chirag_uid, "reports_to": samiksha_tm['id']})
+    auth_client.put(f"/api/team/{amol_tm['id']}", json={"user_id": amol_uid, "reports_to": samiksha_tm['id']})
+
+    return {
+        "admin": auth_client,
+        "samiksha": _TokenedClient(client, samiksha_token), "samiksha_tm_id": samiksha_tm['id'],
+        "chirag": _TokenedClient(client, chirag_token), "chirag_tm_id": chirag_tm['id'],
+        "amol": _TokenedClient(client, amol_token), "amol_tm_id": amol_tm['id'],
+    }
+
+
+def test_export_admin_contacts_unrestricted(export_hierarchy, client, monkeypatch):
+    """A. Admin Contact export - all permitted (i.e. all) Contacts exported."""
+    h = export_hierarchy
+    chirag_contact = h["chirag"].post("/api/contacts", json={"name": "Chirag Export Contact", "phone": "9990000030"}).json()
+    h["admin"].put(f"/api/contacts/{chirag_contact['id']}/assign", json={"team_member_id": h["chirag_tm_id"]})
+    amol_contact = h["amol"].post("/api/contacts", json={"name": "Amol Export Contact", "phone": "9990000031"}).json()
+    h["admin"].put(f"/api/contacts/{amol_contact['id']}/assign", json={"team_member_id": h["amol_tm_id"]})
+
+    body, rows = _export(h["admin"], "contacts", client, monkeypatch)
+    assert body["configured"] is True
+    names = [r[0] for r in rows[1:]]
+    assert "Chirag Export Contact" in names
+    assert "Amol Export Contact" in names
+
+
+def test_export_non_admin_contacts_scoped_to_own_visibility(export_hierarchy, client, monkeypatch):
+    """B, E. Non-admin Contact export contains only visible Contacts - Chirag cannot export
+    Amol's Contacts, and vice versa."""
+    h = export_hierarchy
+    chirag_contact = h["chirag"].post("/api/contacts", json={"name": "Chirag Only Export", "phone": "9990000032"}).json()
+    h["admin"].put(f"/api/contacts/{chirag_contact['id']}/assign", json={"team_member_id": h["chirag_tm_id"]})
+    amol_contact = h["amol"].post("/api/contacts", json={"name": "Amol Only Export", "phone": "9990000033"}).json()
+    h["admin"].put(f"/api/contacts/{amol_contact['id']}/assign", json={"team_member_id": h["amol_tm_id"]})
+
+    body, rows = _export(h["chirag"], "contacts", client, monkeypatch)
+    names = [r[0] for r in rows[1:]]
+    assert "Chirag Only Export" in names
+    assert "Amol Only Export" not in names
+    # No trace of Amol's data anywhere in the response, including row count/metadata.
+    assert body["rows_written"] == len(rows) - 1
+
+    body2, rows2 = _export(h["amol"], "contacts", client, monkeypatch)
+    names2 = [r[0] for r in rows2[1:]]
+    assert "Amol Only Export" in names2
+    assert "Chirag Only Export" not in names2
+
+
+def test_export_manager_sees_reports_contacts(export_hierarchy, client, monkeypatch):
+    """F. Samiksha (manager) exports her own permitted Contacts, including her direct
+    reports' - Chirag's and Amol's."""
+    h = export_hierarchy
+    chirag_contact = h["chirag"].post("/api/contacts", json={"name": "Chirag Manager-Visible", "phone": "9990000034"}).json()
+    h["admin"].put(f"/api/contacts/{chirag_contact['id']}/assign", json={"team_member_id": h["chirag_tm_id"]})
+
+    body, rows = _export(h["samiksha"], "contacts", client, monkeypatch)
+    names = [r[0] for r in rows[1:]]
+    assert "Chirag Manager-Visible" in names
+
+
+def test_export_admin_leads_unrestricted(export_hierarchy, client, monkeypatch):
+    """C. Admin Lead export - all permitted Leads exported."""
+    h = export_hierarchy
+    chirag_lead = h["chirag"].post("/api/leads", json={"name": "Chirag Export Lead", "phone": "9990000035"}).json()
+    h["admin"].put(f"/api/leads/{chirag_lead['id']}/assign", json={"team_member_id": h["chirag_tm_id"]})
+
+    body, rows = _export(h["admin"], "leads", client, monkeypatch)
+    names = [r[0] for r in rows[1:]]
+    assert "Chirag Export Lead" in names
+
+
+def test_export_non_admin_leads_scoped_to_own_visibility(export_hierarchy, client, monkeypatch):
+    """D, E. Non-admin Lead export contains only visible Leads - peer isolation holds for
+    Leads too, not just Contacts."""
+    h = export_hierarchy
+    chirag_lead = h["chirag"].post("/api/leads", json={"name": "Chirag Only Lead Export", "phone": "9990000036"}).json()
+    h["admin"].put(f"/api/leads/{chirag_lead['id']}/assign", json={"team_member_id": h["chirag_tm_id"]})
+    amol_lead = h["amol"].post("/api/leads", json={"name": "Amol Only Lead Export", "phone": "9990000037"}).json()
+    h["admin"].put(f"/api/leads/{amol_lead['id']}/assign", json={"team_member_id": h["amol_tm_id"]})
+
+    body, rows = _export(h["chirag"], "leads", client, monkeypatch)
+    names = [r[0] for r in rows[1:]]
+    assert "Chirag Only Lead Export" in names
+    assert "Amol Only Lead Export" not in names
+
+
+def test_export_no_hidden_record_leakage_in_response_metadata(export_hierarchy, client, monkeypatch):
+    """G, H. The export response itself (row count, message text) must not disclose that
+    inaccessible records exist - it should read exactly as if the invisible records simply
+    aren't in the database at all, from Chirag's point of view."""
+    h = export_hierarchy
+    amol_contact = h["amol"].post("/api/contacts", json={"name": "Amol Hidden From Metadata", "phone": "9990000038"}).json()
+    h["admin"].put(f"/api/contacts/{amol_contact['id']}/assign", json={"team_member_id": h["amol_tm_id"]})
+
+    body, rows = _export(h["chirag"], "contacts", client, monkeypatch)
+    assert "Amol" not in body["message"]
+    assert str(amol_contact["id"]) not in body["message"]
+    assert body["rows_written"] == len(rows) - 1  # header row excluded, count matches only what Chirag can see
