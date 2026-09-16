@@ -464,21 +464,30 @@ def fetch_task_with_member_name(cursor, task_id, scope):
         task.pop(k, None)
     return task
 
-def fetch_meeting_with_names(cursor, meeting_id):
+def fetch_meeting_with_names(cursor, meeting_id, scope):
     """Same join-by-id pattern as fetch_deal_with_member_name, for meetings - also resolves
     the linked lead/contact name, if any, so the Today page doesn't need a second round-trip
     per meeting just to show who it's with. deal_label is built the same way as
-    fetch_lead_with_member_name's, since a Deal has no name of its own."""
+    fetch_lead_with_member_name's, since a Deal has no name of its own.
+
+    `scope` gates every cross-entity display field the same way fetch_lead_with_member_name
+    does - a visible Meeting does not automatically make its linked Lead/Contact/Company/Deal/
+    Call/Task/Quotation visible too, each has its own independent visibility rule.
+    assigned_team_member_name is NOT redacted - it's the Meeting's own ownership metadata, same
+    precedent as every other entity."""
     cursor.execute(
         """
         SELECT meetings.*, team_members.name as assigned_team_member_name,
-               leads.name as lead_name, contacts.name as contact_name,
+               leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+               contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                companies.name as company_name,
                deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+               deals.owner_id as _deal_owner_id, deals.assigned_team_member_id as _deal_assigned_team_member_id,
                deal_leads.name as deal_lead_name,
-               calls.name as call_name,
-               tasks.title as task_name,
-               quotations.title as quotation_title
+               deal_leads.created_by as _deal_lead_created_by, deal_leads.assigned_team_member_id as _deal_lead_assigned_team_member_id,
+               calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+               tasks.title as task_name, tasks.created_by as _task_created_by, tasks.assigned_team_member_id as _task_assigned_team_member_id,
+               quotations.title as quotation_title, quotations.created_by as _quotation_created_by
         FROM meetings
         LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
         LEFT JOIN leads ON leads.id = meetings.lead_id
@@ -495,13 +504,31 @@ def fetch_meeting_with_names(cursor, meeting_id):
     )
     row = cursor.fetchone()
     meeting = dict(row)
-    if meeting.get('deal_id'):
+
+    redact_if_not_visible(scope, meeting, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+    redact_if_not_visible(scope, meeting, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+    redact_if_not_visible(scope, meeting, ["call_name"], user_id_col="_call_created_by", team_member_id_col="_call_team_member_id")
+    redact_if_not_visible(scope, meeting, ["task_name"], user_id_col="_task_created_by", team_member_id_col="_task_assigned_team_member_id")
+    redact_if_not_visible(scope, meeting, ["quotation_title"], user_id_col="_quotation_created_by")
+    if scope is not None and meeting.get('company_id') and not is_company_visible(cursor, scope, meeting['company_id']):
+        meeting['company_name'] = None
+
+    deal_visible = is_record_visible(scope, meeting, user_id_cols=["_deal_owner_id"], team_member_id_cols=["_deal_assigned_team_member_id"])
+    deal_lead_visible = is_record_visible(scope, meeting, user_id_cols=["_deal_lead_created_by"], team_member_id_cols=["_deal_lead_assigned_team_member_id"])
+    if meeting.get('deal_id') and deal_visible:
+        deal_lead_name = meeting.get('deal_lead_name') if deal_lead_visible else None
         meeting['deal_label'] = (
-            f"{meeting.get('deal_lead_name') or 'Deal'} - {meeting.get('deal_loan_product') or ''} "
+            f"{deal_lead_name or 'Deal'} - {meeting.get('deal_loan_product') or ''} "
             f"(Rs {meeting.get('deal_deal_value') or 0:,.0f})"
         )
     else:
         meeting['deal_label'] = None
+
+    for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id",
+              "_call_created_by", "_call_team_member_id", "_task_created_by", "_task_assigned_team_member_id",
+              "_quotation_created_by", "_deal_owner_id", "_deal_assigned_team_member_id",
+              "_deal_lead_created_by", "_deal_lead_assigned_team_member_id"):
+        meeting.pop(k, None)
     return meeting
 
 def campaign_row_to_dict(row):
@@ -4499,22 +4526,30 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
     """Meetings scheduled on a given date (defaults to today) - the Today page's Meetings tab.
     assigned_team_member_id switches to an all-dates filter instead, used by the Team/Reports
     pages' per-member drill-down so it matches what /api/analytics/team's meetings_conducted
-    figure actually counts (every meeting ever assigned to them, not just today's)."""
-    get_current_user(token)
+    figure actually counts (every meeting ever assigned to them, not just today's).
+
+    Both branches AND the caller's own visibility scope into the drill-down/date filter -
+    the assigned_team_member_id param narrows WITHIN what the caller may see, it never expands
+    beyond it (an employee asking for a peer's assigned_team_member_id gets zero rows, not the
+    peer's meetings)."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         if assigned_team_member_id is not None:
-            cursor.execute(
-                """
+            query = """
                 SELECT meetings.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name,
+                       leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                       contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                        companies.name as company_name,
                        deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+                       deals.owner_id as _deal_owner_id, deals.assigned_team_member_id as _deal_assigned_team_member_id,
                        deal_leads.name as deal_lead_name,
-                       calls.name as call_name,
-                       tasks.title as task_name,
-                       quotations.title as quotation_title
+                       deal_leads.created_by as _deal_lead_created_by, deal_leads.assigned_team_member_id as _deal_lead_assigned_team_member_id,
+                       calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+                       tasks.title as task_name, tasks.created_by as _task_created_by, tasks.assigned_team_member_id as _task_assigned_team_member_id,
+                       quotations.title as quotation_title, quotations.created_by as _quotation_created_by
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
@@ -4526,21 +4561,27 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                 LEFT JOIN tasks ON tasks.id = meetings.task_id
                 LEFT JOIN quotations ON quotations.id = meetings.quotation_id
                 WHERE meetings.assigned_team_member_id = ?
-                ORDER BY meetings.meeting_date DESC, meetings.meeting_time ASC
-                """,
-                (assigned_team_member_id,)
-            )
+            """
+            params = [assigned_team_member_id]
+            if scope is not None:
+                clause, scope_params = scope_filter_sql(scope, user_id_cols=["meetings.created_by"], team_member_id_cols=["meetings.assigned_team_member_id"])
+                query += " AND " + clause
+                params.extend(scope_params)
+            query += " ORDER BY meetings.meeting_date DESC, meetings.meeting_time ASC"
+            cursor.execute(query, params)
         else:
-            cursor.execute(
-                f"""
+            query = f"""
                 SELECT meetings.*, team_members.name as assigned_team_member_name,
-                       leads.name as lead_name, contacts.name as contact_name,
+                       leads.name as lead_name, leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                       contacts.name as contact_name, contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id,
                        companies.name as company_name,
                        deals.loan_product as deal_loan_product, deals.deal_value as deal_deal_value,
+                       deals.owner_id as _deal_owner_id, deals.assigned_team_member_id as _deal_assigned_team_member_id,
                        deal_leads.name as deal_lead_name,
-                       calls.name as call_name,
-                       tasks.title as task_name,
-                       quotations.title as quotation_title
+                       deal_leads.created_by as _deal_lead_created_by, deal_leads.assigned_team_member_id as _deal_lead_assigned_team_member_id,
+                       calls.name as call_name, calls.created_by as _call_created_by, calls.team_member_id as _call_team_member_id,
+                       tasks.title as task_name, tasks.created_by as _task_created_by, tasks.assigned_team_member_id as _task_assigned_team_member_id,
+                       quotations.title as quotation_title, quotations.created_by as _quotation_created_by
                 FROM meetings
                 LEFT JOIN team_members ON team_members.id = meetings.assigned_team_member_id
                 LEFT JOIN leads ON leads.id = meetings.lead_id
@@ -4552,19 +4593,40 @@ async def get_meetings(token: str = Query(None), date: str = Query(None), assign
                 LEFT JOIN tasks ON tasks.id = meetings.task_id
                 LEFT JOIN quotations ON quotations.id = meetings.quotation_id
                 WHERE meetings.meeting_date = COALESCE(?, {db_compat.sql_today()})
-                ORDER BY meetings.meeting_time ASC, meetings.created_at ASC
-                """,
-                (date,)
-            )
+            """
+            params = [date]
+            if scope is not None:
+                clause, scope_params = scope_filter_sql(scope, user_id_cols=["meetings.created_by"], team_member_id_cols=["meetings.assigned_team_member_id"])
+                query += " AND " + clause
+                params.extend(scope_params)
+            query += " ORDER BY meetings.meeting_time ASC, meetings.created_at ASC"
+            cursor.execute(query, params)
         meetings = [dict(row) for row in cursor.fetchall()]
         for meeting in meetings:
-            if meeting.get('deal_id'):
+            redact_if_not_visible(scope, meeting, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            redact_if_not_visible(scope, meeting, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+            redact_if_not_visible(scope, meeting, ["call_name"], user_id_col="_call_created_by", team_member_id_col="_call_team_member_id")
+            redact_if_not_visible(scope, meeting, ["task_name"], user_id_col="_task_created_by", team_member_id_col="_task_assigned_team_member_id")
+            redact_if_not_visible(scope, meeting, ["quotation_title"], user_id_col="_quotation_created_by")
+            if scope is not None and meeting.get('company_id') and not is_company_visible(cursor, scope, meeting['company_id']):
+                meeting['company_name'] = None
+
+            deal_visible = is_record_visible(scope, meeting, user_id_cols=["_deal_owner_id"], team_member_id_cols=["_deal_assigned_team_member_id"])
+            deal_lead_visible = is_record_visible(scope, meeting, user_id_cols=["_deal_lead_created_by"], team_member_id_cols=["_deal_lead_assigned_team_member_id"])
+            if meeting.get('deal_id') and deal_visible:
+                deal_lead_name = meeting.get('deal_lead_name') if deal_lead_visible else None
                 meeting['deal_label'] = (
-                    f"{meeting.get('deal_lead_name') or 'Deal'} - {meeting.get('deal_loan_product') or ''} "
+                    f"{deal_lead_name or 'Deal'} - {meeting.get('deal_loan_product') or ''} "
                     f"(Rs {meeting.get('deal_deal_value') or 0:,.0f})"
                 )
             else:
                 meeting['deal_label'] = None
+
+            for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id",
+                      "_call_created_by", "_call_team_member_id", "_task_created_by", "_task_assigned_team_member_id",
+                      "_quotation_created_by", "_deal_owner_id", "_deal_assigned_team_member_id",
+                      "_deal_lead_created_by", "_deal_lead_assigned_team_member_id"):
+                meeting.pop(k, None)
 
     return meetings
 
@@ -4575,6 +4637,7 @@ async def create_meeting(meeting: MeetingCreate, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute(
             """
             INSERT INTO meetings (title, meeting_date, meeting_time, lead_id, contact_id, location, notes, created_by, assigned_team_member_id)
@@ -4585,14 +4648,14 @@ async def create_meeting(meeting: MeetingCreate, token: str = Query(None)):
         )
         conn.commit()
         meeting_id = cursor.lastrowid
-        new_meeting = fetch_meeting_with_names(cursor, meeting_id)
+        new_meeting = fetch_meeting_with_names(cursor, meeting_id, scope)
 
     return new_meeting
 
 @app.put("/api/meetings/{meeting_id}", response_model=MeetingResponse)
 async def update_meeting(meeting_id: int, meeting: MeetingUpdate, token: str = Query(None)):
     """Update a meeting - including marking it Conducted/Cancelled"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     updates = []
     values = []
@@ -4610,46 +4673,62 @@ async def update_meeting(meeting_id: int, meeting: MeetingUpdate, token: str = Q
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM meetings WHERE id = ?", (meeting_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(f"UPDATE meetings SET {', '.join(updates)} WHERE id = ?", values)
         conn.commit()
 
-        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Meeting not found")
-
-        updated_meeting = fetch_meeting_with_names(cursor, meeting_id)
+        updated_meeting = fetch_meeting_with_names(cursor, meeting_id, scope)
 
     return updated_meeting
 
 @app.delete("/api/meetings/{meeting_id}")
 async def delete_meeting(meeting_id: int, token: str = Query(None)):
     """Cancel/remove a meeting"""
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM meetings WHERE id = ?", (meeting_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
         conn.commit()
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Meeting not found")
 
     return {"message": "Meeting deleted"}
 
 @app.put("/api/meetings/{meeting_id}/company", response_model=MeetingResponse)
 async def link_meeting_company(meeting_id: int, link: MeetingCompanyAssign, token: str = Query(None)):
-    """Link (or unlink, if company_id is null) a meeting to a Company."""
-    get_current_user(token)
+    """Link (or unlink, if company_id is null) a meeting to a Company. Both the Meeting and
+    (when linking, not unlinking) the target Company must be visible to the caller before the
+    mutation runs - Company has no simple ownership column, so is_company_visible is used
+    instead of assert_record_visible for the target check."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM meetings WHERE id = ?", (meeting_id,))
+        meeting_owner = cursor.fetchone()
+        if not meeting_owner:
             raise HTTPException(status_code=404, detail="Meeting not found")
+        assert_record_visible(scope, meeting_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.company_id is not None:
             cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
             if not cursor.fetchone():
                 raise HTTPException(status_code=404, detail="Company not found")
+            if not is_company_visible(cursor, scope, link.company_id):
+                raise HTTPException(status_code=403, detail="You don't have access to this record")
 
         cursor.execute(
             "UPDATE meetings SET company_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -4657,27 +4736,31 @@ async def link_meeting_company(meeting_id: int, link: MeetingCompanyAssign, toke
         )
         conn.commit()
 
-        return fetch_meeting_with_names(cursor, meeting_id)
+        return fetch_meeting_with_names(cursor, meeting_id, scope)
 
 @app.get("/api/companies/{company_id}/meetings", response_model=list[MeetingResponse])
 async def get_company_meetings(company_id: int, token: str = Query(None)):
-    """Meetings directly linked to this Company."""
-    get_current_user(token)
+    """Meetings directly linked to this Company - filtered to the caller's own Meeting
+    visibility scope, same as every other entity's reverse-lookup route. The Company's own
+    existence is checked (404 if missing) but not its visibility, matching the established
+    precedent (e.g. get_contact_tasks) - only the returned Meetings are gated."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM companies WHERE id = ?", (company_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Company not found")
 
-        cursor.execute(
-            "SELECT id FROM meetings WHERE company_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
-            (company_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM meetings WHERE company_id = ?", [company_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="meeting_date DESC, meeting_time ASC"
         )
-        rows = cursor.fetchall()
         meetings = []
         for row in rows:
-            meeting = fetch_meeting_with_names(cursor, row['id'])
+            meeting = fetch_meeting_with_names(cursor, row['id'], scope)
             if meeting:
                 meetings.append(meeting)
 
@@ -4685,19 +4768,25 @@ async def get_company_meetings(company_id: int, token: str = Query(None)):
 
 @app.put("/api/meetings/{meeting_id}/deal", response_model=MeetingResponse)
 async def link_meeting_deal(meeting_id: int, link: MeetingDealAssign, token: str = Query(None)):
-    """Link (or unlink, if deal_id is null) a meeting to a Deal."""
-    get_current_user(token)
+    """Link (or unlink, if deal_id is null) a meeting to a Deal. Both the Meeting and (when
+    linking) the target Deal must be visible to the caller before the mutation runs."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM meetings WHERE id = ?", (meeting_id,))
+        meeting_owner = cursor.fetchone()
+        if not meeting_owner:
             raise HTTPException(status_code=404, detail="Meeting not found")
+        assert_record_visible(scope, meeting_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.deal_id is not None:
-            cursor.execute("SELECT 1 FROM deals WHERE id = ?", (link.deal_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT owner_id, assigned_team_member_id FROM deals WHERE id = ?", (link.deal_id,))
+            deal_owner = cursor.fetchone()
+            if not deal_owner:
                 raise HTTPException(status_code=404, detail="Deal not found")
+            assert_record_visible(scope, deal_owner, user_id_cols=["owner_id"], team_member_id_cols=["assigned_team_member_id"])
 
         cursor.execute(
             "UPDATE meetings SET deal_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -4705,27 +4794,28 @@ async def link_meeting_deal(meeting_id: int, link: MeetingDealAssign, token: str
         )
         conn.commit()
 
-        return fetch_meeting_with_names(cursor, meeting_id)
+        return fetch_meeting_with_names(cursor, meeting_id, scope)
 
 @app.get("/api/deals/{deal_id}/meetings", response_model=list[MeetingResponse])
 async def get_deal_meetings(deal_id: int, token: str = Query(None)):
-    """Meetings linked to this Deal."""
-    get_current_user(token)
+    """Meetings linked to this Deal - filtered to the caller's own Meeting visibility scope."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Deal not found")
 
-        cursor.execute(
-            "SELECT id FROM meetings WHERE deal_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
-            (deal_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM meetings WHERE deal_id = ?", [deal_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="meeting_date DESC, meeting_time ASC"
         )
-        rows = cursor.fetchall()
         meetings = []
         for row in rows:
-            meeting = fetch_meeting_with_names(cursor, row['id'])
+            meeting = fetch_meeting_with_names(cursor, row['id'], scope)
             if meeting:
                 meetings.append(meeting)
 
@@ -4733,19 +4823,25 @@ async def get_deal_meetings(deal_id: int, token: str = Query(None)):
 
 @app.put("/api/meetings/{meeting_id}/call", response_model=MeetingResponse)
 async def link_meeting_call(meeting_id: int, link: MeetingCallAssign, token: str = Query(None)):
-    """Link (or unlink, if call_id is null) a meeting to a Call."""
-    get_current_user(token)
+    """Link (or unlink, if call_id is null) a meeting to a Call. Both the Meeting and (when
+    linking) the target Call must be visible to the caller before the mutation runs."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM meetings WHERE id = ?", (meeting_id,))
+        meeting_owner = cursor.fetchone()
+        if not meeting_owner:
             raise HTTPException(status_code=404, detail="Meeting not found")
+        assert_record_visible(scope, meeting_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.call_id is not None:
-            cursor.execute("SELECT 1 FROM calls WHERE id = ?", (link.call_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT created_by, team_member_id FROM calls WHERE id = ?", (link.call_id,))
+            call_owner = cursor.fetchone()
+            if not call_owner:
                 raise HTTPException(status_code=404, detail="Call not found")
+            assert_record_visible(scope, call_owner, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
 
         cursor.execute(
             "UPDATE meetings SET call_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -4753,27 +4849,28 @@ async def link_meeting_call(meeting_id: int, link: MeetingCallAssign, token: str
         )
         conn.commit()
 
-        return fetch_meeting_with_names(cursor, meeting_id)
+        return fetch_meeting_with_names(cursor, meeting_id, scope)
 
 @app.get("/api/calls/{call_id}/meetings", response_model=list[MeetingResponse])
 async def get_call_meetings(call_id: int, token: str = Query(None)):
-    """Meetings linked to this Call."""
-    get_current_user(token)
+    """Meetings linked to this Call - filtered to the caller's own Meeting visibility scope."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM calls WHERE id = ?", (call_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Call not found")
 
-        cursor.execute(
-            "SELECT id FROM meetings WHERE call_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
-            (call_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM meetings WHERE call_id = ?", [call_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="meeting_date DESC, meeting_time ASC"
         )
-        rows = cursor.fetchall()
         meetings = []
         for row in rows:
-            meeting = fetch_meeting_with_names(cursor, row['id'])
+            meeting = fetch_meeting_with_names(cursor, row['id'], scope)
             if meeting:
                 meetings.append(meeting)
 
@@ -4781,19 +4878,25 @@ async def get_call_meetings(call_id: int, token: str = Query(None)):
 
 @app.put("/api/meetings/{meeting_id}/task", response_model=MeetingResponse)
 async def link_meeting_task(meeting_id: int, link: MeetingTaskAssign, token: str = Query(None)):
-    """Link (or unlink, if task_id is null) a meeting to a Task."""
-    get_current_user(token)
+    """Link (or unlink, if task_id is null) a meeting to a Task. Both the Meeting and (when
+    linking) the target Task must be visible to the caller before the mutation runs."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM meetings WHERE id = ?", (meeting_id,))
+        meeting_owner = cursor.fetchone()
+        if not meeting_owner:
             raise HTTPException(status_code=404, detail="Meeting not found")
+        assert_record_visible(scope, meeting_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.task_id is not None:
-            cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (link.task_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT created_by, assigned_team_member_id FROM tasks WHERE id = ?", (link.task_id,))
+            task_owner = cursor.fetchone()
+            if not task_owner:
                 raise HTTPException(status_code=404, detail="Task not found")
+            assert_record_visible(scope, task_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         cursor.execute(
             "UPDATE meetings SET task_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -4801,27 +4904,28 @@ async def link_meeting_task(meeting_id: int, link: MeetingTaskAssign, token: str
         )
         conn.commit()
 
-        return fetch_meeting_with_names(cursor, meeting_id)
+        return fetch_meeting_with_names(cursor, meeting_id, scope)
 
 @app.get("/api/tasks/{task_id}/meetings", response_model=list[MeetingResponse])
 async def get_task_meetings(task_id: int, token: str = Query(None)):
-    """Meetings linked to this Task."""
-    get_current_user(token)
+    """Meetings linked to this Task - filtered to the caller's own Meeting visibility scope."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Task not found")
 
-        cursor.execute(
-            "SELECT id FROM meetings WHERE task_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
-            (task_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM meetings WHERE task_id = ?", [task_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="meeting_date DESC, meeting_time ASC"
         )
-        rows = cursor.fetchall()
         meetings = []
         for row in rows:
-            meeting = fetch_meeting_with_names(cursor, row['id'])
+            meeting = fetch_meeting_with_names(cursor, row['id'], scope)
             if meeting:
                 meetings.append(meeting)
 
@@ -4829,19 +4933,26 @@ async def get_task_meetings(task_id: int, token: str = Query(None)):
 
 @app.put("/api/meetings/{meeting_id}/quotation", response_model=MeetingResponse)
 async def link_meeting_quotation(meeting_id: int, link: MeetingQuotationAssign, token: str = Query(None)):
-    """Link (or unlink, if quotation_id is null) a meeting to a Quotation."""
-    get_current_user(token)
+    """Link (or unlink, if quotation_id is null) a meeting to a Quotation. Both the Meeting and
+    (when linking) the target Quotation must be visible to the caller before the mutation runs.
+    Quotation is creator-only (no assignee column)."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM meetings WHERE id = ?", (meeting_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM meetings WHERE id = ?", (meeting_id,))
+        meeting_owner = cursor.fetchone()
+        if not meeting_owner:
             raise HTTPException(status_code=404, detail="Meeting not found")
+        assert_record_visible(scope, meeting_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         if link.quotation_id is not None:
-            cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (link.quotation_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT created_by FROM quotations WHERE id = ?", (link.quotation_id,))
+            quotation_owner = cursor.fetchone()
+            if not quotation_owner:
                 raise HTTPException(status_code=404, detail="Quotation not found")
+            assert_record_visible(scope, quotation_owner, user_id_cols=["created_by"])
 
         cursor.execute(
             "UPDATE meetings SET quotation_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -4849,27 +4960,28 @@ async def link_meeting_quotation(meeting_id: int, link: MeetingQuotationAssign, 
         )
         conn.commit()
 
-        return fetch_meeting_with_names(cursor, meeting_id)
+        return fetch_meeting_with_names(cursor, meeting_id, scope)
 
 @app.get("/api/quotations/{quotation_id}/meetings", response_model=list[MeetingResponse])
 async def get_quotation_meetings(quotation_id: int, token: str = Query(None)):
-    """Meetings linked to this Quotation."""
-    get_current_user(token)
+    """Meetings linked to this Quotation - filtered to the caller's own Meeting visibility scope."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT 1 FROM quotations WHERE id = ?", (quotation_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Quotation not found")
 
-        cursor.execute(
-            "SELECT id FROM meetings WHERE quotation_id = ? ORDER BY meeting_date DESC, meeting_time ASC",
-            (quotation_id,)
+        rows = scoped_rows(
+            cursor, "SELECT id FROM meetings WHERE quotation_id = ?", [quotation_id], scope,
+            user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"],
+            order_by="meeting_date DESC, meeting_time ASC"
         )
-        rows = cursor.fetchall()
         meetings = []
         for row in rows:
-            meeting = fetch_meeting_with_names(cursor, row['id'])
+            meeting = fetch_meeting_with_names(cursor, row['id'], scope)
             if meeting:
                 meetings.append(meeting)
 
@@ -6292,22 +6404,47 @@ async def send_email_real(payload: EmailSendRequest, token: str = Query(None)):
 @app.get("/api/communication-log", response_model=list[CommunicationLogResponse])
 async def get_communication_log(token: str = Query(None), channel: str = Query(None), limit: int = Query(100)):
     """Real send history for Email/WhatsApp/SMS, most recent first - the Calls page's Emails
-    and WhatsApp tabs (mirrors how Kylas groups Call Logs/Emails/WhatsApp together)."""
-    get_current_user(token)
+    and WhatsApp tabs (mirrors how Kylas groups Call Logs/Emails/WhatsApp together).
+
+    Visibility is creator-only (communication_log.created_by) - a linked Lead/Contact does NOT
+    grant visibility to the communication record itself, only to whether its denormalized
+    lead_name/contact_name may be shown (see redaction below). A message sent by one employee
+    about a Lead assigned to another employee is still that sender's own record, not the Lead
+    owner's - the actual message/subject/recipient content must not leak just because the
+    recipient's Lead or Contact happens to be visible to someone else."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         base_query = """
-            SELECT communication_log.*, leads.name as lead_name, contacts.name as contact_name
+            SELECT communication_log.*, leads.name as lead_name, contacts.name as contact_name,
+                   leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id
             FROM communication_log
             LEFT JOIN leads ON leads.id = communication_log.lead_id
             LEFT JOIN contacts ON contacts.id = communication_log.contact_id
         """
+        conditions = []
+        params = []
         if channel:
-            cursor.execute(base_query + " WHERE communication_log.channel = ? ORDER BY communication_log.created_at DESC LIMIT ?", (channel, limit))
-        else:
-            cursor.execute(base_query + " ORDER BY communication_log.created_at DESC LIMIT ?", (limit,))
+            conditions.append("communication_log.channel = ?")
+            params.append(channel)
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["communication_log.created_by"])
+            conditions.append(clause)
+            params.extend(scope_params)
+        if conditions:
+            base_query += " WHERE " + " AND ".join(conditions)
+        base_query += " ORDER BY communication_log.created_at DESC LIMIT ?"
+        params.append(limit)
+        cursor.execute(base_query, params)
         rows = [dict(r) for r in cursor.fetchall()]
+        for row in rows:
+            redact_if_not_visible(scope, row, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            redact_if_not_visible(scope, row, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+            for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id"):
+                row.pop(k, None)
 
     return rows
 
@@ -6453,17 +6590,32 @@ async def get_activities(
 ):
     """Merges communication_log (Email/WhatsApp/SMS sends), calls, tasks, meetings and campaign
     memberships into one chronological timeline, instead of checking five separate tabs - Kylas
-    groups these under Campaigns > Activities. lead_id/contact_id scope the feed to a single
-    Lead/Contact's own timeline - what the Notes & Follow-up modal's Activity tab shows on
-    Leads/Contacts. Campaign membership (campaign_recipients) was previously only visible from
-    the Marketing page's own recipient list - a one-way Campaign -> its recipients link with no
-    way to see, from a Lead/Contact's own view, which campaigns they'd been added to."""
-    get_current_user(token)
+    groups these under Campaigns > Activities. lead_id/contact_id remain ordinary filters that
+    narrow WITHIN the caller's own visibility scope - they never expand beyond it, so supplying
+    another employee's Lead/Contact id returns only whatever slice of that id's activity the
+    caller can already see (possibly none), not a bypass. Campaign membership (campaign_recipients)
+    was previously only visible from the Marketing page's own recipient list - a one-way
+    Campaign -> its recipients link with no way to see, from a Lead/Contact's own view, which
+    campaigns they'd been added to.
+
+    Each of the five sources is scoped in its own SQL WHERE clause, before that source's own
+    LIMIT - not fetched broadly and filtered in Python - so an invisible row never consumes a
+    slot in the per-source candidate set that later gets merged and globally re-limited.
+    communication_log is creator-owned only, deliberately NOT "creator OR linked Lead/Contact
+    visibility" - the message/subject/recipient content belongs to whoever sent it, and owning
+    the Lead/Contact it happens to reference must not grant access to another employee's actual
+    communication. campaign_recipients has no owner column of its own and inherits visibility
+    from its parent campaigns.created_by."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+
         comm_query = """
-            SELECT communication_log.*, leads.name as lead_name, contacts.name as contact_name
+            SELECT communication_log.*, leads.name as lead_name, contacts.name as contact_name,
+                   leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id
             FROM communication_log
             LEFT JOIN leads ON leads.id = communication_log.lead_id
             LEFT JOIN contacts ON contacts.id = communication_log.contact_id
@@ -6476,13 +6628,19 @@ async def get_activities(
         if contact_id is not None:
             comm_query += " AND communication_log.contact_id = ?"
             comm_params.append(contact_id)
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["communication_log.created_by"])
+            comm_query += " AND " + clause
+            comm_params.extend(scope_params)
         comm_query += " ORDER BY communication_log.created_at DESC LIMIT ?"
         comm_params.append(limit)
         cursor.execute(comm_query, comm_params)
         comm_rows = [dict(r) for r in cursor.fetchall()]
 
         call_query = """
-            SELECT calls.*, leads.name as lead_name, contacts.name as contact_name
+            SELECT calls.*, leads.name as lead_name, contacts.name as contact_name,
+                   leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id
             FROM calls
             LEFT JOIN leads ON leads.id = calls.lead_id
             LEFT JOIN contacts ON contacts.id = calls.contact_id
@@ -6495,13 +6653,19 @@ async def get_activities(
         if contact_id is not None:
             call_query += " AND calls.contact_id = ?"
             call_params.append(contact_id)
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["calls.created_by"], team_member_id_cols=["calls.team_member_id"])
+            call_query += " AND " + clause
+            call_params.extend(scope_params)
         call_query += " ORDER BY calls.call_date DESC, calls.created_at DESC LIMIT ?"
         call_params.append(limit)
         cursor.execute(call_query, call_params)
         call_rows = [dict(r) for r in cursor.fetchall()]
 
         task_query = """
-            SELECT tasks.*, leads.name as lead_name, contacts.name as contact_name
+            SELECT tasks.*, leads.name as lead_name, contacts.name as contact_name,
+                   leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id
             FROM tasks
             LEFT JOIN leads ON leads.id = tasks.lead_id
             LEFT JOIN contacts ON contacts.id = tasks.contact_id
@@ -6514,13 +6678,19 @@ async def get_activities(
         if contact_id is not None:
             task_query += " AND tasks.contact_id = ?"
             task_params.append(contact_id)
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["tasks.created_by"], team_member_id_cols=["tasks.assigned_team_member_id"])
+            task_query += " AND " + clause
+            task_params.extend(scope_params)
         task_query += " ORDER BY tasks.created_at DESC LIMIT ?"
         task_params.append(limit)
         cursor.execute(task_query, task_params)
         task_rows = [dict(r) for r in cursor.fetchall()]
 
         meeting_query = """
-            SELECT meetings.*, leads.name as lead_name, contacts.name as contact_name
+            SELECT meetings.*, leads.name as lead_name, contacts.name as contact_name,
+                   leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id
             FROM meetings
             LEFT JOIN leads ON leads.id = meetings.lead_id
             LEFT JOIN contacts ON contacts.id = meetings.contact_id
@@ -6533,6 +6703,10 @@ async def get_activities(
         if contact_id is not None:
             meeting_query += " AND meetings.contact_id = ?"
             meeting_params.append(contact_id)
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["meetings.created_by"], team_member_id_cols=["meetings.assigned_team_member_id"])
+            meeting_query += " AND " + clause
+            meeting_params.extend(scope_params)
         meeting_query += " ORDER BY meetings.created_at DESC LIMIT ?"
         meeting_params.append(limit)
         cursor.execute(meeting_query, meeting_params)
@@ -6540,7 +6714,9 @@ async def get_activities(
 
         campaign_recipient_query = """
             SELECT campaign_recipients.*, campaigns.name as campaign_name,
-                   leads.name as lead_name, contacts.name as contact_name
+                   leads.name as lead_name, contacts.name as contact_name,
+                   leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id
             FROM campaign_recipients
             LEFT JOIN campaigns ON campaigns.id = campaign_recipients.campaign_id
             LEFT JOIN leads ON leads.id = campaign_recipients.lead_id
@@ -6554,10 +6730,30 @@ async def get_activities(
         if contact_id is not None:
             campaign_recipient_query += " AND campaign_recipients.contact_id = ?"
             campaign_recipient_params.append(contact_id)
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["campaigns.created_by"])
+            campaign_recipient_query += " AND " + clause
+            campaign_recipient_params.extend(scope_params)
         campaign_recipient_query += " ORDER BY campaign_recipients.added_at DESC LIMIT ?"
         campaign_recipient_params.append(limit)
         cursor.execute(campaign_recipient_query, campaign_recipient_params)
         campaign_recipient_rows = [dict(r) for r in cursor.fetchall()]
+
+        for r in comm_rows:
+            redact_if_not_visible(scope, r, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            redact_if_not_visible(scope, r, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+        for r in call_rows:
+            redact_if_not_visible(scope, r, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            redact_if_not_visible(scope, r, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+        for r in task_rows:
+            redact_if_not_visible(scope, r, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            redact_if_not_visible(scope, r, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+        for r in meeting_rows:
+            redact_if_not_visible(scope, r, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            redact_if_not_visible(scope, r, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+        for r in campaign_recipient_rows:
+            redact_if_not_visible(scope, r, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            redact_if_not_visible(scope, r, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
 
     items = []
     for r in comm_rows:
@@ -8563,16 +8759,21 @@ async def sync_meeting_to_google_calendar(meeting_id: int, token: str = Query(No
 
     with get_db() as conn:
         cursor = conn.cursor()
-        access_token = _get_valid_google_access_token(cursor, current_user['user_id'])
-        conn.commit()
-        if not access_token:
-            return CalendarSyncResponse(configured=False, message="Google Calendar is not connected. Connect your Google account first from Integrations.")
-
+        # Authorization is checked BEFORE the Google-connection check (and therefore before any
+        # Google API call) - an unauthorized caller must get 403 regardless of whether Google
+        # Calendar happens to be connected, not a misleading configured=False.
         cursor.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,))
         meeting = cursor.fetchone()
         if not meeting:
             raise HTTPException(status_code=404, detail="Meeting not found")
         meeting = dict(meeting)
+        scope = get_visibility_scope(cursor, current_user)
+        assert_record_visible(scope, meeting, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
+        access_token = _get_valid_google_access_token(cursor, current_user['user_id'])
+        conn.commit()
+        if not access_token:
+            return CalendarSyncResponse(configured=False, message="Google Calendar is not connected. Connect your Google account first from Integrations.")
 
         event_body = _meeting_calendar_event_body(meeting)
 
