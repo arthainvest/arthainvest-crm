@@ -260,6 +260,188 @@ authenticated API, in dependency order, and independently re-verified:
 
 ---
 
+## Release Checkpoint: Meetings + Activity/Communication-Log Access Control (2026-09-16)
+
+**Note on scope:** like the checkpoint above, this is a cross-cutting security release, not a
+Connect feature (Connect/chat was not modified). Recorded here as the permanent historical
+record, per explicit instruction, alongside the other access-control checkpoints.
+
+This release closes the gap the previous checkpoint's own "Known limitations" section flagged:
+Meetings was explicitly out of scope for the first access-control release, and a separate
+architectural review (documented below as M-0.1) found that Meetings could not be secured in
+isolation without leaving the same information exposed through the unified activity feed and
+the communication-log endpoint.
+
+### Architecture state at release
+
+**GitHub**
+- Branch: `master`, synchronized with `origin/master`
+- Commit: `e3c9a91549ca1fdac0764cf0d0c5d19a1b05cdff`
+- Commit message: `feat(security): add Meetings and activity visibility controls`
+- 4 files changed, 1,143 insertions(+), 132 deletions(-)
+
+**Render (backend)**
+- Service: `arthainvest-crm` (`srv-dabu58740ujc73adldd0`)
+- Live commit: `e3c9a91`, status: Live, trigger: Auto-Deploy, deploy duration 1m53s
+- `/api/health`: 200 OK, database connected
+- No manual deployment was required — Render's existing Auto-Deploy-on-commit trigger fired on
+  the push
+
+### Gate sequence (M-0 through M-6)
+
+**M-0 — Meetings access-control discovery.** Read-only audit of the `meetings` table, its ~15
+endpoints, and its 7 cross-entity display fields. Found: standard `created_by` +
+`assigned_team_member_id` ownership columns already present but completely unused for
+visibility (`GET /api/meetings` discarded its own `get_current_user` result); a write-then-check
+bug in `update_meeting` identical to the pre-fix pattern from the first access-control release;
+zero scoping on any of the 5 link endpoints, 5 reverse-lookups, or the Calendar-sync endpoint;
+zero non-admin test coverage. No `GET /api/meetings/{id}` route exists (by design, matching
+Companies/Calls) — not introduced by this release either.
+
+**M-0.1 — Communication-log / activity-feed discovery.** Follow-up read-only audit, triggered by
+the finding that Meetings alone could not be secured while `GET /api/activities` remained
+unscoped. Established: `communication_log` is creator-owned (`created_by`, always populated; no
+assignee column, same shape as Quotations) and can legitimately exist with a null Lead/Contact
+link; a second, independently unscoped route (`GET /api/communication-log`) exposes the same raw
+`message`/`subject`/`recipient`/`error_detail` content; `campaign_recipients` has no owner column
+of its own and inherits from its parent `campaigns.created_by`; `/api/activities` merges **five**
+sources — `communication_log`, `calls`, `tasks`, `meetings`, `campaign_recipients` — with the
+optional `lead_id`/`contact_id` params acting only as unscoped filters, not access checks.
+
+**M-1 — Architecture.** Locked design, reusing every existing helper
+(`get_visibility_scope`, `scope_filter_sql`, `scoped_rows`, `is_record_visible`,
+`assert_record_visible`, `redact_if_not_visible`, `is_company_visible`) with zero modification:
+- Meetings: standard `created_by` + `assigned_team_member_id` hierarchy, mechanical extension of
+  the existing pattern.
+- `communication_log`: **creator-owned only** — a locked decision explicitly rejecting the
+  alternative "creator visibility OR linked Lead/Contact visibility" rule, since that would let
+  an employee read another employee's actual message content merely by owning the recipient's
+  Lead/Contact. Linkage controls redaction of the linked entity's name, never ownership of the
+  communication itself.
+- `campaign_recipients`: inherits `campaigns.created_by` (a direct one-hop join, not the
+  Company-style `EXISTS` pattern, since no reverse relationship is needed).
+- `/api/activities`: all five sources scoped in SQL, inside each source's own `WHERE` clause,
+  before that source's own `LIMIT` — never fetched broadly and filtered in Python, which would
+  let another employee's invisible-but-more-recent rows silently consume the visible caller's
+  own limit slot.
+- Calendar sync: Meeting visibility checked before any Google-connection check or API call.
+- No new polymorphic/generic permission framework introduced anywhere.
+
+**M-2 — Implementation.** `backend/main.py` updated; three new dedicated security test files
+added. Test results: **40/40** new targeted security tests passed; specified regression subset
+**120/120** passed; full backend suite **770/770** passed (734 baseline + 36 new — the count
+converged to 40 after two fixes made during testing, see below). No changes to
+`access_control.py`, `schemas.py`, either database file, or any frontend file.
+
+Protections implemented: Meeting list/get visibility (both `GET /api/meetings` branches);
+`update_meeting`/`delete_meeting` restructured to check-then-write (authorization before
+mutation, mirroring `update_task`); all 5 Meeting link endpoints (Company via
+`is_company_visible`, Deal/Call/Task/Quotation via their own ownership columns) checking both
+the Meeting's and, when linking, the target's visibility; all 5 reverse-lookups using
+`scoped_rows`; cross-entity redaction on all 7 Meeting display fields (two-tier `deal_label`
+preserved; `assigned_team_member_name` never redacted); `GET /api/communication-log` scoped by
+creator with linked-name redaction; `/api/activities` five-source SQL scoping with
+`campaign_recipients` inheriting `campaigns.created_by`; Calendar-sync authorization reordered
+ahead of the Google-connection check.
+
+Two real issues found and fixed during M-2 testing: (1) the Calendar-sync endpoint originally
+checked "is Google connected?" before "can the caller see this Meeting?", so an unauthorized
+caller got a misleading `200 {configured:false}` instead of `403` — fixed by reordering; (2) one
+test-setup assumption (two peer test accounts trying to link to a Company created by the seeded
+admin, which is correctly not visible to non-admins) was corrected to use the admin for that
+specific link, matching the pattern used elsewhere in the same file.
+
+**M-3 — Commit.** `e3c9a91549ca1fdac0764cf0d0c5d19a1b05cdff` —
+`feat(security): add Meetings and activity visibility controls`. Exactly 4 files:
+`backend/main.py`, `backend/tests/test_meetings_visibility_security.py`,
+`backend/tests/test_communication_log_visibility_security.py`,
+`backend/tests/test_activity_feed_visibility_security.py`.
+
+**M-4 — Push.** Pushed to `origin/master`; `HEAD = origin/master = e3c9a91`, ahead/behind 0/0.
+
+**M-5 — Production deployment.** Render Auto-Deploy triggered by the push (no manual deploy
+needed); build succeeded in 1m53s; `/api/health` → 200 OK, database connected/healthy.
+
+**M-6 — Live production security smoke test.** Result: **PASS**. Performed against 4 throwaway
+`GateM6` accounts (an admin + a manager + 2 direct reports), mirroring the real hierarchy shape;
+real employee credentials were never used. Verified live: admin unrestricted visibility; manager
+own+reports visibility; report-to-report isolation on both list and direct mutation attempts;
+Meeting update/delete authorization-before-mutation; all 5 Meeting link endpoints' full
+authorized/unauthorized-meeting/unauthorized-target matrix; all 5 reverse-lookups; cross-entity
+redaction (directly observed: an invisible Lead/Contact/Company/Deal/Call/Task/Quotation linked
+to a visible Meeting showed `null` names to the unauthorized viewer and real values to the
+manager, with `assigned_team_member_name` correctly never redacted); the `/api/activities`
+lead_id/contact_id filter-bypass protection (a Report2-owned, Report2-lead-linked Task confirmed
+zero leak to Report1 under that filter); campaign-recipient inheritance; Calendar-sync
+authorization-before-Google-access (403 returned immediately, not a misleading
+`configured:false`); and non-mutating regression checks across all 7 pre-existing entities plus
+Meetings and Activities, with zero 500 errors.
+
+One documented exception: `communication_log` creator-isolation was **not** independently
+re-verified live in production this pass, because both Email Service (SMTP) and WhatsApp
+Business API are genuinely configured in production, and the only write path into
+`communication_log` is an actual send — which this gate's own rules prohibited triggering. That
+behavior remains verified by the dedicated pytest suite (`test_communication_log_visibility_security.py`,
+11/11 passing) from M-2, not re-derived against live data.
+
+Cleanup: all throwaway `GateM6` objects (4 users, 3 team members, 3 Meetings, 2 each of
+Leads/Contacts/Companies/Deals/Calls/Quotations/Campaigns, 3 Tasks) removed via the app's own
+authenticated API in dependency order, independently re-verified at zero remaining. Zero real
+production records affected — real roster (Nimita, Yogesh, Samiksha, Chirag, Amol; 7 total
+users) confirmed intact throughout. No code changes, commit, push, or redeploy occurred during
+the smoke test.
+
+### Final access-control model (current, as of this release)
+
+- **Admins** (Nimita, Yogesh): unrestricted, see and modify everything, across all entities.
+- **Samiksha** (manager): own records + Chirag's + Amol's.
+- **Chirag**: own records only.
+- **Amol**: own records only.
+- Chirag and Amol cannot see each other's or Samiksha's records.
+- `created_by` → `users.id`; `assigned_team_member_id` / `team_member_id` → `team_members.id`,
+  the same convention across every entity.
+- Companies: visible via own `created_by` or transitively via any visible linked Contact or Deal.
+- Quotations: creator-only (no assignee column).
+- **Meetings** (this release): standard `created_by` + `assigned_team_member_id` hierarchy, same
+  as Contacts/Leads/Tasks.
+- **`communication_log`** (this release): creator-owned only — Lead/Contact linkage never grants
+  visibility to the communication record itself, only controls whether the linked entity's name
+  may be displayed.
+- **`campaign_recipients`** (this release): inherits `campaigns.created_by` — a Lead/Contact
+  being visible does not independently grant visibility to a campaign-recipient row about it.
+
+### Known intentionally out-of-scope items (not implied to be fixed by this release)
+
+- **Campaigns themselves** remain outside the general access-control redesign — `GET
+  /api/campaigns`, campaign CRUD, and the Marketing page's own recipient list are still
+  unscoped. Only `campaign_recipients`' exposure *through the activity feed* was secured.
+- **`dial_queue`** was noticed during discovery (it has `team_member_id`/`assigned_by` columns)
+  but was not investigated as part of this release — flagged for a possible future discovery
+  pass, not assumed safe or unsafe.
+- No new standalone `GET /api/meetings/{id}` endpoint was introduced — none existed before, and
+  none was required by the approved scope.
+- The external Google Calendar permission boundary (what a synced event's viewers can see inside
+  Google's own UI) remains entirely dependent on the existing Google integration and outside
+  this CRM's authorization boundary — this release only gates whether the *sync action itself*
+  may be triggered.
+- All previously documented out-of-scope items from the first access-control checkpoint
+  (Meetings — now closed by this release; Google Sheets non-admin live re-verification; Connect;
+  Contact/Lead documents/notes/audio/bulk-import live re-verification) remain as previously
+  recorded, except where explicitly superseded above.
+
+### Release status
+
+```
+STATUS:                        CLOSED / LIVE / VERIFIED / DOCUMENTED
+Production release:            e3c9a91
+Security verification:         PASS
+Production data integrity:     VERIFIED
+Cleanup:                       COMPLETE
+No known regression:           VERIFIED by the recorded smoke/regression checks
+```
+
+---
+
 ## Next up: 2B (CRM-linked chat)
 
 Not started. Requires its own scoped plan-and-verify pass before any implementation begins, per
