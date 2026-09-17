@@ -5757,22 +5757,36 @@ async def send_whatsapp(payload: WhatsAppSendRequest, token: str = Query(None)):
     WHATSAPP_PHONE_ID aren't set, so the frontend can fall back to a wa.me link. Every attempt
     is logged to both whatsapp_message (the real conversation thread, for Inbox) and
     communication_log (the pre-existing Activities feed / Reports still read from this) -
-    the two aren't merged into one because communication_log has no concept of a thread."""
+    the two aren't merged into one because communication_log has no concept of a thread.
+
+    N-2.1: this is a "compose" endpoint driven by a raw phone number, not a conversation_id -
+    but _find_or_link_conversation below can still resolve to a pre-existing conversation that
+    belongs to another employee. Checked via _can_send_to_whatsapp_conversation before the
+    configured-check, the message/template validation, or any mutation/Meta call, for the same
+    reason the Inbox reply endpoint's authorization runs first (N-2): checking configuration
+    first would make this path unexercisable under test (credentials are always stripped) and
+    would let an unauthorized caller use "not configured" as a free probe. A brand-new or
+    currently-unassigned conversation is always allowed - only sending into a conversation
+    someone else already owns is blocked."""
     current_user = get_current_user(token)
-
-    wa_token = os.getenv("WHATSAPP_TOKEN")
-    phone_id = os.getenv("WHATSAPP_PHONE_ID")
-
-    if not (wa_token and phone_id):
-        return WhatsAppSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
-
-    if not payload.message and not payload.template_name:
-        raise HTTPException(status_code=400, detail="Provide either 'message' (freeform text) or 'template_name'.")
-
     to_digits = normalize_phone(payload.to)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT assigned_user_id FROM whatsapp_conversation WHERE wa_number = ?", (to_digits,))
+        existing = cursor.fetchone()
+        if existing and not _can_send_to_whatsapp_conversation(scope, existing['assigned_user_id']):
+            raise HTTPException(status_code=403, detail="You don't have access to this record")
+
+        wa_token = os.getenv("WHATSAPP_TOKEN")
+        phone_id = os.getenv("WHATSAPP_PHONE_ID")
+        if not (wa_token and phone_id):
+            return WhatsAppSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
+
+        if not payload.message and not payload.template_name:
+            raise HTTPException(status_code=400, detail="Provide either 'message' (freeform text) or 'template_name'.")
+
         convo = _find_or_link_conversation(cursor, to_digits)
         if payload.contact_id and not convo['contact_id']:
             cursor.execute("UPDATE whatsapp_conversation SET contact_id = ? WHERE id = ?", (payload.contact_id, convo['id']))
@@ -5867,42 +5881,125 @@ async def get_whatsapp_templates(token: str = Query(None)):
     except Exception as e:
         return WhatsAppTemplatesResponse(configured=True, message=f"Failed to fetch templates: {str(e)}", templates=[])
 
+def _whatsapp_conversation_visible(scope, assigned_user_id):
+    """whatsapp_conversation has no created_by/team_member column - only assigned_user_id
+    (users.id), since a conversation is created by an inbound customer message, not by an
+    employee. The standard access_control helpers assume a created_by/assigned_team_member_id
+    pair, so this table needs its own thin rule built directly on VisibilityScope.user_ids
+    (which get_visibility_scope already populates with the caller's own user_id plus every
+    direct report's user_id for a manager - see access_control.py).
+
+    Locked business rule (N-1/N-2): admins (scope None) see everything, including unassigned
+    conversations. Everyone else sees a conversation assigned to anyone in their own
+    scope.user_ids. Unassigned conversations (assigned_user_id IS NULL) are visible only to
+    admins and managers - detected as "this caller's scope.user_ids contains more than just
+    themselves", which is true precisely when they have at least one direct report, with no
+    hardcoded names. An individual employee with no reports never gets a global "unclaimed"
+    inbox merely because they could technically self-assign one."""
+    if scope is None:
+        return True
+    if assigned_user_id is None:
+        return len(scope.user_ids) > 1
+    return assigned_user_id in scope.user_ids
+
+
+def _can_assign_whatsapp_to(scope, target_user_id):
+    """Locked N-1/N-2 assignment rule: admins may assign a conversation to anyone; everyone
+    else may only assign to someone within their own visibility scope - themselves, or
+    themselves plus their direct reports for a manager. This reuses the exact same
+    scope.user_ids set that already governs who they can see, so Chirag/Amol (scope.user_ids =
+    {self}) can only self-assign, and Samiksha (scope.user_ids = {self, Chirag, Amol}) can
+    assign to herself or either report."""
+    if scope is None:
+        return True
+    return target_user_id in scope.user_ids
+
+
+def _can_send_to_whatsapp_conversation(scope, assigned_user_id):
+    """N-2.1 authorization for the two "compose" send paths (POST /api/whatsapp/send and
+    POST /api/flows/{id}/send), which take a raw phone number rather than a conversation_id.
+    Both call _find_or_link_conversation, which can resolve to a conversation someone else
+    already owns - this is the check that closes that gap.
+
+    Deliberately NOT the same rule as _whatsapp_conversation_visible (which governs the Inbox
+    list/view surface and hides unassigned conversations from individual employees). Here, an
+    existing-but-unassigned conversation is always sendable: starting or continuing outreach on
+    an unclaimed thread isn't a visibility leak, it's exactly the "legitimate new outreach" case
+    these endpoints exist for. A brand-new conversation (no existing row at all) is likewise
+    never blocked by this helper - callers only invoke it once a prior row is confirmed to
+    exist. The only thing this blocks is sending into a conversation another employee, outside
+    the caller's scope, has already claimed."""
+    if scope is None:
+        return True
+    if assigned_user_id is None:
+        return True
+    return assigned_user_id in scope.user_ids
+
+
 @app.get("/api/whatsapp/conversations", response_model=list[WhatsAppConversationResponse])
 async def get_whatsapp_conversations(token: str = Query(None), status: str = Query(None), mine_only: bool = Query(False)):
-    """List WhatsApp conversations, newest activity first. mine_only restricts the list to
-    conversations assigned to the calling user - the 'agent visibility scope' equivalent."""
+    """List WhatsApp conversations, newest activity first, scoped to the caller's own
+    visibility (admins unrestricted; a manager sees own + direct reports' + unassigned;
+    individual employees see only their own assigned conversations) - the same
+    get_visibility_scope architecture used everywhere else in this CRM, not the old
+    mine_only-as-the-only-boundary approach. mine_only remains available as an additional
+    narrowing filter WITHIN that scope (matching how Meetings' assigned_team_member_id
+    drill-down param works alongside scoping), it is no longer the security mechanism itself."""
     current_user = get_current_user(token)
-
-    query = """
-        SELECT c.*, ct.name as contact_name, ld.name as lead_name,
-               (SELECT body FROM whatsapp_message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
-               (SELECT message_type FROM whatsapp_message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_type
-        FROM whatsapp_conversation c
-        LEFT JOIN contacts ct ON ct.id = c.contact_id
-        LEFT JOIN leads ld ON ld.id = c.lead_id
-        WHERE 1=1
-    """
-    params = []
-    if status:
-        query += " AND c.status = ?"
-        params.append(status)
-    if mine_only:
-        query += " AND c.assigned_user_id = ?"
-        params.append(current_user['user_id'])
-    query += " ORDER BY c.last_message_at DESC"
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+
+        query = """
+            SELECT c.*, ct.name as contact_name, ld.name as lead_name,
+                   ct.created_by as _contact_created_by, ct.assigned_team_member_id as _contact_assigned_team_member_id,
+                   ld.created_by as _lead_created_by, ld.assigned_team_member_id as _lead_assigned_team_member_id,
+                   (SELECT body FROM whatsapp_message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
+                   (SELECT message_type FROM whatsapp_message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_type
+            FROM whatsapp_conversation c
+            LEFT JOIN contacts ct ON ct.id = c.contact_id
+            LEFT JOIN leads ld ON ld.id = c.lead_id
+            WHERE 1=1
+        """
+        params = []
+        if status:
+            query += " AND c.status = ?"
+            params.append(status)
+        if mine_only:
+            query += " AND c.assigned_user_id = ?"
+            params.append(current_user['user_id'])
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["c.assigned_user_id"])
+            if len(scope.user_ids) > 1:
+                clause = f"({clause} OR c.assigned_user_id IS NULL)"
+            query += " AND " + clause
+            params.extend(scope_params)
+        query += " ORDER BY c.last_message_at DESC"
+
         cursor.execute(query, params)
         conversations = [dict(row) for row in cursor.fetchall()]
+        for convo in conversations:
+            redact_if_not_visible(scope, convo, ["contact_name"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+            redact_if_not_visible(scope, convo, ["lead_name"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            for k in ("_contact_created_by", "_contact_assigned_team_member_id", "_lead_created_by", "_lead_assigned_team_member_id"):
+                convo.pop(k, None)
 
     return conversations
 
 @app.get("/api/whatsapp/conversations/{conversation_id}/messages", response_model=list[WhatsAppMessageResponse])
 async def get_whatsapp_messages(conversation_id: int, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT assigned_user_id FROM whatsapp_conversation WHERE id = ?", (conversation_id,))
+        convo = cursor.fetchone()
+        if not convo:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if not _whatsapp_conversation_visible(scope, convo['assigned_user_id']):
+            raise HTTPException(status_code=403, detail="You don't have access to this record")
+
         cursor.execute("SELECT * FROM whatsapp_message WHERE conversation_id = ? ORDER BY created_at ASC", (conversation_id,))
         messages = [dict(row) for row in cursor.fetchall()]
     return messages
@@ -5910,23 +6007,34 @@ async def get_whatsapp_messages(conversation_id: int, token: str = Query(None)):
 @app.post("/api/whatsapp/conversations/{conversation_id}/reply", response_model=WhatsAppSendResponse)
 async def reply_whatsapp_conversation(conversation_id: int, payload: WhatsAppReplyRequest, token: str = Query(None)):
     """Send a message inside an existing conversation, without needing the customer's raw
-    phone number again - used by the agent inbox / conversation thread view."""
-    current_user = get_current_user(token)
+    phone number again - used by the agent inbox / conversation thread view.
 
-    wa_token = os.getenv("WHATSAPP_TOKEN")
-    phone_id = os.getenv("WHATSAPP_PHONE_ID")
-    if not (wa_token and phone_id):
-        return WhatsAppSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
-    if not payload.message and not payload.template_name:
-        raise HTTPException(status_code=400, detail="Provide either 'message' or 'template_name'.")
+    Authorization happens before ANY mutation, external Meta API call, OR even the
+    is-WhatsApp-configured check - checking configuration first (as the original code did)
+    would let an unauthorized caller distinguish "not configured" from "configured but you're
+    blocked" for free, and in a test/staging environment where credentials are always unset it
+    would make this authorization path completely unexercisable, exactly the same ordering bug
+    already found and fixed on Meeting Calendar-sync. Visibility is therefore checked first,
+    before anything else in this function."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT * FROM whatsapp_conversation WHERE id = ?", (conversation_id,))
         convo = cursor.fetchone()
         if not convo:
             raise HTTPException(status_code=404, detail="Conversation not found")
         convo = dict(convo)
+        if not _whatsapp_conversation_visible(scope, convo['assigned_user_id']):
+            raise HTTPException(status_code=403, detail="You don't have access to this record")
+
+        wa_token = os.getenv("WHATSAPP_TOKEN")
+        phone_id = os.getenv("WHATSAPP_PHONE_ID")
+        if not (wa_token and phone_id):
+            return WhatsAppSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
+        if not payload.message and not payload.template_name:
+            raise HTTPException(status_code=400, detail="Provide either 'message' or 'template_name'.")
 
         if convo['opted_out_at']:
             return WhatsAppSendResponse(configured=True, message="This contact opted out and cannot be messaged.", conversation_id=convo['id'])
@@ -5950,43 +6058,77 @@ async def reply_whatsapp_conversation(conversation_id: int, payload: WhatsAppRep
 @app.put("/api/whatsapp/conversations/{conversation_id}/assign")
 async def assign_whatsapp_conversation(conversation_id: int, payload: ConversationAssign, token: str = Query(None)):
     """Hand a conversation to a specific team member, or unassign it (user_id=null) -
-    the 'human handover' step after an automated flow decides a person should take over."""
-    get_current_user(token)
+    the 'human handover' step after an automated flow decides a person should take over.
+
+    Two independent authorization checks, both before the mutation: the conversation itself
+    must be visible to the caller (same rule as every other WhatsApp endpoint), and - only when
+    assigning to someone, not when unassigning - the target user must be within the caller's own
+    visibility scope (locked N-1/N-2 rule: admin->anyone, manager->self+reports, employee->self
+    only), and must actually exist and be active."""
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT assigned_user_id FROM whatsapp_conversation WHERE id = ?", (conversation_id,))
+        convo = cursor.fetchone()
+        if not convo:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if not _whatsapp_conversation_visible(scope, convo['assigned_user_id']):
+            raise HTTPException(status_code=403, detail="You don't have access to this record")
+
+        if payload.user_id is not None:
+            cursor.execute("SELECT is_active FROM users WHERE id = ?", (payload.user_id,))
+            target = cursor.fetchone()
+            if not target:
+                raise HTTPException(status_code=404, detail="Target user not found")
+            if not target['is_active']:
+                raise HTTPException(status_code=400, detail="Target user is not active")
+            if not _can_assign_whatsapp_to(scope, payload.user_id):
+                raise HTTPException(status_code=403, detail="You don't have permission to assign to this user")
+
         cursor.execute("UPDATE whatsapp_conversation SET assigned_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (payload.user_id, conversation_id))
         conn.commit()
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Conversation not found")
     return {"message": "Conversation assignment updated"}
 
 @app.put("/api/whatsapp/conversations/{conversation_id}/status")
 async def update_whatsapp_conversation_status(conversation_id: int, payload: ConversationStatusUpdate, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
     if payload.status not in ('open', 'closed', 'handed_off'):
         raise HTTPException(status_code=400, detail="status must be one of: open, closed, handed_off")
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT assigned_user_id FROM whatsapp_conversation WHERE id = ?", (conversation_id,))
+        convo = cursor.fetchone()
+        if not convo:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if not _whatsapp_conversation_visible(scope, convo['assigned_user_id']):
+            raise HTTPException(status_code=403, detail="You don't have access to this record")
+
         cursor.execute("UPDATE whatsapp_conversation SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (payload.status, conversation_id))
         conn.commit()
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Conversation not found")
     return {"message": "Conversation status updated"}
 
 @app.post("/api/whatsapp/conversations/{conversation_id}/opt-out")
 async def opt_out_whatsapp_conversation(conversation_id: int, token: str = Query(None)):
     """Manually mark a conversation opted-out (e.g. a customer asked verbally, not over
     WhatsApp) - the same stop condition the webhook applies automatically for a 'STOP' reply."""
-    get_current_user(token)
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT assigned_user_id FROM whatsapp_conversation WHERE id = ?", (conversation_id,))
+        convo = cursor.fetchone()
+        if not convo:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if not _whatsapp_conversation_visible(scope, convo['assigned_user_id']):
+            raise HTTPException(status_code=403, detail="You don't have access to this record")
+
         cursor.execute(
             "UPDATE whatsapp_conversation SET opted_out_at = CURRENT_TIMESTAMP, opt_out_reason = 'Marked opted-out manually', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (conversation_id,)
         )
         conn.commit()
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Conversation not found")
     return {"message": "Conversation marked opted-out"}
 
 # ============= WHATSAPP WEBHOOKS (Meta Cloud API) =============
@@ -6182,8 +6324,14 @@ async def send_flow(flow_id: int, payload: FlowSendRequest, token: str = Query(N
     """Sends a Flow's CTA button as a WhatsApp message. Requires WHATSAPP_TOKEN/
     WHATSAPP_PHONE_ID like any other WhatsApp send (configured=False otherwise) - does NOT
     require the Flow encryption keypair, since that's only needed for the data-exchange
-    webhook Meta calls back, not for triggering the send."""
+    webhook Meta calls back, not for triggering the send.
+
+    N-2.1: same "compose" authorization as POST /api/whatsapp/send - _find_or_link_conversation
+    below can resolve to a conversation another employee already owns, so that is checked via
+    _can_send_to_whatsapp_conversation first, before the configured-check or any mutation/Meta
+    call. A brand-new or currently-unassigned conversation is always allowed."""
     current_user = get_current_user(token)
+    to_digits = normalize_phone(payload.to)
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -6193,12 +6341,17 @@ async def send_flow(flow_id: int, payload: FlowSendRequest, token: str = Query(N
             raise HTTPException(status_code=404, detail="Flow not found")
         flow = dict(flow)
 
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT assigned_user_id FROM whatsapp_conversation WHERE wa_number = ?", (to_digits,))
+        existing = cursor.fetchone()
+        if existing and not _can_send_to_whatsapp_conversation(scope, existing['assigned_user_id']):
+            raise HTTPException(status_code=403, detail="You don't have access to this record")
+
         wa_token = os.getenv("WHATSAPP_TOKEN")
         phone_id = os.getenv("WHATSAPP_PHONE_ID")
         if not (wa_token and phone_id):
             return FlowSendResponse(configured=False, message="WhatsApp Business API is not configured on this server.")
 
-        to_digits = normalize_phone(payload.to)
         convo = _find_or_link_conversation(cursor, to_digits)
         if payload.contact_id and not convo['contact_id']:
             cursor.execute("UPDATE whatsapp_conversation SET contact_id = ? WHERE id = ?", (payload.contact_id, convo['id']))

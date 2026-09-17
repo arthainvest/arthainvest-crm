@@ -35,6 +35,8 @@ function formatTimestamp(ts) {
 
 export default function WhatsAppInbox() {
   const token = localStorage.getItem('token');
+  const myUserId = Number(localStorage.getItem('userId')) || null;
+  const myRole = localStorage.getItem('role');
 
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,16 +172,26 @@ export default function WhatsAppInbox() {
     }
   };
 
-  // The backend links a conversation's assignee to a login account (users.id), but
-  // GET /api/team only exposes team_members.id/name/role/email/phone - not the linked
-  // user_id - so there is no endpoint this page can call to resolve a real display name
-  // for assigned_user_id. We fall back to the roster id as a best-effort label; see the
-  // handoff notes for the real fix (expose user_id on TeamMemberResponse).
+  // assigned_user_id is a users.id; team_members.user_id is the link between a roster row
+  // and its login account - match on that, not on the roster row's own id.
   const assigneeLabel = (userId) => {
     if (!userId) return 'Unassigned';
-    const match = teamMembers.find((m) => m.id === userId);
+    const match = teamMembers.find((m) => m.user_id === userId);
     return match ? match.name : `User #${userId}`;
   };
+
+  // Who the current user may assign a conversation to - mirrors the backend's locked N-1/N-2
+  // rule exactly (admin: anyone with a login; manager: self + direct reports; everyone else:
+  // self only) so the dropdown never offers a choice the backend would reject. This is a
+  // convenience/UX filter, not the security boundary - the backend enforces the same rule
+  // independently regardless of what this list contains.
+  const myTeamMember = teamMembers.find((m) => m.user_id === myUserId) || null;
+  const assignableTeamMembers = teamMembers.filter((m) => {
+    if (!m.user_id) return false; // no login account, can't be assigned conversations
+    if (myRole === 'admin') return true;
+    if (m.user_id === myUserId) return true;
+    return myTeamMember && m.reports_to === myTeamMember.id;
+  });
 
   const filteredConversations = conversations.filter((c) => {
     if (!searchTerm.trim()) return true;
@@ -270,8 +282,8 @@ export default function WhatsAppInbox() {
                 <div className="wa-thread-controls">
                   <select value={selectedConvo.assigned_user_id || ''} onChange={handleAssign} title="Assign to team member">
                     <option value="">Unassigned</option>
-                    {teamMembers.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
+                    {assignableTeamMembers.map((m) => (
+                      <option key={m.id} value={m.user_id}>{m.name}</option>
                     ))}
                   </select>
                   <select value={selectedConvo.status} onChange={handleStatusChange} title="Conversation status">
