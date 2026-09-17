@@ -100,6 +100,37 @@ def test_memory_write_worker_actually_writes():
         assert any("Recorded by a worker" in m["content"] for m in recalled)
 
 
+def test_mission_tracking_worker_spawns_a_real_child_mission():
+    with tempfile.TemporaryDirectory() as d:
+        _fresh_db(Path(d))
+        mission, step = _mission_with_ready_step(
+            worker_id="jarvis-mission-tracking",
+            description="Spawn a follow-up mission",
+            inputs={"goal": "Follow up with Raj about the loan documents"},
+        )
+        result = workers.execute_step(mission["mission_id"], step["step_id"], "user-1")
+        assert result.status == "SUCCEEDED"
+
+        child_mission_id = result.output["child_mission_id"]
+        child = msn.get_mission(child_mission_id, "user-1")
+        assert child["goal"] == "Follow up with Raj about the loan documents"
+        assert child["parent_mission_id"] == mission["mission_id"], "the Mission contract's own parent_mission_id field must actually be set"
+        assert child["status"] == "CREATED"
+
+
+def test_mission_tracking_worker_requires_a_goal():
+    with tempfile.TemporaryDirectory() as d:
+        _fresh_db(Path(d))
+        mission, step = _mission_with_ready_step(worker_id="jarvis-mission-tracking", inputs={})
+        try:
+            workers.execute_step(mission["mission_id"], step["step_id"], "user-1")
+            assert False, "should have raised"
+        except workers.WorkerValidationError:
+            pass
+        unchanged = msn.get_step(step["step_id"], mission["mission_id"], "user-1")
+        assert unchanged["status"] == "READY", "missing required input must fail before any claim or side effect"
+
+
 # --- Execution: failure/timeout/malformed input --------------------------------
 
 def test_worker_exception_is_recorded_as_failed_not_silently_swallowed():
@@ -110,7 +141,7 @@ def test_worker_exception_is_recorded_as_failed_not_silently_swallowed():
             worker_id = "broken-worker"
             capabilities = ("broken-capability",)
 
-            def execute(self, step):
+            def execute(self, step, user_id):
                 raise RuntimeError("deliberately broken")
 
         registry = workers.WorkerRegistry()
@@ -133,7 +164,7 @@ def test_worker_timeout_is_recorded_as_timed_out_mapped_to_step_failed():
             worker_id = "slow-worker"
             capabilities = ("slow-capability",)
 
-            def execute(self, step):
+            def execute(self, step, user_id):
                 time.sleep(2)
                 return "too slow"
 

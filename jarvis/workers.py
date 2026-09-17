@@ -212,10 +212,13 @@ class Worker:
         needs setup before execute() (e.g. opening a resource)."""
         return None
 
-    def execute(self, step: dict):
+    def execute(self, step: dict, user_id: str):
         """Must be overridden. Returns the raw output - NOT wrapped in a
         WorkerExecutionResult (execute_step() does that). Must never call
-        anything outside jarvis/jarvis.db - see this module's docstring."""
+        anything outside jarvis/jarvis.db - see this module's docstring.
+        `user_id` is passed explicitly (not read off `step`, which has no
+        user_id field of its own - only Mission does) for any worker whose
+        underlying call requires it, e.g. missions.py's own user-isolated API."""
         raise NotImplementedError
 
     def observe(self, step: dict, output) -> dict:
@@ -246,7 +249,7 @@ class ContextWorker(Worker):
     capabilities = ("jarvis-context-assembly",)
     input_schema = ()  # every assemble_context() param is optional
 
-    def execute(self, step: dict):
+    def execute(self, step: dict, user_id: str):
         inputs = step.get("inputs") or {}
         entity_refs = [tuple(e) for e in inputs["entity_refs"]] if inputs.get("entity_refs") else None
         return ctx.assemble_context(
@@ -278,7 +281,7 @@ class MemoryWriteWorker(Worker):
     capabilities = ("jarvis-memory-write",)
     input_schema = ("memory_type", "content")
 
-    def execute(self, step: dict):
+    def execute(self, step: dict, user_id: str):
         inputs = step.get("inputs") or {}
         memory_id = jm.remember(
             inputs["memory_type"], inputs["content"],
@@ -293,6 +296,43 @@ class MemoryWriteWorker(Worker):
     def observe(self, step, output):
         obs = super().observe(step, output)
         obs["memory_id"] = output.get("memory_id") if isinstance(output, dict) else None
+        return obs
+
+
+class MissionTrackingWorker(Worker):
+    """Wraps missions.create_mission() to spawn a child Mission - a real,
+    bounded, jarvis-internal write that gives Stage B's own `parent_mission_id`
+    field (declared in the original Mission contract, never previously set
+    by any code) its first real use.
+
+    Deliberately narrow: this worker only ever CREATES a new child mission.
+    It does not expose a generic "transition any mission to any status"
+    action - that would let a plan step reach around the Supervisor/
+    Recovery/Verifier state-machine boundaries those stages exist to own,
+    for the same reason no other Worker in this file bypasses the ledger.
+    Spawning a child mission is safe because the child starts at CREATED,
+    like any other mission, and goes through the exact same lifecycle
+    every other mission does - nothing here shortcuts a transition."""
+
+    worker_id = "mission-tracking-worker"
+    name = "Mission Tracking Worker"
+    capabilities = ("jarvis-mission-tracking",)
+    input_schema = ("goal",)
+
+    def execute(self, step: dict, user_id: str):
+        inputs = step.get("inputs") or {}
+        child = msn.create_mission(
+            user_id, inputs["goal"],
+            risk_level=inputs.get("risk_level"),
+            context_reference=inputs.get("context_reference"),
+            deadline=inputs.get("deadline"),
+            parent_mission_id=step["mission_id"],
+        )
+        return {"child_mission_id": child["mission_id"], "status": child["status"]}
+
+    def observe(self, step, output):
+        obs = super().observe(step, output)
+        obs["child_mission_id"] = output.get("child_mission_id") if isinstance(output, dict) else None
         return obs
 
 
@@ -325,6 +365,7 @@ def _default_registry() -> WorkerRegistry:
     registry = WorkerRegistry()
     registry.register_worker(ContextWorker())
     registry.register_worker(MemoryWriteWorker())
+    registry.register_worker(MissionTrackingWorker())
     return registry
 
 
@@ -489,7 +530,7 @@ def execute_step(mission_id, step_id, user_id, *, registry: WorkerRegistry = Non
 
     def _run():
         worker.prepare(step)
-        raw_output = worker.execute(step)
+        raw_output = worker.execute(step, user_id)
         observation = worker.observe(step, raw_output)
         return raw_output, observation
 

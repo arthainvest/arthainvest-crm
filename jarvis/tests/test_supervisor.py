@@ -123,7 +123,7 @@ def test_failed_worker_does_not_silently_become_success():
             worker_id = "broken-worker"
             capabilities = ("broken-capability",)
 
-            def execute(self, step):
+            def execute(self, step, user_id):
                 raise RuntimeError("nope")
 
         registry = workers.WorkerRegistry()
