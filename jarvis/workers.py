@@ -74,6 +74,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 import missions as msn  # noqa: E402
 import context as ctx  # noqa: E402
 import memory as jm  # noqa: E402
+import capabilities as caps  # noqa: E402
+import approval as appr  # noqa: E402
 from policy import find_prohibited_routes  # noqa: E402 - same single source of truth every other layer uses
 
 DB_PATH = Path(__file__).resolve().parent / "jarvis.db"
@@ -163,6 +165,22 @@ class WorkerTransactionProhibitedError(WorkerError):
             retryable=False, mission_id=mission_id, step_id=step_id,
             message="This step is financial-transaction-shaped and cannot execute.",
             metadata={"matches": matches},
+        ))
+
+
+class ApprovalRequiredError(WorkerError):
+    """Raised when a step resolves to an approval-requiring risk tier
+    (R2/R3, per capabilities.py's own risk_level) and no ALLOWED decision
+    exists yet from the Approval Gate (Stage I) - the step is left exactly
+    as it was, never claimed, never run. See approval.evaluate()."""
+
+    def __init__(self, mission_id, step_id, decision):
+        super().__init__(ErrorObject(
+            code="APPROVAL_REQUIRED" if decision.decision == "APPROVAL_REQUIRED" else "ACTION_NOT_AUTHORIZED",
+            category="POLICY", severity="ERROR", retryable=(decision.decision == "APPROVAL_REQUIRED"),
+            mission_id=mission_id, step_id=step_id,
+            message=f"This step requires approval before it can execute (decision={decision.decision!r}).",
+            metadata={"approval_decision": decision.to_dict()},
         ))
 
 
@@ -474,12 +492,22 @@ def _scan_step_for_prohibited_text(step: dict) -> list:
 # ---------------------------------------------------------------------------
 
 def execute_step(mission_id, step_id, user_id, *, registry: WorkerRegistry = None,
-                  timeout_seconds: float = 30, execution_id: str = None) -> WorkerExecutionResult:
+                  timeout_seconds: float = 30, execution_id: str = None,
+                  action_class: str = None, target=None, material_params: dict = None) -> WorkerExecutionResult:
     """The entire Stage D runtime lives in this one function. Order of
     operations is deliberate - every check that can fail closed happens
     BEFORE the step is claimed (READY -> RUNNING) or a Worker is called,
     per spec Section 15 ("Invalid execution requests must fail before the
-    worker performs side effects")."""
+    worker performs side effects").
+
+    Stage I integration: if the step's capability resolves to an
+    approval-requiring risk tier (R2/R3 in capabilities.py), the caller
+    must pass `action_class` and the Approval Gate (approval.py) must
+    already have an ALLOWED decision for this exact action, or the step
+    is never claimed. No capability registered today is above R0, so this
+    path has nothing real to gate yet - proven instead with a test-only
+    R2 worker fixture (see test_approval.py), the same technique Stage H
+    used to prove intent-drift detection before any real drift existed."""
     registry = registry or DEFAULT_REGISTRY
     execution_id = execution_id or str(uuid.uuid4())
 
@@ -492,8 +520,12 @@ def execute_step(mission_id, step_id, user_id, *, registry: WorkerRegistry = Non
     mission = msn.get_mission(mission_id, user_id)          # user isolation + existence, raises MissionNotFoundError
     step = msn.get_step(step_id, mission_id, user_id)        # step belongs to this mission, raises StepNotFoundError
 
-    if step["status"] != "READY":
+    if step["status"] not in ("READY", "WAITING_FOR_APPROVAL"):
         raise StepNotExecutableError(step_id, step["status"])
+    # WAITING_FOR_APPROVAL is Stage I's re-entry point: calling execute_step()
+    # again on a step that previously stopped here re-evaluates approval: if
+    # it is now ALLOWED, execution proceeds (WAITING_FOR_APPROVAL -> RUNNING
+    # is a legal Stage B edge); if not, it raises again without progressing.
 
     # Transaction safety - the primary enforcement point for a step that
     # didn't come from a Stage C plan (plans.py already checked those).
@@ -518,6 +550,53 @@ def execute_step(mission_id, step_id, user_id, *, registry: WorkerRegistry = Non
     missing_inputs = [k for k in worker.input_schema if not (step.get("inputs") or {}).get(k)]
     if missing_inputs:
         raise WorkerValidationError(f"missing required inputs for {worker.worker_id!r}: {missing_inputs}", step_id=step_id)
+
+    # Stage I: Approval Gate. Only steps whose capability resolves to an
+    # approval-requiring risk tier are gated - a capability not in the
+    # registry at all, or resolving to R0/R1, is unaffected (this keeps
+    # every existing R0 worker's behavior exactly as it was).
+    cap = caps.get_capability(capability_id)
+    if cap is not None and cap.risk_level in appr.APPROVAL_REQUIRED_RISK_LEVELS.union(appr.DENIED_RISK_LEVELS):
+        if action_class is None:
+            raise WorkerValidationError(
+                f"capability {capability_id!r} is risk {cap.risk_level!r} and requires an action_class "
+                "to evaluate approval - failing closed rather than guessing one", step_id=step_id,
+            )
+        try:
+            decision = appr.evaluate(mission_id, step_id, user_id, action_class, cap.risk_level,
+                                      tool_id=capability_id, target=target, material_params=material_params)
+        except appr.TransactionProhibitedError as e:
+            # Same treatment as the top-level transaction check above:
+            # never claimed, zero attempts recorded.
+            msn.transition_step(step_id, mission_id, user_id, "BLOCKED", error={
+                "code": "TRANSACTION_PROHIBITED", "category": "POLICY", "severity": "CRITICAL",
+                "retryable": False, "matched_patterns": e.error.metadata.get("matches"),
+            })
+            raise WorkerTransactionProhibitedError(mission_id, step_id, e.error.metadata.get("matches", []))
+
+        if decision.decision == "DENIED":
+            # Permanent (R4, or an explicit rejection) - never "waiting",
+            # this will never resolve on its own.
+            msn.transition_step(step_id, mission_id, user_id, "BLOCKED",
+                                 error={"code": "ACTION_NOT_AUTHORIZED", "category": "POLICY",
+                                        "severity": "ERROR", "retryable": False,
+                                        "metadata": {"decision": decision.to_dict()}})
+            raise ApprovalRequiredError(mission_id, step_id, decision)
+        if decision.decision == "CANCELLED":
+            # Mission/step already cancelled - nothing further to mutate.
+            raise ApprovalRequiredError(mission_id, step_id, decision)
+        if decision.decision != "ALLOWED":
+            # APPROVAL_REQUIRED / EXPIRED / INVALID - genuinely still
+            # pending. Claim, then park at WAITING_FOR_APPROVAL (a Stage B
+            # edge declared since Stage B, never used until now) rather
+            # than a dead end - calling execute_step() again once approved
+            # is the re-entry point (see the status guard above).
+            msn.transition_step(step_id, mission_id, user_id, "RUNNING")
+            msn.transition_step(step_id, mission_id, user_id, "WAITING_FOR_APPROVAL",
+                                 error={"code": "APPROVAL_REQUIRED", "category": "POLICY",
+                                        "severity": "WARNING", "retryable": True,
+                                        "metadata": {"decision": decision.to_dict()}})
+            raise ApprovalRequiredError(mission_id, step_id, decision)
 
     # Claim the step. This uses Stage B's existing optimistic-lock CAS -
     # the concurrency guarantee comes from missions.py, not from anything

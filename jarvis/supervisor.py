@@ -297,6 +297,20 @@ class Supervisor:
                         })
                         _event("MISSION_BLOCKED", reason="no_progress_possible")
                         break
+                    # Stage I: a step parked at WAITING_FOR_APPROVAL will
+                    # never resolve on its own the way a transiently RUNNING
+                    # step might - looping here would spin indefinitely
+                    # waiting on a human. If every in-flight step is
+                    # specifically waiting on approval (nothing else still
+                    # genuinely running), stop this supervise() call cleanly
+                    # rather than spin; a later supervise() call resumes
+                    # once approval is granted (calling execute_step() again
+                    # on that step is the re-entry point - see workers.py).
+                    waiting_for_approval = [s for s in in_flight if s["status"] == "WAITING_FOR_APPROVAL"]
+                    if waiting_for_approval and len(waiting_for_approval) == len(in_flight):
+                        _event("SUPERVISOR_STOPPED", reason="waiting_for_approval",
+                               step_ids=[s["step_id"] for s in waiting_for_approval])
+                        break
                     continue  # something is genuinely still in flight - loop again without dispatching
 
             for step in ready_steps[: self.batch_size]:
@@ -323,6 +337,14 @@ class Supervisor:
                 except workers.WorkerTransactionProhibitedError:
                     total_dispatches += 1
                     _event("STEP_BLOCKED", step_id=step["step_id"], reason="transaction_prohibited")
+                except workers.ApprovalRequiredError as e:
+                    total_dispatches += 1
+                    # workers.py already recorded the step's own new status
+                    # (BLOCKED for a permanent denial, WAITING_FOR_APPROVAL
+                    # for a pending one) - the Supervisor only needs to log
+                    # it and keep going, never crash the whole cycle.
+                    _event("STEP_WAITING_FOR_APPROVAL", step_id=step["step_id"],
+                           decision=e.error.metadata.get("approval_decision", {}).get("decision"))
                 except msn.StateConflictError:
                     _event("STEP_BLOCKED", step_id=step["step_id"], reason="claimed_by_another_supervisor")
                 except workers.StepNotExecutableError:
