@@ -76,6 +76,7 @@ import context as ctx  # noqa: E402
 import memory as jm  # noqa: E402
 import capabilities as caps  # noqa: E402
 import approval as appr  # noqa: E402
+import action_firewall as firewall  # noqa: E402
 from policy import find_prohibited_routes  # noqa: E402 - same single source of truth every other layer uses
 
 DB_PATH = Path(__file__).resolve().parent / "jarvis.db"
@@ -412,6 +413,8 @@ def _connect():
 def init_db():
     msn.DB_PATH = DB_PATH if msn.DB_PATH != DB_PATH else msn.DB_PATH
     msn.init_db()
+    firewall.DB_PATH = DB_PATH if firewall.DB_PATH != DB_PATH else firewall.DB_PATH
+    firewall.init_db()  # cascades to approval.init_db() + intent_lock.init_db() - execute_step() calls into all three
     with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS jarvis_worker_executions (
@@ -551,52 +554,60 @@ def execute_step(mission_id, step_id, user_id, *, registry: WorkerRegistry = Non
     if missing_inputs:
         raise WorkerValidationError(f"missing required inputs for {worker.worker_id!r}: {missing_inputs}", step_id=step_id)
 
-    # Stage I: Approval Gate. Only steps whose capability resolves to an
-    # approval-requiring risk tier are gated - a capability not in the
-    # registry at all, or resolving to R0/R1, is unaffected (this keeps
-    # every existing R0 worker's behavior exactly as it was).
+    # Stage J: Action Firewall - the UNIVERSAL final gate. Every execution,
+    # regardless of risk tier, passes through firewall.authorize() - there
+    # is no code path around it. For an R0/R1 capability this resolves to
+    # ALLOW quickly (the Firewall's own delegated Approval Gate check
+    # already returns ALLOWED for those tiers), so no existing R0 worker's
+    # behavior or tests change. Only an R2+ capability makes action_class
+    # a hard requirement (fail-closed, never guessed) - matching the exact
+    # boundary Stage I established, now enforced one layer up.
     cap = caps.get_capability(capability_id)
-    if cap is not None and cap.risk_level in appr.APPROVAL_REQUIRED_RISK_LEVELS.union(appr.DENIED_RISK_LEVELS):
-        if action_class is None:
-            raise WorkerValidationError(
-                f"capability {capability_id!r} is risk {cap.risk_level!r} and requires an action_class "
-                "to evaluate approval - failing closed rather than guessing one", step_id=step_id,
-            )
-        try:
-            decision = appr.evaluate(mission_id, step_id, user_id, action_class, cap.risk_level,
-                                      tool_id=capability_id, target=target, material_params=material_params)
-        except appr.TransactionProhibitedError as e:
-            # Same treatment as the top-level transaction check above:
-            # never claimed, zero attempts recorded.
-            msn.transition_step(step_id, mission_id, user_id, "BLOCKED", error={
-                "code": "TRANSACTION_PROHIBITED", "category": "POLICY", "severity": "CRITICAL",
-                "retryable": False, "matched_patterns": e.error.metadata.get("matches"),
-            })
-            raise WorkerTransactionProhibitedError(mission_id, step_id, e.error.metadata.get("matches", []))
+    if cap is not None and cap.risk_level in appr.APPROVAL_REQUIRED_RISK_LEVELS.union(appr.DENIED_RISK_LEVELS) \
+            and action_class is None:
+        raise WorkerValidationError(
+            f"capability {capability_id!r} is risk {cap.risk_level!r} and requires an action_class "
+            "to evaluate approval - failing closed rather than guessing one", step_id=step_id,
+        )
 
-        if decision.decision == "DENIED":
-            # Permanent (R4, or an explicit rejection) - never "waiting",
-            # this will never resolve on its own.
+    try:
+        decision = firewall.authorize(mission_id, step_id, user_id, action_class,
+                                       cap.risk_level if cap is not None else None,
+                                       tool_id=capability_id, target=target, material_params=material_params)
+    except firewall.TransactionProhibitedError as e:
+        # Same treatment as the top-level transaction check above:
+        # never claimed, zero attempts recorded.
+        msn.transition_step(step_id, mission_id, user_id, "BLOCKED", error={
+            "code": "TRANSACTION_PROHIBITED", "category": "POLICY", "severity": "CRITICAL",
+            "retryable": False, "matched_patterns": e.error.metadata.get("matches"),
+        })
+        raise WorkerTransactionProhibitedError(mission_id, step_id, e.error.metadata.get("matches", []))
+
+    if decision.decision != "ALLOW":
+        _PERMANENT_DENIAL_REASONS = {
+            "MISSING_REQUIRED_METADATA", "INVALID_ACTION_CLASS", "MISSION_OR_STEP_NOT_FOUND",
+            "CANCELLED", "INTENT_DRIFT_DETECTED", "INVALID_TOOL", "SECURITY_VIOLATION",
+            "PRIVACY_SCOPE_DENIED", "APPROVAL_DENIED",
+        }
+        if set(decision.reason_codes) & _PERMANENT_DENIAL_REASONS:
+            # Never "waiting" - this will never resolve on its own.
             msn.transition_step(step_id, mission_id, user_id, "BLOCKED",
                                  error={"code": "ACTION_NOT_AUTHORIZED", "category": "POLICY",
                                         "severity": "ERROR", "retryable": False,
                                         "metadata": {"decision": decision.to_dict()}})
-            raise ApprovalRequiredError(mission_id, step_id, decision)
-        if decision.decision == "CANCELLED":
-            # Mission/step already cancelled - nothing further to mutate.
-            raise ApprovalRequiredError(mission_id, step_id, decision)
-        if decision.decision != "ALLOWED":
-            # APPROVAL_REQUIRED / EXPIRED / INVALID - genuinely still
-            # pending. Claim, then park at WAITING_FOR_APPROVAL (a Stage B
-            # edge declared since Stage B, never used until now) rather
-            # than a dead end - calling execute_step() again once approved
-            # is the re-entry point (see the status guard above).
+        else:
+            # APPROVAL_REQUIRED / APPROVAL_EXPIRED / APPROVAL_INVALID -
+            # genuinely still pending. Claim, then park at
+            # WAITING_FOR_APPROVAL (a Stage B edge declared since Stage B,
+            # never used until Stage I) rather than a dead end - calling
+            # execute_step() again once approved is the re-entry point
+            # (see the status guard above).
             msn.transition_step(step_id, mission_id, user_id, "RUNNING")
             msn.transition_step(step_id, mission_id, user_id, "WAITING_FOR_APPROVAL",
                                  error={"code": "APPROVAL_REQUIRED", "category": "POLICY",
                                         "severity": "WARNING", "retryable": True,
                                         "metadata": {"decision": decision.to_dict()}})
-            raise ApprovalRequiredError(mission_id, step_id, decision)
+        raise ApprovalRequiredError(mission_id, step_id, decision)
 
     # Claim the step. This uses Stage B's existing optimistic-lock CAS -
     # the concurrency guarantee comes from missions.py, not from anything

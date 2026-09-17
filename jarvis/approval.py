@@ -272,6 +272,8 @@ def _connect():
 def init_db():
     msn.DB_PATH = DB_PATH if msn.DB_PATH != DB_PATH else msn.DB_PATH
     msn.init_db()
+    il.DB_PATH = DB_PATH if il.DB_PATH != DB_PATH else il.DB_PATH
+    il.init_db()  # approval.py calls into intent_lock.py at runtime - its table must exist too
     with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS jarvis_approval_requests (
@@ -362,6 +364,13 @@ def evaluate(mission_id, step_id, user_id, action_class, risk_level=None, *,
 
     mission = msn.get_mission(mission_id, user_id)  # user isolation + existence
     step = msn.get_step(step_id, mission_id, user_id)
+    # tool_id defaults to the step's own capability - "no tool_id given"
+    # means "use whatever this step actually is", not "no tool identity at
+    # all". This must resolve identically here and in request_approval()
+    # (and in any caller, e.g. action_firewall.py, that fills it in from
+    # the same step) or two callers computing "the same" fingerprint from
+    # different resolved values would silently never match.
+    tool_id = tool_id or step.get("worker_id")
 
     reason_codes = []
 
@@ -483,6 +492,7 @@ def request_approval(mission_id, step_id, user_id, action_class, risk_level, *,
 
     mission = msn.get_mission(mission_id, user_id)
     step = msn.get_step(step_id, mission_id, user_id)
+    tool_id = tool_id or step.get("worker_id")  # same resolution as evaluate() - must match identically
     if mission["status"] == "CANCELLED" or step["status"] == "CANCELLED":
         raise ApprovalValidationError("cannot request approval for a cancelled mission/step",
                                        mission_id=mission_id, step_id=step_id)
