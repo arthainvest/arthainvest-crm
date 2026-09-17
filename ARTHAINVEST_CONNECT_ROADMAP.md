@@ -442,6 +442,253 @@ No known regression:           VERIFIED by the recorded smoke/regression checks
 
 ---
 
+## Release Checkpoint: WhatsApp Inbox Access Control (2026-09-18)
+
+### Background
+
+A post-release security gap audit (N-0, full 271-route CRM access-control audit) found the
+WhatsApp Inbox (`whatsapp_conversation`/`whatsapp_message`) had zero visibility scoping of any
+kind: any authenticated employee could list, read, reply to, reassign, close, or opt out any
+other employee's customer conversation, and the `reply` endpoint's real Meta Cloud API call meant
+an unauthorized caller could trigger an actual outbound WhatsApp message to a real customer on a
+conversation they had no business touching. `whatsapp_conversation` has no `created_by` column —
+only `assigned_user_id → users.id`, the first entity in this codebase with a single-column,
+`users.id`-only ownership model, requiring a new table-specific rule rather than reuse of the
+standard `created_by`/`assigned_team_member_id` pair.
+
+A dedicated discovery-only gate (N-1) inspected the actual code (not just the audit's summary)
+and surfaced two business-rule questions with no existing precedent — who may see an unassigned,
+customer-created conversation, and who may assign a conversation to whom — both resolved and
+locked before any implementation began.
+
+**Locked N-1 decisions:**
+- **Assignment:** admins (Nimita/Yogesh) → anyone; a manager (Samiksha) → herself + her direct
+  reports (Chirag, Amol); an individual report → self only.
+- **Unassigned conversations:** visible to admins and managers only, never to an individual
+  report — a manager can claim/assign one to herself or a report; reports never get a global
+  "unclaimed" inbox.
+- **Core mechanism:** `get_visibility_scope()`/`scope_filter_sql()`, the same architecture used
+  everywhere else in this CRM — explicitly not `mine_only` as the security boundary.
+- **Write ordering:** authorization → is the conversation visible? → is the operation permitted?
+  → database mutation → external Meta/WhatsApp API call, if any. Never mutation-then-check.
+- **Reply/send:** conversation visibility is sufficient authorization to reply — no separate
+  permission framework.
+
+### N-2 — WhatsApp Inbox implementation
+
+New table-specific helpers in `backend/main.py` (not `access_control.py` — no existing helper
+encodes "unassigned visible only to managers," and the locked N-1 decision was to avoid a second
+generic permission framework):
+
+- `_whatsapp_conversation_visible(scope, assigned_user_id)`: admin (`scope is None`) sees
+  everything, including unassigned; everyone else sees a conversation assigned to anyone in their
+  own `scope.user_ids`; an unassigned conversation is visible only when `len(scope.user_ids) > 1`
+  — true exactly when the caller has at least one direct report, with no hardcoded names.
+- `_can_assign_whatsapp_to(scope, target_user_id)`: admin may assign to anyone; everyone else may
+  only assign to someone within their own `scope.user_ids`.
+
+Applied to all six core Inbox routes: `GET /api/whatsapp/conversations` (scope-filtered SQL, with
+`mine_only` retained only as an additional narrowing filter *within* scope, never the boundary
+itself), `GET .../messages`, `POST .../reply`, `PUT .../assign`, `PUT .../status`,
+`POST .../opt-out`. All four write endpoints now fetch `assigned_user_id` and check visibility
+*before* any mutation — previously none of them checked at all (not even a write-then-check bug;
+the check simply didn't exist).
+
+One real ordering bug found and fixed during implementation: `reply_whatsapp_conversation`
+originally checked "is WhatsApp configured?" before "can the caller see this conversation?" —
+the same bug class as the Meetings Calendar-sync fix (M-2) — reordered so visibility is checked
+first, before the configured-check, the message/template validation, the opted-out check, and the
+real Meta API call.
+
+Cross-entity redaction: `contact_name`/`lead_name` on the conversation list are redacted via
+`redact_if_not_visible` when the linked Contact/Lead itself falls outside the caller's scope.
+
+**Frontend** (`frontend/src/components/WhatsAppInbox.jsx`): fixed a real pre-existing bug where
+the assignee label and the assignment `<select>` compared `team_members.id` against
+`assigned_user_id` (a `users.id`) — they never actually matched. Fixed to match on
+`team_members.user_id`, and the dropdown now only offers assignees the backend would actually
+accept (self, or self + reports for a manager, or everyone for an admin) — a convenience/UX
+filter, not the security boundary; the backend enforces the same rule independently regardless of
+what the dropdown offers.
+
+New test file `backend/tests/test_whatsapp_visibility_security.py`: **21 tests**, all admin/
+manager/report visibility, direct-ID access, reply/status/opt-out authorization (with
+`unittest.mock.patch("requests.post")` proving no real Meta call on an unauthorized attempt),
+assignment authorization, cross-entity redaction, and a webhook-boundary regression.
+
+### N-2.1 — Alternate outbound-path hardening
+
+Mid-N-2, two additional endpoints were found to share the exact same
+`_find_or_link_conversation` pattern as the now-fixed `reply` endpoint: `POST /api/whatsapp/send`
+and `POST /api/flows/{id}/send`. Both are phone-number-driven "compose new message" endpoints
+(used by the WhatsApp buttons on Contacts/Leads/Dashboard/Pipeline, and by WhatsApp Flows),
+distinct from the `conversation_id`-driven "act on existing" routes covered by N-2's locked
+scope. If the phone number resolved to a *pre-existing* conversation assigned to a different
+employee, either endpoint could inject a message into it with zero visibility check — an
+alternate path to the same "unauthorized real Meta send" risk. This was explicitly reported as a
+finding rather than fixed inside N-2's already-authorized scope, and a dedicated follow-up gate
+(N-2.1) was authorized to close it.
+
+New helper `_can_send_to_whatsapp_conversation(scope, assigned_user_id)` — deliberately distinct
+from `_whatsapp_conversation_visible`, which governs the Inbox list/view surface and hides
+unassigned conversations from individual employees. For the two compose endpoints: a brand-new
+conversation (no existing row) is always sendable by anyone (legitimate new outreach); an
+existing-but-unassigned conversation is always sendable by anyone (continuing an unclaimed
+thread is not a visibility leak); an existing conversation assigned to someone outside the
+caller's scope is rejected with 403 **before** the configured-check, before any DB mutation, and
+before any Meta API call.
+
+New tests (in the same file, **11 tests**): admin can send to a conversation assigned to anyone;
+manager can send to her own and to each report's conversation; each report can send to their own
+but not to a peer's or the manager's conversation (with `mock_post.assert_not_called()` proving
+no Meta call on the unauthorized attempt); an existing-unassigned conversation and a brand-new
+number both remain sendable by anyone; `/api/flows/{id}/send` follows the identical rule; and a
+combined test confirms neither compose endpoint can be used as a bypass for the other's
+authorization against the same conversation.
+
+### Validation (N-2 + N-2.1 combined)
+
+- New dedicated security tests: **21 (N-2) + 11 (N-2.1) = 32/32 passed**.
+- WhatsApp regression (`test_whatsapp.py`, `test_whatsapp_flows.py`): **25/25 passed**.
+- Full backend suite: **802/802 passed, 0 failed, 0 skipped** (770 baseline + 32 new — exact
+  arithmetic match).
+- Frontend production build: clean, no new warnings.
+- `git diff --check`: clean on all changed/new files.
+- No changes to `access_control.py`, database schema, or any unrelated frontend component.
+
+### N-3 — Commit
+
+`a1ab52fff70d42098d96ca2c87d1e37df3b56548` —
+`feat(security): secure WhatsApp conversation access`. Exactly 3 files: `backend/main.py`,
+`backend/tests/test_whatsapp_visibility_security.py` (new),
+`frontend/src/components/WhatsAppInbox.jsx`. The frontend file was deliberately included in this
+single commit (rather than split out) since the assignment-dropdown correctness fix is part of
+the same N-2-authorized scope as the backend assignment-authorization work.
+
+### N-4 — Push
+
+Pushed to `origin/master`; `HEAD = origin/master = a1ab52f`, ahead/behind 0/0. Render Auto-Deploy
+triggered by the push and picked up the backend automatically (no manual deploy step) — confirmed
+live via the Render dashboard: commit `a1ab52f`, status Live, build duration 1m58s.
+
+### N-5 — Production smoke verification
+
+**Result: PASS — safe production smoke verification, with live outbound-conversation testing
+deferred.**
+
+The originally planned live conversation-authorization smoke test (creating synthetic WhatsApp
+conversations to exercise reply/assign/status/opt-out end-to-end under real production
+credentials) was found to be architecturally impossible to run safely: the only code path that
+creates a `whatsapp_conversation` row is the inbound Meta webhook (which requires a valid
+`WHATSAPP_APP_SECRET` HMAC signature in production — correctly not available or used for this
+test) or the two compose endpoints, which for a brand-new number always attempt a real outbound
+Meta API call as an unavoidable part of creating the conversation (production has real WhatsApp
+credentials configured, unlike the local test suite). Per the locked safety rule — outbound sends
+may only proceed to a real external call if a genuinely safe mock/intercept exists, otherwise stop
+at the authorization boundary — this portion of N-5 was explicitly descoped rather than worked
+around; no real WhatsApp message was sent, no webhook secret was used or requested, and no
+production configuration was changed to manufacture a test path.
+
+What **was** verified live, safely, against real existing production data with zero synthetic
+conversations created:
+- A synthetic 5-account hierarchy (2 admins, 1 manager, 2 reports mirroring the real
+  Nimita/Yogesh/Samiksha/Chirag/Amol shape, distinctly named, never the real accounts) was
+  created via the app's own authenticated API.
+- `GET /api/whatsapp/conversations` scoping was confirmed against the two real, pre-existing
+  production conversations: both synthetic admins saw both; the synthetic manager saw exactly
+  the one unassigned conversation (correctly excluding a real conversation assigned to an actual
+  employee outside her scope); both synthetic reports saw zero (correctly excluded from both the
+  assigned-to-someone-else conversation and the unassigned one) — a direct, real-data
+  confirmation of the locked N-1 visibility rule.
+- All six Inbox write/read routes correctly returned 404 for a nonexistent conversation ID across
+  every synthetic role, with zero mutation of any real record.
+- The Inbox frontend and Dashboard were confirmed to load correctly and show correctly-scoped
+  (zero-leakage) data under the synthetic manager session.
+- The one real conversation opened during this check was independently re-verified unchanged
+  afterward (`status`, `assigned_user_id`, `opted_out_at`, total conversation count) — zero
+  mutation occurred.
+
+Cleanup: all 5 synthetic users and 3 synthetic team-member rows were deleted via the app's own
+authenticated API and independently re-verified at zero remaining; the real admin roster
+(`nimita`, `testuser`, `yogesh`) confirmed intact and unchanged throughout. No WhatsApp
+conversation or message was ever created during N-5, so there was nothing to clean up on that
+side. No code changes, commit, push, or redeploy occurred during this gate.
+
+`/api/whatsapp/send` and `/api/flows/{id}/send` status: **implemented → committed (`a1ab52f`) →
+802-test verified → deployed.** Only their successful external-call execution against a live
+production conversation was deliberately not exercised, for the same no-safe-mock reason as
+above — this is not an unresolved implementation gap.
+
+### N-6 — Frontend production deployment
+
+The N-5 smoke test surfaced that the CRM frontend is hosted separately on Hostinger with its own
+manual build-and-upload deploy step, entirely independent of Render's git-triggered backend
+auto-deploy — no Hostinger deployment had occurred as part of N-2 through N-4, so the committed
+assignment-dropdown fix, while live on the backend, was not yet live in the UI actually served to
+employees.
+
+- Frontend rebuilt from the already-verified commit `a1ab52f` — deterministic build, same bundle
+  hash (`main.e3f8d51f.js` / `main.77907c25.css`) as the build already verified clean in N-2.
+  Source- and bundle-confirmed the fix (`assignableTeamMembers`, `reports_to`-based filtering) is
+  present in the shipped code.
+- Deployed exactly 4 files (`index.html`, `asset-manifest.json`, `main.e3f8d51f.js`,
+  `main.77907c25.css`) to `domains/arthainvestcapital.com/public_html/crm_html/` via Hostinger
+  File Manager. The separate marketing site at `arthainvestcapital.com`'s own `public_html/` root
+  (guarded by a pre-existing `DO_NOT_UPLOAD_HERE` marker file at that level) was never touched.
+- Live verification: `crm.arthainvestcapital.com/asset-manifest.json` confirmed the new bundle is
+  live; login and WhatsApp Inbox load correctly under the admin account; both real production
+  conversations display correctly; the opted-out conversation's banner and disabled Send button
+  render correctly, matching backend state exactly.
+- **Limitation:** the manager/report role's interactive assignment-dropdown filtering was not
+  directly re-verified live via click-through in this gate, due to browser-automation/extension
+  connectivity limitations encountered during the session. This does not weaken the security
+  posture — the dropdown is explicitly a UX convenience layer, and the backend independently
+  enforces `_can_assign_whatsapp_to` regardless of what the dropdown offers, which N-5 already
+  verified live against real production data.
+- Zero data or message impact: both real conversations confirmed unchanged before and after; no
+  WhatsApp message was sent; no production configuration was changed.
+- No code changes, commit, push, or backend redeploy occurred during N-6.
+
+### Final access-control model addition (this release)
+
+- **`whatsapp_conversation`** (this release): single-column ownership (`assigned_user_id →
+  users.id`, no `created_by`) — the first entity in this codebase without the standard
+  `created_by`/`assigned_team_member_id` pair. Visibility and assignment-target rules are both
+  built directly on `VisibilityScope.user_ids` via two new table-specific helpers, not a second
+  generic framework. Unassigned conversations are visible to admins and managers only.
+- **`POST /api/whatsapp/send`** and **`POST /api/flows/{id}/send`** (this release): "compose new
+  message" endpoints, authorized on the same underlying rule as the Inbox routes but via a
+  distinct helper (`_can_send_to_whatsapp_conversation`) that correctly treats new/unassigned
+  conversations as always sendable, blocking only sends into a conversation another employee has
+  already claimed.
+
+### Known intentionally out-of-scope / deferred items
+
+- Live successful-path outbound execution (an actual authorized Meta send completing against a
+  live production conversation) was deliberately never exercised in any N-5/N-6 gate, per the
+  locked no-real-message safety rule — covered instead by the 32/32 dedicated security tests
+  under mocked/stripped credentials.
+- The N-6 manager/report dropdown click-through was not completed live (see N-6 above); the
+  underlying backend rule was independently verified live in N-5.
+- Other N-0-identified gaps (Campaigns CRUD/send, `dial_queue`, unrestricted Automations,
+  unrestricted API-Keys, unauthenticated `/uploads` static mount) remain untouched and out of
+  scope for this release — tracked separately, not implied to be fixed here.
+
+### Release status
+
+```
+STATUS:                        CLOSED / LIVE / DOCUMENTED
+Production backend release:    a1ab52f (live on Render)
+Production frontend release:   a1ab52f build, deployed to Hostinger crm_html
+Security verification:         PASS (802/802 automated; safe production smoke verified;
+                                live outbound-conversation execution deliberately deferred)
+Production data integrity:     VERIFIED (zero real records modified, zero real messages sent)
+Cleanup:                       COMPLETE (zero synthetic artifacts remaining)
+No known regression:           VERIFIED by the recorded regression/smoke checks
+```
+
+---
+
 ## Next up: 2B (CRM-linked chat)
 
 Not started. Requires its own scoped plan-and-verify pass before any implementation begins, per
