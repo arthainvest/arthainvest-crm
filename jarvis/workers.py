@@ -77,6 +77,7 @@ import memory as jm  # noqa: E402
 import capabilities as caps  # noqa: E402
 import approval as appr  # noqa: E402
 import action_firewall as firewall  # noqa: E402
+import tools as toolreg  # noqa: E402
 from policy import find_prohibited_routes  # noqa: E402 - same single source of truth every other layer uses
 
 DB_PATH = Path(__file__).resolve().parent / "jarvis.db"
@@ -182,6 +183,25 @@ class ApprovalRequiredError(WorkerError):
             mission_id=mission_id, step_id=step_id,
             message=f"This step requires approval before it can execute (decision={decision.decision!r}).",
             metadata={"approval_decision": decision.to_dict()},
+        ))
+
+
+class WorkerToolNotAuthorizedError(WorkerError):
+    """Raised when a step's capability resolves to a REGISTERED Tool
+    (Stage K, tools.py) that is not currently executable - disabled, or at
+    an UNKNOWN/BLOCKED trust level. A capability_id with no registered
+    Tool never raises this (see tools.py's own "existing-worker
+    compatibility" note) - this is strictly additive. Distinct from
+    ApprovalRequiredError: this is a Tool Registry identity/trust gate,
+    checked BEFORE Approval Gate or Action Firewall are even consulted -
+    registering a tool is never authorization on its own."""
+
+    def __init__(self, mission_id, step_id, tool_id, reason_codes):
+        super().__init__(ErrorObject(
+            code="TOOL_NOT_AUTHORIZED", category="POLICY", severity="ERROR", retryable=False,
+            mission_id=mission_id, step_id=step_id,
+            message=f"Tool {tool_id!r} is not currently executable ({reason_codes}).",
+            metadata={"tool_id": tool_id, "reason_codes": reason_codes},
         ))
 
 
@@ -415,6 +435,8 @@ def init_db():
     msn.init_db()
     firewall.DB_PATH = DB_PATH if firewall.DB_PATH != DB_PATH else firewall.DB_PATH
     firewall.init_db()  # cascades to approval.init_db() + intent_lock.init_db() - execute_step() calls into all three
+    toolreg.DB_PATH = DB_PATH if toolreg.DB_PATH != DB_PATH else toolreg.DB_PATH
+    toolreg.init_db()
     with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS jarvis_worker_executions (
@@ -554,6 +576,51 @@ def execute_step(mission_id, step_id, user_id, *, registry: WorkerRegistry = Non
     if missing_inputs:
         raise WorkerValidationError(f"missing required inputs for {worker.worker_id!r}: {missing_inputs}", step_id=step_id)
 
+    # Stage K: Tool Registry - additive and strictly backward-compatible.
+    # A capability_id is only gated here if it was explicitly registered
+    # as a Tool (tools.register_tool()); a capability_id with no
+    # registered Tool - every pre-existing R0 capability, every ad-hoc
+    # test/internal worker - is completely unaffected, byte for byte,
+    # exactly the lesson Stage J's own INVALID_TOOL scoping already
+    # learned once. Registration is never authorization on its own: a
+    # VERIFIED, enabled tool still has to clear Approval Gate + Action
+    # Firewall below like any other capability - this only adds an
+    # earlier, tool-identity-specific fail-closed gate (disabled tool, or
+    # an UNKNOWN/BLOCKED trust level, refused before Approval/Firewall are
+    # even consulted).
+    registered_tools = toolreg.lookup_by_capability(capability_id)
+    tool = registered_tools[0] if registered_tools else None
+    resolved_tool_id = capability_id
+    if tool is not None:
+        try:
+            availability = toolreg.assert_tool_executable(tool.tool_id)
+        except toolreg.ToolTransactionProhibitedError as e:
+            msn.transition_step(step_id, mission_id, user_id, "BLOCKED", error={
+                "code": "TRANSACTION_PROHIBITED", "category": "POLICY", "severity": "CRITICAL",
+                "retryable": False, "matched_patterns": e.error.metadata.get("matches"),
+            })
+            raise WorkerTransactionProhibitedError(mission_id, step_id, e.error.metadata.get("matches", []))
+        if not availability["available"]:
+            msn.transition_step(step_id, mission_id, user_id, "BLOCKED", error={
+                "code": "TOOL_NOT_AUTHORIZED", "category": "POLICY", "severity": "ERROR",
+                "retryable": False, "metadata": {"reason_codes": availability["reason_codes"], "tool_id": tool.tool_id},
+            })
+            raise WorkerToolNotAuthorizedError(mission_id, step_id, tool.tool_id, availability["reason_codes"])
+        # The registered Tool's own identity (distinct from the bare
+        # capability_id - Capability != Tool) becomes the tool_id passed
+        # to Approval/Firewall - action_firewall.py's own tool-validity
+        # check recognizes a Tool Registry identity directly (see that
+        # file's own Stage K note), so this composes without weakening
+        # that check. The tool's CURRENT version is folded into
+        # material_params via the same public helper a caller requesting
+        # approval should use (toolreg.approval_material_params()) - a
+        # version bump changes that value, which changes the fingerprint
+        # compute_action_fingerprint() already owns (Stage I), invalidating
+        # a prior approval for the old version. No second invalidation
+        # mechanism is built here.
+        resolved_tool_id = tool.tool_id
+        material_params = toolreg.approval_material_params(tool, material_params)
+
     # Stage J: Action Firewall - the UNIVERSAL final gate. Every execution,
     # regardless of risk tier, passes through firewall.authorize() - there
     # is no code path around it. For an R0/R1 capability this resolves to
@@ -563,17 +630,18 @@ def execute_step(mission_id, step_id, user_id, *, registry: WorkerRegistry = Non
     # a hard requirement (fail-closed, never guessed) - matching the exact
     # boundary Stage I established, now enforced one layer up.
     cap = caps.get_capability(capability_id)
-    if cap is not None and cap.risk_level in appr.APPROVAL_REQUIRED_RISK_LEVELS.union(appr.DENIED_RISK_LEVELS) \
+    effective_risk_level = tool.risk_level if tool is not None else (cap.risk_level if cap is not None else None)
+    if effective_risk_level in appr.APPROVAL_REQUIRED_RISK_LEVELS.union(appr.DENIED_RISK_LEVELS) \
             and action_class is None:
         raise WorkerValidationError(
-            f"capability {capability_id!r} is risk {cap.risk_level!r} and requires an action_class "
+            f"capability {capability_id!r} is risk {effective_risk_level!r} and requires an action_class "
             "to evaluate approval - failing closed rather than guessing one", step_id=step_id,
         )
 
     try:
         decision = firewall.authorize(mission_id, step_id, user_id, action_class,
-                                       cap.risk_level if cap is not None else None,
-                                       tool_id=capability_id, target=target, material_params=material_params)
+                                       effective_risk_level,
+                                       tool_id=resolved_tool_id, target=target, material_params=material_params)
     except firewall.TransactionProhibitedError as e:
         # Same treatment as the top-level transaction check above:
         # never claimed, zero attempts recorded.

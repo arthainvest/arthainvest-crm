@@ -65,6 +65,7 @@ import capabilities as caps  # noqa: E402
 import memory as mem  # noqa: E402
 import intent_lock as il  # noqa: E402
 import approval as appr  # noqa: E402
+import tools as toolreg  # noqa: E402 - Stage K: a Tool Registry identity is ALSO a valid tool, see check 5 below
 
 DB_PATH = Path(__file__).resolve().parent / "jarvis.db"
 
@@ -171,6 +172,8 @@ def init_db():
     appr.init_db()  # cascades to msn.init_db() and il.init_db() - authorize() calls into both
     il.DB_PATH = DB_PATH if il.DB_PATH != DB_PATH else il.DB_PATH
     il.init_db()
+    toolreg.DB_PATH = DB_PATH if toolreg.DB_PATH != DB_PATH else toolreg.DB_PATH
+    toolreg.init_db()  # authorize() now looks up Tool Registry identities directly (see check 5)
     with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS jarvis_firewall_decisions (
@@ -326,9 +329,20 @@ def authorize(mission_id, step_id, user_id, action_class=None, risk_level=None, 
     # capability (an ad-hoc test Worker, for instance) is not a security
     # violation on its own; Worker Runtime's own registry lookup already
     # handles "no Worker exists for this at all" separately and earlier.
+    #
+    # Stage K addition: a resolved_tool_id can ALSO be a Tool Registry
+    # identity (tools.py's own tool_id, distinct from a capabilities.py
+    # capability_id - Capability != Tool). workers.py's own Tool Registry
+    # gate already validated trust/enabled/transaction state for that
+    # identity BEFORE this function was ever called, so a registered Tool
+    # is recognized here as valid too, not re-validated a second way - this
+    # only widens WHAT counts as "a known tool", it does not weaken the
+    # check (an identity that is neither a cataloged Capability nor a
+    # registered Tool still fails exactly as before).
     resolved_tool_id = tool_id or step.get("worker_id")
     cap = caps.get_capability(resolved_tool_id) if resolved_tool_id else None
-    if resolved_tool_id and cap is None and action_class is not None:
+    registered_tool = toolreg.get_tool(resolved_tool_id) if resolved_tool_id else None
+    if resolved_tool_id and cap is None and registered_tool is None and action_class is not None:
         checks["tool_validity"] = "FAIL"
         return _deny(mission_id=mission_id, step_id=step_id, user_id=user_id, action_class=action_class,
                      risk_level=risk_level, tool_id=resolved_tool_id, reason_codes=["INVALID_TOOL"],
@@ -342,7 +356,8 @@ def authorize(mission_id, step_id, user_id, action_class=None, risk_level=None, 
     checks["tool_validity"] = "PASS"
     checks["security"] = "PASS"
 
-    risk_level = risk_level or (cap.risk_level if cap is not None else "R1")
+    risk_level = risk_level or (cap.risk_level if cap is not None
+                                 else (registered_tool.risk_level if registered_tool is not None else "R1"))
     if risk_level not in appr.RISK_LEVELS:
         checks["risk"] = "FAIL"
         return _deny(mission_id=mission_id, step_id=step_id, user_id=user_id, action_class=action_class,
