@@ -970,7 +970,7 @@ class DialerQueueItemResponse(BaseModel):
     id: int
     lead_id: Optional[int] = None
     contact_id: Optional[int] = None
-    name: str
+    name: Optional[str] = None  # N-19: nullable now that a hidden linked lead/contact is redacted
     phone: Optional[str] = None
     team_member_id: int
     team_member_name: Optional[str] = None

@@ -6681,16 +6681,21 @@ async def get_communication_log(token: str = Query(None), channel: str = Query(N
 
     return rows
 
-def fetch_dialer_item(cursor, queue_id):
+def fetch_dialer_item(cursor, queue_id, scope=None):
     """Read one dial_queue row back joined against its lead/contact (for name+phone) and
-    team_members (for the assignee's name)."""
+    team_members (for the assignee's name). scope is None both for admins and for internal
+    callers that already know the queue item itself is authorized - when a real scope is
+    passed, name/phone are redacted if the underlying lead/contact isn't visible to the
+    caller (defense-in-depth, same convention as Campaigns' recipient redaction)."""
     cursor.execute(
         """
         SELECT dial_queue.*,
                team_members.name as team_member_name,
                COALESCE(users.full_name, users.username) as assigned_by_name,
                COALESCE(leads.name, contacts.name) as name,
-               COALESCE(leads.phone, contacts.phone) as phone
+               COALESCE(leads.phone, contacts.phone) as phone,
+               leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+               contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id
         FROM dial_queue
         LEFT JOIN team_members ON team_members.id = dial_queue.team_member_id
         LEFT JOIN users ON users.id = dial_queue.assigned_by
@@ -6700,7 +6705,15 @@ def fetch_dialer_item(cursor, queue_id):
         """,
         (queue_id,)
     )
-    return dict(cursor.fetchone())
+    row = dict(cursor.fetchone())
+    if scope is not None:
+        if row.get("lead_id"):
+            redact_if_not_visible(scope, row, ["name", "phone"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+        elif row.get("contact_id"):
+            redact_if_not_visible(scope, row, ["name", "phone"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+    for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id"):
+        row.pop(k, None)
+    return row
 
 # ============= CALL DIALER (Kylas "My Call Dialer" parity) =============
 
@@ -6708,7 +6721,16 @@ def fetch_dialer_item(cursor, queue_id):
 async def assign_to_dialer(payload: DialerAssignRequest, token: str = Query(None)):
     """Bulk-assign leads/contacts to a team member's dial queue. Skips records already
     Pending for that same team member, so re-selecting the same leads doesn't create
-    duplicate queue entries."""
+    duplicate queue entries.
+
+    N-19: two authorization checks closed here, mirroring the Campaigns-recipient IDOR fix
+    (N-11) and the WhatsApp assignment-target rule (N-2): (1) the caller may only assign INTO
+    a dial queue within their own visibility scope - self, or self + direct reports for a
+    manager, admin unrestricted - closing the "assign anyone's leads to anyone's queue"
+    dialer-assign IDOR; (2) each target lead/contact must itself be visible to the caller
+    before being queued, otherwise it's silently rejected (folded into `skipped`, never
+    distinguished from a duplicate) rather than attached - a nonexistent id is treated
+    identically to an invisible one."""
     current_user = get_current_user(token)
 
     lead_ids = payload.lead_ids or []
@@ -6718,9 +6740,13 @@ async def assign_to_dialer(payload: DialerAssignRequest, token: str = Query(None
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+
         cursor.execute("SELECT 1 FROM team_members WHERE id = ?", (payload.team_member_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Team member not found")
+        if scope is not None and payload.team_member_id not in scope.team_member_ids:
+            raise HTTPException(status_code=403, detail="You don't have access to this record")
 
         cursor.execute(
             "SELECT lead_id, contact_id FROM dial_queue WHERE team_member_id = ? AND status = 'Pending'",
@@ -6729,8 +6755,15 @@ async def assign_to_dialer(payload: DialerAssignRequest, token: str = Query(None
         existing = {(r['lead_id'], r['contact_id']) for r in cursor.fetchall()}
 
         assigned = 0
+        skipped = 0
         for lead_id in lead_ids:
             if (lead_id, None) in existing:
+                skipped += 1
+                continue
+            cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+            lead_owner = cursor.fetchone()
+            if not lead_owner or not is_record_visible(scope, lead_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"]):
+                skipped += 1
                 continue
             cursor.execute(
                 "INSERT INTO dial_queue (lead_id, contact_id, team_member_id, assigned_by) VALUES (?, NULL, ?, ?)",
@@ -6739,6 +6772,12 @@ async def assign_to_dialer(payload: DialerAssignRequest, token: str = Query(None
             assigned += 1
         for contact_id in contact_ids:
             if (None, contact_id) in existing:
+                skipped += 1
+                continue
+            cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+            contact_owner = cursor.fetchone()
+            if not contact_owner or not is_record_visible(scope, contact_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"]):
+                skipped += 1
                 continue
             cursor.execute(
                 "INSERT INTO dial_queue (lead_id, contact_id, team_member_id, assigned_by) VALUES (NULL, ?, ?, ?)",
@@ -6747,22 +6786,32 @@ async def assign_to_dialer(payload: DialerAssignRequest, token: str = Query(None
             assigned += 1
         conn.commit()
 
-    return {"assigned": assigned, "skipped": len(lead_ids) + len(contact_ids) - assigned}
+    return {"assigned": assigned, "skipped": skipped}
 
 @app.get("/api/dialer/queue", response_model=list[DialerQueueItemResponse])
 async def get_dialer_queue(token: str = Query(None), team_member_id: int = Query(None), status: str = Query("Pending")):
     """A team member's dial queue - defaults to their Pending records, oldest-assigned first
-    (a FIFO queue to work through), matching Kylas's My Call Dialer."""
-    get_current_user(token)
+    (a FIFO queue to work through), matching Kylas's My Call Dialer.
+
+    N-19: SQL-scoped by the caller's own visibility (assigned_by OR team_member_id, the same
+    creator-or-assignee dual-space OR used everywhere else) - previously completely
+    unscoped, defaulting to every team member's entire queue when team_member_id was omitted.
+    `team_member_id` remains an optional narrowing filter WITHIN scope, not the security
+    boundary - passing a team_member_id outside the caller's scope now returns an empty list
+    rather than leaking that team member's queue."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         query = """
             SELECT dial_queue.*,
                    team_members.name as team_member_name,
                    COALESCE(users.full_name, users.username) as assigned_by_name,
                    COALESCE(leads.name, contacts.name) as name,
-                   COALESCE(leads.phone, contacts.phone) as phone
+                   COALESCE(leads.phone, contacts.phone) as phone,
+                   leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+                   contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id
             FROM dial_queue
             LEFT JOIN team_members ON team_members.id = dial_queue.team_member_id
             LEFT JOIN users ON users.id = dial_queue.assigned_by
@@ -6777,22 +6826,40 @@ async def get_dialer_queue(token: str = Query(None), team_member_id: int = Query
         if status:
             query += " AND dial_queue.status = ?"
             params.append(status)
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["dial_queue.assigned_by"], team_member_id_cols=["dial_queue.team_member_id"])
+            query += " AND " + clause
+            params.extend(scope_params)
         query += " ORDER BY dial_queue.created_at ASC"
         cursor.execute(query, params)
         rows = [dict(r) for r in cursor.fetchall()]
+        for row in rows:
+            if row.get("lead_id"):
+                redact_if_not_visible(scope, row, ["name", "phone"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            elif row.get("contact_id"):
+                redact_if_not_visible(scope, row, ["name", "phone"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
+            for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id"):
+                row.pop(k, None)
 
     return rows
 
 @app.put("/api/dialer/queue/{queue_id}", response_model=DialerQueueItemResponse)
 async def update_dialer_status(queue_id: int, payload: DialerStatusUpdate, token: str = Query(None)):
-    """Mark a queued record Called or Skipped, moving it out of the Pending queue."""
-    get_current_user(token)
+    """Mark a queued record Called or Skipped, moving it out of the Pending queue.
+
+    N-19: restructured to check-then-write (authorization before mutation) - previously only
+    checked existence, never ownership, so any authenticated employee could mark any other
+    employee's queue entry Called/Skipped."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM dial_queue WHERE id = ?", (queue_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT team_member_id, assigned_by FROM dial_queue WHERE id = ?", (queue_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Queue entry not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["assigned_by"], team_member_id_cols=["team_member_id"])
 
         cursor.execute(
             "UPDATE dial_queue SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -6800,15 +6867,26 @@ async def update_dialer_status(queue_id: int, payload: DialerStatusUpdate, token
         )
         conn.commit()
 
-        return fetch_dialer_item(cursor, queue_id)
+        return fetch_dialer_item(cursor, queue_id, scope)
 
 @app.delete("/api/dialer/queue/{queue_id}")
 async def delete_dialer_item(queue_id: int, token: str = Query(None)):
-    """Remove a record from the dial queue entirely (not the same as marking it Skipped)."""
-    get_current_user(token)
+    """Remove a record from the dial queue entirely (not the same as marking it Skipped).
+
+    N-19: previously deleted unconditionally with no existence or ownership check at all -
+    the same missing-check pattern already fixed for delete_campaign (N-11) and the Phase A
+    entities - now check-then-delete."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT team_member_id, assigned_by FROM dial_queue WHERE id = ?", (queue_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Queue entry not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["assigned_by"], team_member_id_cols=["team_member_id"])
+
         cursor.execute("DELETE FROM dial_queue WHERE id = ?", (queue_id,))
         conn.commit()
 
