@@ -689,6 +689,155 @@ No known regression:           VERIFIED by the recorded regression/smoke checks
 
 ---
 
+## Release Checkpoint: Campaigns Access Control (2026-09-18)
+
+### Background
+
+A post-WhatsApp-release re-audit (N-10, discovery only) independently re-confirmed the N-0
+finding that Campaigns had zero access-control scoping: `campaigns.created_by` existed but no
+route ever read it back, so any authenticated employee could list/get/update/delete/send any
+other employee's campaign, and `POST /api/campaigns/{id}/recipients` would attach an arbitrary
+Lead/Contact id — including one the caller could not see — to any campaign with no visibility
+check at all (the campaign-recipient IDOR).
+
+### N-11 — Implementation
+
+`backend/main.py` updated to reuse the existing `access_control.py` model (`created_by →
+users.id`, creator-only visibility, same pattern as Quotations — campaigns have no assignee
+column):
+- `GET /api/campaigns`: SQL-scoped via `scope_filter_sql`.
+- `PUT`/`DELETE /api/campaigns/{id}`: restructured to check-then-write. Fixed two real
+  pre-existing bugs as a byproduct: `update_campaign` previously wrote first and only discovered
+  a nonexistent id afterward (write-before-check); `delete_campaign` had no check at all, not
+  even existence.
+- `POST /api/campaigns/{id}/send`: authorization checked immediately after fetching the
+  campaign — before the message-content validation, before fetching recipients, before any
+  Email/WhatsApp/SMS call — mirroring the authorize-before-external-call ordering established
+  for WhatsApp (N-2).
+- `POST/GET/DELETE /api/campaigns/{id}/recipients`: campaign visibility now checked on all
+  three; the IDOR itself closed by checking each supplied Lead/Contact's own
+  `created_by`/`assigned_team_member_id` before attaching it — a nonexistent id is rejected
+  identically to a real-but-invisible one, so the endpoint never confirms existence. Rejected
+  targets are folded into the pre-existing `skipped` counter rather than a new response key, to
+  avoid changing the response contract other tests already assert on exactly.
+- Cross-entity redaction added to `get_campaign_recipients` (lead/contact name, phone, email
+  nulled when the underlying record isn't visible to the viewer) as defense-in-depth for
+  historical/edge-case data; `send_campaign`'s internal reuse of the same row-conversion helper
+  deliberately skips redaction so the real send path is unaffected.
+- One authorized deviation from the original scope: `GET /api/campaigns/{id}` (a single-record
+  GET) does not exist in this codebase and was not invented — only list/update/delete/send take
+  an id.
+
+New test file `backend/tests/test_campaigns_visibility_security.py`: 24 tests covering the full
+visibility matrix, unauthorized write/send denial with confirmed no-mutation, the recipient
+IDOR (hidden Lead/Contact rejected, nonexistent id treated identically, mixed visible/invisible
+targets), cross-entity redaction, and recipient-removal ownership boundaries.
+
+**Validation:** 24/24 new tests, 48/48 targeted regression (`test_campaigns.py`,
+`test_marketing_leads_contacts_link.py`, `test_activities_leads_contacts_link.py`,
+`test_activity_feed_visibility_security.py`, `test_whatsapp.py`), **826/826 full backend suite**
+(802 baseline + 24 new). `git diff --check` clean. No changes to `access_control.py` or any
+schema (`campaigns.created_by` already existed).
+
+### N-12 — Commit
+
+`7720984540c2cfa185503af5ece38c81fe6e16fa` — `feat(security): secure Campaigns access control`.
+Exactly 2 files: `backend/main.py`, `backend/tests/test_campaigns_visibility_security.py` (new).
+
+### N-13 — Push (isolated)
+
+Local `master` had accumulated unrelated parallel JARVIS commits and a merge commit ahead of
+`origin/master` by the time of this gate. Rather than push local `master` directly (which would
+have carried that unrelated history to the shared remote), the same isolation technique used for
+the WhatsApp docs release (N-9) was reused: a temporary branch created from `origin/master`
+(`git worktree`, not a checkout of the main working directory), the N-12 commit cherry-picked
+onto it alone, verified to contain exactly the 2 Campaigns files and none of the JARVIS/merge
+commits, then pushed directly to `origin/master` via an explicit `branch:master` refspec.
+Resulting isolated commit: `958ff1f7297ba27ac2ee51ef953851212d12dba4` (same content as
+`7720984`, different hash as a cherry-pick object). `origin/master` confirmed
+`5db83f8 → 958ff1f`, zero unrelated commits transmitted. Local parallel JARVIS work was left
+completely untouched throughout.
+
+### N-14 — Production deployment
+
+**Important precision:** the Campaigns security code went live as part of commit `4a1f245`
+("Merge origin/master (Campaigns access-control release) into local ..."), **not** because
+`958ff1f` itself became the deployed commit. Sequence: the local JARVIS-work session
+independently merged `origin/master` (at `958ff1f`) into its own local branch and pushed that
+merge to `origin/master` as `4a1f245` — an action taken outside this release's own gates, not by
+this session.
+
+A dedicated audit (N-14A, discovery only) confirmed this was safe to treat as a deploy rather
+than a blocker: the diff from `958ff1f` to `4a1f245` touches only `jarvis/*` files and
+`JARVIS_SCOPE_AND_ROADMAP.md` — zero `backend/`/`frontend/`/dependency/deployment-config
+changes. `backend/main.py` has no import of `jarvis` anywhere, and `jarvis` is not in
+`backend/requirements.txt`.
+
+Render's Root Directory is configured as `backend` — Render's own documented behavior is that
+"code changes outside of this directory do not trigger an auto-deploy," which explains the full
+observed sequence: the pure docs-only push (`5db83f8`, N-9) correctly did not redeploy (its only
+change was outside `backend/`); the later push to `4a1f245` did redeploy, because its cumulative
+diff since the last deployed commit (`a1ab52f`) included `958ff1f`'s changes to
+`backend/main.py` — Render deployed the resulting tip commit as a whole, carrying the unrelated
+JARVIS files along without them individually mattering. JARVIS code is present in the deployed
+commit's checkout but remains unwired into the running FastAPI application.
+
+Confirmed live: Render dashboard showed commit `4a1f245`, status Live, trigger Auto-Deploy,
+deployed via the push above. `/api/health` → 200 OK, database connected. CRM frontend and the
+separate marketing site both confirmed responding normally.
+
+### N-15 — Production smoke test
+
+**Result: PASS, 14/14 checks.** Performed against a synthetic 5-account hierarchy (2 admins, 1
+manager, 2 reports, mirroring the real Nimita/Yogesh/Samiksha/Chirag/Amol shape, never the real
+accounts), created via the app's own authenticated API on live production.
+
+Verified live: admin sees all 3 test campaigns; manager sees own + both reports'; each report
+sees only their own; unauthorized update/delete/send all correctly 403 with confirmed
+no-mutation; the campaign-recipient IDOR fix confirmed live (attaching a peer's hidden Lead
+correctly rejected — `added:0, skipped:1` — while attaching one's own Lead succeeded); recipient
+list correctly excluded the rejected Lead; unauthorized recipient GET and cross-boundary
+recipient removal both correctly 403; authorized send correctly passed authorization (200, not
+403) on a zero-recipient campaign, safely terminating at "No pending recipients to send to" with
+`sent:0` — proving the authorization boundary without ever reaching the per-recipient send loop
+or any external Email/WhatsApp/SMS call; manager's cross-report send authorization confirmed
+the same way.
+
+**Zero real Email/WhatsApp/SMS sent at any point.** Cleanup: all 5 synthetic users, 3 team
+members, 3 test campaigns, and 2 test leads removed via the app's own authenticated API,
+independently re-verified at zero remaining; real admin roster (`nimita`, `testuser`, `yogesh`)
+confirmed intact throughout.
+
+### Final access-control model addition (this release)
+
+- **Campaigns** (this release): creator-only visibility (`campaigns.created_by`), same pattern
+  as Quotations. `campaign_recipients` attachment now requires the target Lead/Contact be
+  visible to the caller, independent of campaign visibility — campaign ownership alone was the
+  documented gap, not sufficient authorization to attach an arbitrary person.
+
+### Known intentionally out-of-scope items (not implied to be fixed by this release)
+
+- `dial_queue`, unrestricted Automations, unrestricted API-Keys, and the unauthenticated
+  `/uploads` static mount remain untouched — tracked separately from the N-10 audit, not implied
+  safe or fixed here.
+- The N-6 WhatsApp frontend dropdown click-through gap and the Connect CRM-link
+  existence-oracle nuance (both noted in the prior checkpoint) remain outstanding, unrelated to
+  this release.
+
+### Release status
+
+```
+STATUS:                        CLOSED / LIVE / DOCUMENTED
+Production backend release:    4a1f245 (live on Render; contains 958ff1f's Campaigns fix,
+                                deployed as part of a cumulative push, not deployed standalone)
+Security verification:         PASS (826/826 automated; live production smoke 14/14 PASS)
+Production data integrity:     VERIFIED (zero real records modified, zero real messages sent)
+Cleanup:                       COMPLETE (zero synthetic artifacts remaining)
+No known regression:           VERIFIED by the recorded regression/smoke checks
+```
+
+---
+
 ## Next up: 2B (CRM-linked chat)
 
 Not started. Requires its own scoped plan-and-verify pass before any implementation begins, per
