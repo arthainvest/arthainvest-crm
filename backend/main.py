@@ -2803,12 +2803,21 @@ _CAMPAIGN_SELECT_SQL = """
 
 @app.get("/api/campaigns", response_model=list[CampaignResponse])
 async def get_campaigns(token: str = Query(None)):
-    """Get all marketing campaigns"""
-    get_current_user(token)
+    """Get all marketing campaigns - creator-only visibility (no assignee column exists on
+    campaigns, same as Quotations)."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(_CAMPAIGN_SELECT_SQL + " ORDER BY campaigns.created_at DESC")
+        scope = get_visibility_scope(cursor, current_user)
+        query = _CAMPAIGN_SELECT_SQL
+        params = []
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["campaigns.created_by"])
+            query += " WHERE " + clause
+            params = scope_params
+        query += " ORDER BY campaigns.created_at DESC"
+        cursor.execute(query, params)
         campaigns = [campaign_row_to_dict(row) for row in cursor.fetchall()]
 
     return campaigns
@@ -2837,8 +2846,11 @@ async def create_campaign(campaign: CampaignCreate, token: str = Query(None)):
 
 @app.put("/api/campaigns/{campaign_id}", response_model=CampaignResponse)
 async def update_campaign(campaign_id: int, campaign: CampaignUpdate, token: str = Query(None)):
-    """Update a marketing campaign"""
-    get_current_user(token)
+    """Update a marketing campaign. Restructured to check-then-write (authorization before
+    mutation) - the original code updated the row first and only discovered a nonexistent id
+    afterward via a missing SELECT, the same write-before-check pattern already fixed elsewhere
+    (update_lead/update_task) during the Phase A access-control release."""
+    current_user = get_current_user(token)
 
     updates = []
     values = []
@@ -2857,41 +2869,66 @@ async def update_campaign(campaign_id: int, campaign: CampaignUpdate, token: str
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM campaigns WHERE id = ?", (campaign_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
+
         cursor.execute(f"UPDATE campaigns SET {', '.join(updates)} WHERE id = ?", values)
         conn.commit()
 
         cursor.execute(_CAMPAIGN_SELECT_SQL + " WHERE campaigns.id = ?", (campaign_id,))
         updated_campaign = cursor.fetchone()
 
-    if not updated_campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-
     return campaign_row_to_dict(updated_campaign)
 
 @app.delete("/api/campaigns/{campaign_id}")
 async def delete_campaign(campaign_id: int, token: str = Query(None)):
-    """Delete a marketing campaign"""
-    get_current_user(token)
+    """Delete a marketing campaign. Previously deleted unconditionally with no existence or
+    ownership check at all (not even a write-then-check bug - the check simply didn't exist),
+    the same missing-check pattern already fixed for delete_contact/delete_deal/delete_lead/etc.
+    during Phase A."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM campaigns WHERE id = ?", (campaign_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
+
         cursor.execute("DELETE FROM campaign_recipients WHERE campaign_id = ?", (campaign_id,))
         cursor.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
         conn.commit()
 
     return {"message": "Campaign deleted"}
 
-def _campaign_recipient_row_to_dict(r):
+def _campaign_recipient_row_to_dict(r, scope=None):
+    """scope is None both for admins (no redaction needed) and for internal callers like
+    send_campaign that need the real phone/email to actually send - redaction is purely a
+    display concern for get_campaign_recipients, never a sending concern, so only that route
+    passes a real scope here."""
     d = dict(r)
+    if scope is not None:
+        redact_if_not_visible(scope, d, ["lead_name", "lead_phone", "lead_email"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+        redact_if_not_visible(scope, d, ["contact_name", "contact_phone", "contact_email"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
     d['name'] = d.get('lead_name') or d.get('contact_name')
     d['phone'] = d.get('lead_phone') or d.get('contact_phone')
     d['email'] = d.get('lead_email') or d.get('contact_email')
+    for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id"):
+        d.pop(k, None)
     return d
 
 _CAMPAIGN_RECIPIENT_SELECT_SQL = """
     SELECT campaign_recipients.*,
            leads.name as lead_name, leads.phone as lead_phone, leads.email as lead_email,
-           contacts.name as contact_name, contacts.phone as contact_phone, contacts.email as contact_email
+           leads.created_by as _lead_created_by, leads.assigned_team_member_id as _lead_assigned_team_member_id,
+           contacts.name as contact_name, contacts.phone as contact_phone, contacts.email as contact_email,
+           contacts.created_by as _contact_created_by, contacts.assigned_team_member_id as _contact_assigned_team_member_id
     FROM campaign_recipients
     LEFT JOIN leads ON leads.id = campaign_recipients.lead_id
     LEFT JOIN contacts ON contacts.id = campaign_recipients.contact_id
@@ -2901,8 +2938,17 @@ _CAMPAIGN_RECIPIENT_SELECT_SQL = """
 async def add_campaign_recipients(campaign_id: int, payload: CampaignRecipientAdd, token: str = Query(None)):
     """Add real Leads/Contacts to a campaign, replacing the old plain `recipients` count with
     actual people. Skips anyone already added to this campaign, so re-selecting the same
-    leads doesn't create duplicates."""
-    get_current_user(token)
+    leads doesn't create duplicates.
+
+    N-11: closes the campaign-recipient IDOR - a lead/contact the caller cannot see is now
+    rejected rather than silently attached (a nonexistent id is treated identically to an
+    invisible one, so this never confirms whether an id exists). Checked per-target, in addition
+    to the campaign's own visibility, since campaign visibility alone was the documented gap -
+    an authorized campaign owner could still attach someone else's lead/contact to their own
+    otherwise-legitimate campaign. Rejected targets are folded into `skipped` rather than a new
+    response key, preserving the exact pre-existing {"added", "skipped"} response contract that
+    other tests already assert on."""
+    current_user = get_current_user(token)
 
     lead_ids = payload.lead_ids or []
     contact_ids = payload.contact_ids or []
@@ -2911,9 +2957,12 @@ async def add_campaign_recipients(campaign_id: int, payload: CampaignRecipientAd
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM campaigns WHERE id = ?", (campaign_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM campaigns WHERE id = ?", (campaign_id,))
+        campaign_row = cursor.fetchone()
+        if not campaign_row:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        assert_record_visible(scope, campaign_row, user_id_cols=["created_by"])
 
         cursor.execute(
             "SELECT lead_id, contact_id FROM campaign_recipients WHERE campaign_id = ?",
@@ -2922,8 +2971,16 @@ async def add_campaign_recipients(campaign_id: int, payload: CampaignRecipientAd
         existing = {(r['lead_id'], r['contact_id']) for r in cursor.fetchall()}
 
         added = 0
+        duplicate = 0
+        rejected = 0
         for lead_id in lead_ids:
             if (lead_id, None) in existing:
+                duplicate += 1
+                continue
+            cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+            lead_owner = cursor.fetchone()
+            if not lead_owner or not is_record_visible(scope, lead_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"]):
+                rejected += 1
                 continue
             cursor.execute(
                 "INSERT INTO campaign_recipients (campaign_id, lead_id, contact_id) VALUES (?, ?, NULL)",
@@ -2932,6 +2989,12 @@ async def add_campaign_recipients(campaign_id: int, payload: CampaignRecipientAd
             added += 1
         for contact_id in contact_ids:
             if (None, contact_id) in existing:
+                duplicate += 1
+                continue
+            cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+            contact_owner = cursor.fetchone()
+            if not contact_owner or not is_record_visible(scope, contact_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"]):
+                rejected += 1
                 continue
             cursor.execute(
                 "INSERT INTO campaign_recipients (campaign_id, lead_id, contact_id) VALUES (?, NULL, ?)",
@@ -2940,32 +3003,42 @@ async def add_campaign_recipients(campaign_id: int, payload: CampaignRecipientAd
             added += 1
         conn.commit()
 
-    return {"added": added, "skipped": len(lead_ids) + len(contact_ids) - added}
+    return {"added": added, "skipped": duplicate + rejected}
 
 @app.get("/api/campaigns/{campaign_id}/recipients", response_model=list[CampaignRecipientResponse])
 async def get_campaign_recipients(campaign_id: int, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM campaigns WHERE id = ?", (campaign_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM campaigns WHERE id = ?", (campaign_id,))
+        campaign_row = cursor.fetchone()
+        if not campaign_row:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        assert_record_visible(scope, campaign_row, user_id_cols=["created_by"])
 
         cursor.execute(
             _CAMPAIGN_RECIPIENT_SELECT_SQL + " WHERE campaign_recipients.campaign_id = ? ORDER BY campaign_recipients.added_at DESC",
             (campaign_id,)
         )
-        rows = [_campaign_recipient_row_to_dict(r) for r in cursor.fetchall()]
+        rows = [_campaign_recipient_row_to_dict(r, scope) for r in cursor.fetchall()]
 
     return rows
 
 @app.delete("/api/campaigns/{campaign_id}/recipients/{recipient_id}")
 async def remove_campaign_recipient(campaign_id: int, recipient_id: int, token: str = Query(None)):
-    get_current_user(token)
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM campaigns WHERE id = ?", (campaign_id,))
+        campaign_row = cursor.fetchone()
+        if not campaign_row:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        assert_record_visible(scope, campaign_row, user_id_cols=["created_by"])
+
         cursor.execute(
             "DELETE FROM campaign_recipients WHERE id = ? AND campaign_id = ?",
             (recipient_id, campaign_id)
@@ -2981,16 +3054,23 @@ async def send_campaign(campaign_id: int, token: str = Query(None)):
     as any other send - so a campaign send shows up in each recipient's own Activity Timeline
     too. Stops attempting further recipients the moment the channel turns out to be
     unconfigured (nothing was actually attempted for those), matching the same
-    graceful-degradation contract as every other send path."""
-    get_current_user(token)
+    graceful-degradation contract as every other send path.
+
+    N-11: campaign visibility is checked immediately after fetching the row - before the
+    message-content check and before any recipient/channel work - so an unauthorized caller
+    cannot trigger any outbound Email/WhatsApp/SMS send, mirroring the authorize-before-mutate-
+    before-external-call ordering already established for WhatsApp (N-2)."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,))
         campaign_row = cursor.fetchone()
         if not campaign_row:
             raise HTTPException(status_code=404, detail="Campaign not found")
         campaign = dict(campaign_row)
+        assert_record_visible(scope, campaign, user_id_cols=["created_by"])
 
         if not (campaign.get('message') or '').strip():
             raise HTTPException(status_code=400, detail="Add message content to this campaign before sending.")
