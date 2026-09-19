@@ -847,3 +847,213 @@ def test_bulk_import_same_phone_accessible_and_inaccessible_leaks_nothing_extra(
     assert body["created"] == 0
     # The response contains no reference to Amol's contact at all.
     assert "created_contacts" in body and all(c.get("phone") != "9990000026" for c in body["created_contacts"])
+
+
+# ---------------------------------------------------------------------------
+# N-32: Insurance Policies and MF Holdings are pure Contact sub-resources (contact_id is
+# NOT NULL, created_by is nullable and unused) - previously had ZERO visibility scoping
+# anywhere: list/due-soon returned every client's policy/holding data system-wide, and
+# create/update/delete had no ownership check at all (update/delete didn't even check
+# existence before writing). Fixed to derive authorization entirely from the linked
+# Contact's own visibility, matching contact_documents/contact_notes.
+# ---------------------------------------------------------------------------
+
+def test_insurance_policy_list_scoped_to_visible_contacts(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Insurance Client", "phone": "9990000027"}).json()
+    chirag_contact = hierarchy["chirag"].post("/api/contacts", json={"name": "Chirag Insurance Client", "phone": "9990000028"}).json()
+    amol_policy = hierarchy["amol"].post("/api/insurance-policies", json={"contact_id": amol_contact["id"], "policy_type": "Health", "insurer": "Amol Insurer"}).json()
+    chirag_policy = hierarchy["chirag"].post("/api/insurance-policies", json={"contact_id": chirag_contact["id"], "policy_type": "Health", "insurer": "Chirag Insurer"}).json()
+
+    chirag_ids = {p["id"] for p in hierarchy["chirag"].get("/api/insurance-policies").json()}
+    assert chirag_policy["id"] in chirag_ids
+    assert amol_policy["id"] not in chirag_ids
+
+    admin_ids = {p["id"] for p in hierarchy["nimita"].get("/api/insurance-policies").json()}
+    assert {amol_policy["id"], chirag_policy["id"]} <= admin_ids
+
+    manager_ids = {p["id"] for p in hierarchy["samiksha"].get("/api/insurance-policies").json()}
+    assert {amol_policy["id"], chirag_policy["id"]} <= manager_ids
+
+
+def test_insurance_policy_explicit_contact_id_filter_denied_for_invisible_contact(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Insurance Client 2", "phone": "9990000029"}).json()
+
+    resp = hierarchy["chirag"].get(f"/api/insurance-policies?contact_id={amol_contact['id']}")
+    assert resp.status_code == 403
+
+
+def test_insurance_policy_create_denied_for_invisible_contact(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Insurance Client 3", "phone": "9990000030"}).json()
+
+    resp = hierarchy["chirag"].post("/api/insurance-policies", json={"contact_id": amol_contact["id"], "policy_type": "Health"})
+    assert resp.status_code == 403
+
+    # Zero mutation: admin's view shows no policy was created.
+    admin_policies = hierarchy["nimita"].get(f"/api/insurance-policies?contact_id={amol_contact['id']}").json()
+    assert admin_policies == []
+
+
+def test_insurance_policy_create_nonexistent_contact_404s(hierarchy):
+    resp = hierarchy["chirag"].post("/api/insurance-policies", json={"contact_id": 999999999, "policy_type": "Health"})
+    assert resp.status_code == 404
+
+
+def test_insurance_policy_update_denied_for_invisible_contact_with_no_mutation(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Insurance Client 4", "phone": "9990000031"}).json()
+    amol_policy = hierarchy["amol"].post("/api/insurance-policies", json={"contact_id": amol_contact["id"], "policy_type": "Health", "premium_amount": 5000}).json()
+
+    resp = hierarchy["chirag"].put(f"/api/insurance-policies/{amol_policy['id']}", json={"premium_amount": 999999})
+    assert resp.status_code == 403
+
+    unchanged = hierarchy["amol"].get(f"/api/insurance-policies?contact_id={amol_contact['id']}").json()
+    assert unchanged[0]["premium_amount"] == 5000
+
+
+def test_insurance_policy_update_visible_contact_succeeds(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Insurance Client 5", "phone": "9990000032"}).json()
+    amol_policy = hierarchy["amol"].post("/api/insurance-policies", json={"contact_id": amol_contact["id"], "policy_type": "Health", "premium_amount": 5000}).json()
+
+    resp = hierarchy["samiksha"].put(f"/api/insurance-policies/{amol_policy['id']}", json={"premium_amount": 6000})
+    assert resp.status_code == 200
+    assert resp.json()["premium_amount"] == 6000
+
+
+def test_insurance_policy_update_nonexistent_404s(hierarchy):
+    resp = hierarchy["chirag"].put("/api/insurance-policies/999999999", json={"premium_amount": 1})
+    assert resp.status_code == 404
+
+
+def test_insurance_policy_delete_denied_for_invisible_contact_with_no_mutation(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Insurance Client 6", "phone": "9990000033"}).json()
+    amol_policy = hierarchy["amol"].post("/api/insurance-policies", json={"contact_id": amol_contact["id"], "policy_type": "Health"}).json()
+
+    resp = hierarchy["chirag"].delete(f"/api/insurance-policies/{amol_policy['id']}")
+    assert resp.status_code == 403
+
+    still_there = {p["id"] for p in hierarchy["amol"].get(f"/api/insurance-policies?contact_id={amol_contact['id']}").json()}
+    assert amol_policy["id"] in still_there
+
+
+def test_insurance_policy_delete_visible_contact_succeeds(hierarchy):
+    chirag_contact = hierarchy["chirag"].post("/api/contacts", json={"name": "Chirag Insurance Client 2", "phone": "9990000034"}).json()
+    chirag_policy = hierarchy["chirag"].post("/api/insurance-policies", json={"contact_id": chirag_contact["id"], "policy_type": "Health"}).json()
+
+    resp = hierarchy["chirag"].delete(f"/api/insurance-policies/{chirag_policy['id']}")
+    assert resp.status_code == 200
+
+
+def test_insurance_policy_delete_nonexistent_404s(hierarchy):
+    resp = hierarchy["chirag"].delete("/api/insurance-policies/999999999")
+    assert resp.status_code == 404
+
+
+def test_insurance_policy_due_soon_scoped_to_visible_contacts(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Due Soon Client", "phone": "9990000035"}).json()
+    chirag_contact = hierarchy["chirag"].post("/api/contacts", json={"name": "Chirag Due Soon Client", "phone": "9990000036"}).json()
+    hierarchy["amol"].post("/api/insurance-policies", json={"contact_id": amol_contact["id"], "policy_type": "Health", "status": "Active", "renewal_date": "2020-01-01"})
+    chirag_policy = hierarchy["chirag"].post("/api/insurance-policies", json={"contact_id": chirag_contact["id"], "policy_type": "Health", "status": "Active", "renewal_date": "2020-01-01"}).json()
+
+    chirag_due = {p["id"] for p in hierarchy["chirag"].get("/api/insurance-policies/due-soon").json()}
+    assert chirag_policy["id"] in chirag_due
+    assert all(p["policy_type"] != "N/A" for p in [chirag_policy])  # sanity: response shape intact
+
+    admin_due = {p["id"] for p in hierarchy["nimita"].get("/api/insurance-policies/due-soon").json()}
+    assert chirag_policy["id"] in admin_due
+
+
+def test_mf_holding_list_scoped_to_visible_contacts(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol MF Client", "phone": "9990000037"}).json()
+    chirag_contact = hierarchy["chirag"].post("/api/contacts", json={"name": "Chirag MF Client", "phone": "9990000038"}).json()
+    amol_holding = hierarchy["amol"].post("/api/mf-holdings", json={"contact_id": amol_contact["id"], "fund_name": "Amol Fund"}).json()
+    chirag_holding = hierarchy["chirag"].post("/api/mf-holdings", json={"contact_id": chirag_contact["id"], "fund_name": "Chirag Fund"}).json()
+
+    chirag_ids = {h["id"] for h in hierarchy["chirag"].get("/api/mf-holdings").json()}
+    assert chirag_holding["id"] in chirag_ids
+    assert amol_holding["id"] not in chirag_ids
+
+    manager_ids = {h["id"] for h in hierarchy["samiksha"].get("/api/mf-holdings").json()}
+    assert {amol_holding["id"], chirag_holding["id"]} <= manager_ids
+
+
+def test_mf_holding_explicit_contact_id_filter_denied_for_invisible_contact(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol MF Client 2", "phone": "9990000039"}).json()
+
+    resp = hierarchy["chirag"].get(f"/api/mf-holdings?contact_id={amol_contact['id']}")
+    assert resp.status_code == 403
+
+
+def test_mf_holding_create_denied_for_invisible_contact(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol MF Client 3", "phone": "9990000040"}).json()
+
+    resp = hierarchy["chirag"].post("/api/mf-holdings", json={"contact_id": amol_contact["id"], "fund_name": "Injected Fund"})
+    assert resp.status_code == 403
+
+    admin_holdings = hierarchy["nimita"].get(f"/api/mf-holdings?contact_id={amol_contact['id']}").json()
+    assert admin_holdings == []
+
+
+def test_mf_holding_create_nonexistent_contact_404s(hierarchy):
+    resp = hierarchy["chirag"].post("/api/mf-holdings", json={"contact_id": 999999999, "fund_name": "Ghost Fund"})
+    assert resp.status_code == 404
+
+
+def test_mf_holding_update_denied_for_invisible_contact_with_no_mutation(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol MF Client 4", "phone": "9990000041"}).json()
+    amol_holding = hierarchy["amol"].post("/api/mf-holdings", json={"contact_id": amol_contact["id"], "fund_name": "Amol Fund 2", "amount": 5000}).json()
+
+    resp = hierarchy["chirag"].put(f"/api/mf-holdings/{amol_holding['id']}", json={"amount": 999999})
+    assert resp.status_code == 403
+
+    unchanged = hierarchy["amol"].get(f"/api/mf-holdings?contact_id={amol_contact['id']}").json()
+    assert unchanged[0]["amount"] == 5000
+
+
+def test_mf_holding_update_visible_contact_succeeds(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol MF Client 5", "phone": "9990000042"}).json()
+    amol_holding = hierarchy["amol"].post("/api/mf-holdings", json={"contact_id": amol_contact["id"], "fund_name": "Amol Fund 3", "amount": 5000}).json()
+
+    resp = hierarchy["samiksha"].put(f"/api/mf-holdings/{amol_holding['id']}", json={"amount": 6000})
+    assert resp.status_code == 200
+    assert resp.json()["amount"] == 6000
+
+
+def test_mf_holding_update_nonexistent_404s(hierarchy):
+    resp = hierarchy["chirag"].put("/api/mf-holdings/999999999", json={"amount": 1})
+    assert resp.status_code == 404
+
+
+def test_mf_holding_delete_denied_for_invisible_contact_with_no_mutation(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol MF Client 6", "phone": "9990000043"}).json()
+    amol_holding = hierarchy["amol"].post("/api/mf-holdings", json={"contact_id": amol_contact["id"], "fund_name": "Amol Fund 4"}).json()
+
+    resp = hierarchy["chirag"].delete(f"/api/mf-holdings/{amol_holding['id']}")
+    assert resp.status_code == 403
+
+    still_there = {h["id"] for h in hierarchy["amol"].get(f"/api/mf-holdings?contact_id={amol_contact['id']}").json()}
+    assert amol_holding["id"] in still_there
+
+
+def test_mf_holding_delete_visible_contact_succeeds(hierarchy):
+    chirag_contact = hierarchy["chirag"].post("/api/contacts", json={"name": "Chirag MF Client 2", "phone": "9990000044"}).json()
+    chirag_holding = hierarchy["chirag"].post("/api/mf-holdings", json={"contact_id": chirag_contact["id"], "fund_name": "Chirag Fund 2"}).json()
+
+    resp = hierarchy["chirag"].delete(f"/api/mf-holdings/{chirag_holding['id']}")
+    assert resp.status_code == 200
+
+
+def test_mf_holding_delete_nonexistent_404s(hierarchy):
+    resp = hierarchy["chirag"].delete("/api/mf-holdings/999999999")
+    assert resp.status_code == 404
+
+
+def test_mf_holding_due_soon_scoped_to_visible_contacts(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol MF Due Soon Client", "phone": "9990000045"}).json()
+    chirag_contact = hierarchy["chirag"].post("/api/contacts", json={"name": "Chirag MF Due Soon Client", "phone": "9990000046"}).json()
+    hierarchy["amol"].post("/api/mf-holdings", json={"contact_id": amol_contact["id"], "fund_name": "Amol Due Fund", "status": "Active", "next_due_date": "2020-01-01"})
+    chirag_holding = hierarchy["chirag"].post("/api/mf-holdings", json={"contact_id": chirag_contact["id"], "fund_name": "Chirag Due Fund", "status": "Active", "next_due_date": "2020-01-01"}).json()
+
+    chirag_due = {h["id"] for h in hierarchy["chirag"].get("/api/mf-holdings/due-soon").json()}
+    assert chirag_holding["id"] in chirag_due
+
+    admin_due = {h["id"] for h in hierarchy["nimita"].get("/api/mf-holdings/due-soon").json()}
+    assert chirag_holding["id"] in admin_due

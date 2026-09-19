@@ -2418,8 +2418,22 @@ async def get_commission_summary(token: str = Query(None), start_date: str = Que
         return [dict(row) for row in cursor.fetchall()]
 
 # ============= MUTUAL FUND HOLDINGS =============
-# One row per fund a client holds - open to every logged-in user (the sip-tracking/
-# folio-review skills are for the whole team, unlike the Nimita-only commission ledger above).
+# One row per fund a client holds. N-32: neither this table nor Insurance Policies below has
+# its own ownership column worth anything for authorization - contact_id is NOT NULL (the
+# real, load-bearing relationship) while created_by is nullable and was never read back
+# anywhere. These are Contact sub-resources, same rule as contact_documents/contact_notes:
+# access must never be broader than access to the parent Contact.
+
+def _assert_contact_visible_or_404(cursor, scope, contact_id, detail_404="Contact not found"):
+    """Shared by MF Holdings and Insurance Policies (both are pure Contact sub-resources with
+    no ownership column of their own) - resolves one Contact's own visibility columns, 404s if
+    the contact itself doesn't exist, then asserts visibility (403) before the caller proceeds
+    to read/write the sub-resource."""
+    cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+    contact_owner = cursor.fetchone()
+    if not contact_owner:
+        raise HTTPException(status_code=404, detail=detail_404)
+    assert_record_visible(scope, contact_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
 def _fetch_mf_holding(cursor, holding_id):
     cursor.execute(
@@ -2435,56 +2449,80 @@ def _fetch_mf_holding(cursor, holding_id):
 
 @app.get("/api/mf-holdings", response_model=list[MfHoldingResponse])
 async def get_mf_holdings(token: str = Query(None), contact_id: int = Query(None), status: str = Query(None)):
-    get_current_user(token)
-
-    query = """
-        SELECT mh.*, c.name as contact_name
-        FROM mf_holdings mh
-        LEFT JOIN contacts c ON c.id = mh.contact_id
-        WHERE 1=1
-    """
-    params = []
-    if contact_id:
-        query += " AND mh.contact_id = ?"
-        params.append(contact_id)
-    if status:
-        query += " AND mh.status = ?"
-        params.append(status)
-    query += " ORDER BY mh.next_due_date ASC, mh.id DESC"
+    """N-32: bare list is scoped to holdings whose Contact is visible to the caller; an
+    explicit contact_id filter is authorized (404/403) before returning that contact's rows,
+    matching the established parent-visibility-first rule for Contact sub-resources."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+
+        if contact_id:
+            _assert_contact_visible_or_404(cursor, scope, contact_id)
+
+        query = """
+            SELECT mh.*, c.name as contact_name
+            FROM mf_holdings mh
+            LEFT JOIN contacts c ON c.id = mh.contact_id
+            WHERE 1=1
+        """
+        params = []
+        if contact_id:
+            query += " AND mh.contact_id = ?"
+            params.append(contact_id)
+        elif scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["c.created_by"], team_member_id_cols=["c.assigned_team_member_id"])
+            query += " AND " + clause
+            params.extend(scope_params)
+        if status:
+            query += " AND mh.status = ?"
+            params.append(status)
+        query += " ORDER BY mh.next_due_date ASC, mh.id DESC"
+
         cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
 @app.get("/api/mf-holdings/due-soon", response_model=list[MfHoldingResponse])
 async def get_mf_holdings_due_soon(token: str = Query(None)):
     """Active SIPs whose next_due_date is overdue or within the next 7 days - what
-    sip-tracking actually needs, computed here instead of client-side date math."""
-    get_current_user(token)
+    sip-tracking actually needs, computed here instead of client-side date math. N-32: scoped
+    identically to get_mf_holdings' bare-list case - admin unrestricted, otherwise limited to
+    holdings whose Contact is visible."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         _days_until = db_compat.sql_days_between("mh.next_due_date", db_compat.sql_today())
-        cursor.execute(
-            f"""
+        query = f"""
             SELECT mh.*, c.name as contact_name
             FROM mf_holdings mh
             LEFT JOIN contacts c ON c.id = mh.contact_id
             WHERE mh.status = 'Active'
               AND mh.next_due_date IS NOT NULL
               AND {_days_until} <= 7
-            ORDER BY mh.next_due_date ASC
-            """
-        )
+        """
+        params = []
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["c.created_by"], team_member_id_cols=["c.assigned_team_member_id"])
+            query += " AND " + clause
+            params.extend(scope_params)
+        query += " ORDER BY mh.next_due_date ASC"
+        cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
 @app.post("/api/mf-holdings", response_model=MfHoldingResponse)
 async def create_mf_holding(payload: MfHoldingCreate, token: str = Query(None)):
+    """N-32: the target Contact must be visible to the caller before a holding can be attached
+    to it - checked before the INSERT, same pattern as create_call's lead_id/contact_id fix."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        _assert_contact_visible_or_404(cursor, scope, payload.contact_id)
+
         cursor.execute(
             """
             INSERT INTO mf_holdings
@@ -2501,7 +2539,10 @@ async def create_mf_holding(payload: MfHoldingCreate, token: str = Query(None)):
 
 @app.put("/api/mf-holdings/{holding_id}", response_model=MfHoldingResponse)
 async def update_mf_holding(holding_id: int, payload: MfHoldingUpdate, token: str = Query(None)):
-    get_current_user(token)
+    """N-32: previously updated unconditionally and only inferred existence from rowcount
+    afterward, with zero visibility check at all - now resolves the holding's own contact_id,
+    checks that Contact's visibility, and only then writes."""
+    current_user = get_current_user(token)
 
     fields = payload.model_dump(exclude_unset=True)
     if not fields:
@@ -2509,26 +2550,38 @@ async def update_mf_holding(holding_id: int, payload: MfHoldingUpdate, token: st
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT contact_id FROM mf_holdings WHERE id = ?", (holding_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="MF holding not found")
+        _assert_contact_visible_or_404(cursor, scope, existing['contact_id'])
+
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         cursor.execute(
             f"UPDATE mf_holdings SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (*fields.values(), holding_id)
         )
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="MF holding not found")
         conn.commit()
         return _fetch_mf_holding(cursor, holding_id)
 
 @app.delete("/api/mf-holdings/{holding_id}")
 async def delete_mf_holding(holding_id: int, token: str = Query(None)):
-    get_current_user(token)
+    """N-32: previously deleted with zero check at all - now resolves the holding's own
+    contact_id, checks that Contact's visibility, and only then deletes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT contact_id FROM mf_holdings WHERE id = ?", (holding_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="MF holding not found")
+        _assert_contact_visible_or_404(cursor, scope, existing['contact_id'])
+
         cursor.execute("DELETE FROM mf_holdings WHERE id = ?", (holding_id,))
         conn.commit()
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="MF holding not found")
 
     return {"message": "MF holding deleted"}
 
@@ -2551,56 +2604,78 @@ def _fetch_insurance_policy(cursor, policy_id):
 
 @app.get("/api/insurance-policies", response_model=list[InsurancePolicyResponse])
 async def get_insurance_policies(token: str = Query(None), contact_id: int = Query(None), status: str = Query(None)):
-    get_current_user(token)
-
-    query = """
-        SELECT ip.*, c.name as contact_name
-        FROM insurance_policies ip
-        LEFT JOIN contacts c ON c.id = ip.contact_id
-        WHERE 1=1
-    """
-    params = []
-    if contact_id:
-        query += " AND ip.contact_id = ?"
-        params.append(contact_id)
-    if status:
-        query += " AND ip.status = ?"
-        params.append(status)
-    query += " ORDER BY ip.renewal_date ASC, ip.id DESC"
+    """N-32: same rule as get_mf_holdings - bare list scoped to policies whose Contact is
+    visible; an explicit contact_id filter is authorized (404/403) before returning its rows."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+
+        if contact_id:
+            _assert_contact_visible_or_404(cursor, scope, contact_id)
+
+        query = """
+            SELECT ip.*, c.name as contact_name
+            FROM insurance_policies ip
+            LEFT JOIN contacts c ON c.id = ip.contact_id
+            WHERE 1=1
+        """
+        params = []
+        if contact_id:
+            query += " AND ip.contact_id = ?"
+            params.append(contact_id)
+        elif scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["c.created_by"], team_member_id_cols=["c.assigned_team_member_id"])
+            query += " AND " + clause
+            params.extend(scope_params)
+        if status:
+            query += " AND ip.status = ?"
+            params.append(status)
+        query += " ORDER BY ip.renewal_date ASC, ip.id DESC"
+
         cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
 @app.get("/api/insurance-policies/due-soon", response_model=list[InsurancePolicyResponse])
 async def get_insurance_policies_due_soon(token: str = Query(None)):
     """Active policies whose renewal_date is overdue or within the next 30 days - the
-    multi-policy-aware version of /api/contacts/renewals, for insurance-lapse-prevention."""
-    get_current_user(token)
+    multi-policy-aware version of /api/contacts/renewals, for insurance-lapse-prevention.
+    N-32: scoped identically to get_insurance_policies' bare-list case."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         _days_until = db_compat.sql_days_between("ip.renewal_date", db_compat.sql_today())
-        cursor.execute(
-            f"""
+        query = f"""
             SELECT ip.*, c.name as contact_name
             FROM insurance_policies ip
             LEFT JOIN contacts c ON c.id = ip.contact_id
             WHERE ip.status = 'Active'
               AND ip.renewal_date IS NOT NULL
               AND {_days_until} <= 30
-            ORDER BY ip.renewal_date ASC
-            """
-        )
+        """
+        params = []
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["c.created_by"], team_member_id_cols=["c.assigned_team_member_id"])
+            query += " AND " + clause
+            params.extend(scope_params)
+        query += " ORDER BY ip.renewal_date ASC"
+        cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
 @app.post("/api/insurance-policies", response_model=InsurancePolicyResponse)
 async def create_insurance_policy(payload: InsurancePolicyCreate, token: str = Query(None)):
+    """N-32: the target Contact must be visible to the caller before a policy can be attached
+    to it - checked before the INSERT."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        _assert_contact_visible_or_404(cursor, scope, payload.contact_id)
+
         cursor.execute(
             """
             INSERT INTO insurance_policies
@@ -2617,7 +2692,9 @@ async def create_insurance_policy(payload: InsurancePolicyCreate, token: str = Q
 
 @app.put("/api/insurance-policies/{policy_id}", response_model=InsurancePolicyResponse)
 async def update_insurance_policy(policy_id: int, payload: InsurancePolicyUpdate, token: str = Query(None)):
-    get_current_user(token)
+    """N-32: previously updated unconditionally with zero visibility check - now resolves the
+    policy's own contact_id, checks that Contact's visibility, and only then writes."""
+    current_user = get_current_user(token)
 
     fields = payload.model_dump(exclude_unset=True)
     if not fields:
@@ -2625,26 +2702,38 @@ async def update_insurance_policy(policy_id: int, payload: InsurancePolicyUpdate
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT contact_id FROM insurance_policies WHERE id = ?", (policy_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Insurance policy not found")
+        _assert_contact_visible_or_404(cursor, scope, existing['contact_id'])
+
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         cursor.execute(
             f"UPDATE insurance_policies SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (*fields.values(), policy_id)
         )
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Insurance policy not found")
         conn.commit()
         return _fetch_insurance_policy(cursor, policy_id)
 
 @app.delete("/api/insurance-policies/{policy_id}")
 async def delete_insurance_policy(policy_id: int, token: str = Query(None)):
-    get_current_user(token)
+    """N-32: previously deleted with zero check at all - now resolves the policy's own
+    contact_id, checks that Contact's visibility, and only then deletes."""
+    current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT contact_id FROM insurance_policies WHERE id = ?", (policy_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Insurance policy not found")
+        _assert_contact_visible_or_404(cursor, scope, existing['contact_id'])
+
         cursor.execute("DELETE FROM insurance_policies WHERE id = ?", (policy_id,))
         conn.commit()
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Insurance policy not found")
 
     return {"message": "Insurance policy deleted"}
 
