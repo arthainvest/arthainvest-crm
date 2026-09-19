@@ -515,7 +515,7 @@ export default function LeadsList() {
       nextConversation: note.next_conversation || '',
       transcript: note.transcript || ''
     });
-    setDraftAudioUrl(note.audio_url ? `${API_URL}${note.audio_url}` : null);
+    setDraftAudioUrl(note.audio_url ? `${API_URL}${note.audio_url}?token=${token}` : null);
     draftAudioBlobRef.current = null;
     setEditingNoteId(note.id);
   };
@@ -1008,7 +1008,7 @@ export default function LeadsList() {
                     )}
                     {note.transcript && <p className="note-transcript">{note.transcript}</p>}
                     {note.audio_url && (
-                      <audio controls src={`${API_URL}${note.audio_url}`} className="voice-playback" />
+                      <audio controls src={`${API_URL}${note.audio_url}?token=${token}`} className="voice-playback" />
                     )}
                     {note.updated_at && note.updated_at !== note.created_at && (
                       <div className="note-updated">Edited {new Date(note.updated_at).toLocaleString()}</div>

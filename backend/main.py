@@ -3777,7 +3777,14 @@ async def delete_contact_note(contact_id: int, note_id: int, token: str = Query(
 @app.post("/api/contacts/{contact_id}/notes/{note_id}/audio", response_model=ContactNoteResponse)
 async def upload_note_audio(contact_id: int, note_id: int, token: str = Query(None), audio: UploadFile = File(...)):
     """Attach a recorded voice note to a note, replacing any previous recording. Same
-    parent-visibility rule as get_contact_notes."""
+    parent-visibility rule as get_contact_notes.
+
+    N-29: stores the recording as a DB blob and points audio_url at the authenticated
+    get_note_audio route below, instead of writing to the unauthenticated /uploads static
+    mount - same pattern already used for contact_documents/call recordings. A pre-existing
+    legacy /uploads/-style recording being replaced is still best-effort cleaned up via
+    _delete_audio_file (a no-op for the new /api/-style URLs, which need no file removal
+    since the row's own UPDATE overwrites the blob)."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
@@ -3798,7 +3805,8 @@ async def upload_note_audio(contact_id: int, note_id: int, token: str = Query(No
     if existing['audio_url']:
         _delete_audio_file(existing['audio_url'])
 
-    audio_url = storage.save_audio_bytes(audio.filename, await audio.read())
+    data = await audio.read()
+    audio_url = f"/api/contacts/{contact_id}/notes/{note_id}/audio"
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -3808,14 +3816,42 @@ async def upload_note_audio(contact_id: int, note_id: int, token: str = Query(No
         # voice note attached at creation time. Bumping updated_at again here would make a note's
         # very first save falsely show an "Edited" badge in the notes history.
         cursor.execute(
-            "UPDATE contact_notes SET audio_url = ? WHERE id = ?",
-            (audio_url, note_id)
+            "UPDATE contact_notes SET audio_url = ?, audio_data = ?, audio_content_type = ? WHERE id = ?",
+            (audio_url, data, audio.content_type, note_id)
         )
         conn.commit()
         cursor.execute("SELECT * FROM contact_notes WHERE id = ?", (note_id,))
         updated_note = cursor.fetchone()
 
     return dict(updated_note)
+
+@app.get("/api/contacts/{contact_id}/notes/{note_id}/audio")
+async def get_note_audio(contact_id: int, note_id: int, token: str = Query(None)):
+    """Streams a note's voice recording back - parent-Contact visibility is checked BEFORE
+    the note lookup, same ordering and 403-regardless-of-existence rule as
+    get_contact_document_content, so an unauthorized caller can't use timing/status-code
+    differences to infer whether a given note has a recording."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (contact_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
+        cursor.execute(
+            "SELECT audio_data, audio_content_type FROM contact_notes WHERE id = ? AND contact_id = ?",
+            (note_id, contact_id)
+        )
+        note = cursor.fetchone()
+
+    if not note or note['audio_data'] is None:
+        raise HTTPException(status_code=404, detail="No recording for this note")
+
+    return Response(content=bytes(note['audio_data']), media_type=note['audio_content_type'] or 'application/octet-stream')
 
 @app.post("/api/contacts/{contact_id}/ai-suggest", response_model=AISummaryResponse)
 async def ai_suggest_contact_followup(contact_id: int, token: str = Query(None)):
@@ -3839,8 +3875,13 @@ async def ai_suggest_contact_followup(contact_id: int, token: str = Query(None))
     return _generate_ai_suggestion(contact['name'], notes)
 
 def _delete_audio_file(audio_url):
-    """Best-effort removal of a previously uploaded note recording"""
-    storage.delete_audio_file(audio_url)
+    """Best-effort removal of a previously uploaded note recording. N-29: only legacy
+    /uploads/-style URLs (predating the DB-blob migration) point at an actual file on disk/S3
+    that needs explicit removal - a new /api/-style URL's blob lives in the note's own row and
+    is already gone the moment that row is deleted or its audio_data column is overwritten, so
+    there is nothing left to clean up here for those."""
+    if audio_url and audio_url.startswith("/uploads/"):
+        storage.delete_audio_file(audio_url)
 
 def _ai_configured():
     """Whether at least one text-generation AI provider is set up on this server."""
@@ -4101,7 +4142,8 @@ async def delete_lead_note(lead_id: int, note_id: int, token: str = Query(None))
 @app.post("/api/leads/{lead_id}/notes/{note_id}/audio", response_model=LeadNoteResponse)
 async def upload_lead_note_audio(lead_id: int, note_id: int, token: str = Query(None), audio: UploadFile = File(...)):
     """Attach a recorded voice note to a lead note, replacing any previous recording. Same
-    parent-visibility rule as get_lead_notes."""
+    parent-visibility rule as get_lead_notes. N-29: see upload_note_audio's docstring - same
+    DB-blob-plus-authenticated-stream-endpoint migration off the /uploads static mount."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
@@ -4122,21 +4164,48 @@ async def upload_lead_note_audio(lead_id: int, note_id: int, token: str = Query(
     if existing['audio_url']:
         _delete_audio_file(existing['audio_url'])
 
-    audio_url = storage.save_audio_bytes(audio.filename, await audio.read())
+    data = await audio.read()
+    audio_url = f"/api/leads/{lead_id}/notes/{note_id}/audio"
 
     with get_db() as conn:
         cursor = conn.cursor()
-        # See the identical note on upload_note_audio() above: not touching updated_at here so a
+        # See the identical note on upload_note_audio() above: not touching updated_at so a
         # brand-new note saved with a voice note attached doesn't falsely show "Edited".
         cursor.execute(
-            "UPDATE lead_notes SET audio_url = ? WHERE id = ?",
-            (audio_url, note_id)
+            "UPDATE lead_notes SET audio_url = ?, audio_data = ?, audio_content_type = ? WHERE id = ?",
+            (audio_url, data, audio.content_type, note_id)
         )
         conn.commit()
         cursor.execute("SELECT * FROM lead_notes WHERE id = ?", (note_id,))
         updated_note = cursor.fetchone()
 
     return dict(updated_note)
+
+@app.get("/api/leads/{lead_id}/notes/{note_id}/audio")
+async def get_lead_note_audio(lead_id: int, note_id: int, token: str = Query(None)):
+    """Streams a lead note's voice recording back - same parent-visibility-before-lookup rule
+    as get_note_audio."""
+    current_user = get_current_user(token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (lead_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
+        cursor.execute(
+            "SELECT audio_data, audio_content_type FROM lead_notes WHERE id = ? AND lead_id = ?",
+            (note_id, lead_id)
+        )
+        note = cursor.fetchone()
+
+    if not note or note['audio_data'] is None:
+        raise HTTPException(status_code=404, detail="No recording for this note")
+
+    return Response(content=bytes(note['audio_data']), media_type=note['audio_content_type'] or 'application/octet-stream')
 
 @app.post("/api/leads/{lead_id}/ai-suggest", response_model=AISummaryResponse)
 async def ai_suggest_lead_followup(lead_id: int, token: str = Query(None)):

@@ -607,7 +607,7 @@ export default function Contacts() {
     });
     // Load the previously saved recording for playback; a fresh recording (if the user makes
     // one) replaces it on save via draftAudioBlobRef, which stays null until that happens.
-    setDraftAudioUrl(note.audio_url ? `${API_URL}${note.audio_url}` : null);
+    setDraftAudioUrl(note.audio_url ? `${API_URL}${note.audio_url}?token=${token}` : null);
     draftAudioBlobRef.current = null;
     setEditingNoteId(note.id);
   };
@@ -1115,7 +1115,7 @@ export default function Contacts() {
                       )}
                       {note.transcript && <p className="note-transcript">{note.transcript}</p>}
                       {note.audio_url && (
-                        <audio controls src={`${API_URL}${note.audio_url}`} className="voice-playback" />
+                        <audio controls src={`${API_URL}${note.audio_url}?token=${token}`} className="voice-playback" />
                       )}
                       {note.updated_at && note.updated_at !== note.created_at && (
                         <div className="note-updated">Edited {new Date(note.updated_at).toLocaleString()}</div>

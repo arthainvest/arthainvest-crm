@@ -930,6 +930,14 @@ def init_db():
         _add_column_if_missing(cursor, "contact_documents", "file_data", "LONGBLOB")
         _add_column_if_missing(cursor, "contact_documents", "content_type", "VARCHAR(100)")
 
+        # audio_data/audio_content_type - see database_sqlite.py's matching columns for the full
+        # rationale (voice notes moved off the unauthenticated /uploads static mount onto the
+        # same DB-blob-plus-authenticated-stream-endpoint pattern as contact_documents above).
+        _add_column_if_missing(cursor, "contact_notes", "audio_data", "LONGBLOB")
+        _add_column_if_missing(cursor, "contact_notes", "audio_content_type", "VARCHAR(100)")
+        _add_column_if_missing(cursor, "lead_notes", "audio_data", "LONGBLOB")
+        _add_column_if_missing(cursor, "lead_notes", "audio_content_type", "VARCHAR(100)")
+
         # Loan document checklist per deal - see database_sqlite.py's matching table for the
         # full rationale (replaces the Pipeline page's old "DigiLocker" modal, which only
         # toggled checkboxes in local React state with nothing ever saved).

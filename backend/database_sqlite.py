@@ -1175,6 +1175,30 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # audio_data/audio_content_type: voice-note recordings on Contact/Lead notes moved from
+        # the unauthenticated /uploads static mount to the same DB-blob-plus-authenticated-
+        # stream-endpoint pattern as contact_documents/calls.recording_file_data above - a static
+        # file URL, once known, could be fetched forever by anyone with no login and no way to
+        # revoke access; the GET route now re-checks the parent Contact/Lead's visibility on
+        # every request instead. When audio_data is set, audio_url holds the API path that
+        # streams it back (see the .../notes/{note_id}/audio GET endpoint).
+        try:
+            cursor.execute("ALTER TABLE contact_notes ADD COLUMN audio_data BLOB")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE contact_notes ADD COLUMN audio_content_type TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE lead_notes ADD COLUMN audio_data BLOB")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE lead_notes ADD COLUMN audio_content_type TEXT")
+        except sqlite3.OperationalError:
+            pass
+
         # Loan document checklist per deal - replaces the Pipeline page's old "DigiLocker"
         # modal, which only toggled checkboxes in local React state (uploadedDocs) with nothing
         # saved anywhere, so the checklist reset on every page refresh. The frontend already

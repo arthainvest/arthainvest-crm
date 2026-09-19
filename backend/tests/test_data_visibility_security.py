@@ -448,6 +448,115 @@ def test_lead_notes_and_ai_suggest_follow_parent_visibility(hierarchy):
 
 
 # ---------------------------------------------------------------------------
+# N-29: note-audio recordings moved off the unauthenticated /uploads static mount onto a
+# DB-blob-plus-authenticated-GET pattern - the GET route must re-check parent visibility on
+# every request, not just at upload time.
+# ---------------------------------------------------------------------------
+
+def test_contact_note_audio_url_no_longer_points_at_uploads_mount(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Audio Client", "phone": "9990000019"}).json()
+    note = hierarchy["amol"].post(f"/api/contacts/{amol_contact['id']}/notes", json={"transcript": "x"}).json()
+
+    uploaded = hierarchy["amol"].post(
+        f"/api/contacts/{amol_contact['id']}/notes/{note['id']}/audio",
+        files={"audio": ("note.wav", b"fake-audio-bytes", "audio/wav")},
+    )
+    assert uploaded.status_code == 200
+    audio_url = uploaded.json()["audio_url"]
+    assert audio_url == f"/api/contacts/{amol_contact['id']}/notes/{note['id']}/audio"
+    assert not audio_url.startswith("/uploads/")
+
+
+def test_contact_note_audio_get_requires_parent_visibility(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Audio Client 2", "phone": "9990000020"}).json()
+    note = hierarchy["amol"].post(f"/api/contacts/{amol_contact['id']}/notes", json={"transcript": "x"}).json()
+    hierarchy["amol"].post(
+        f"/api/contacts/{amol_contact['id']}/notes/{note['id']}/audio",
+        files={"audio": ("note.wav", b"real-recording-bytes", "audio/wav")},
+    )
+
+    # Peer with no access to this contact - IDOR check.
+    resp = hierarchy["chirag"].get(f"/api/contacts/{amol_contact['id']}/notes/{note['id']}/audio")
+    assert resp.status_code == 403
+
+    # Owner and admin can fetch the actual bytes back.
+    own = hierarchy["amol"].get(f"/api/contacts/{amol_contact['id']}/notes/{note['id']}/audio")
+    assert own.status_code == 200
+    assert own.content == b"real-recording-bytes"
+    assert own.headers["content-type"] == "audio/wav"
+
+    admin = hierarchy["nimita"].get(f"/api/contacts/{amol_contact['id']}/notes/{note['id']}/audio")
+    assert admin.status_code == 200
+    assert admin.content == b"real-recording-bytes"
+
+
+def test_contact_note_audio_get_404_when_no_recording(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol No Audio", "phone": "9990000021"}).json()
+    note = hierarchy["amol"].post(f"/api/contacts/{amol_contact['id']}/notes", json={"transcript": "no recording"}).json()
+
+    resp = hierarchy["amol"].get(f"/api/contacts/{amol_contact['id']}/notes/{note['id']}/audio")
+    assert resp.status_code == 404
+
+
+def test_lead_note_audio_url_no_longer_points_at_uploads_mount(hierarchy):
+    amol_lead = hierarchy["amol"].post("/api/leads", json={"name": "Amol Audio Lead", "phone": "9990000022"}).json()
+    note = hierarchy["amol"].post(f"/api/leads/{amol_lead['id']}/notes", json={"transcript": "x"}).json()
+
+    uploaded = hierarchy["amol"].post(
+        f"/api/leads/{amol_lead['id']}/notes/{note['id']}/audio",
+        files={"audio": ("note.wav", b"fake-audio-bytes", "audio/wav")},
+    )
+    assert uploaded.status_code == 200
+    audio_url = uploaded.json()["audio_url"]
+    assert audio_url == f"/api/leads/{amol_lead['id']}/notes/{note['id']}/audio"
+    assert not audio_url.startswith("/uploads/")
+
+
+def test_lead_note_audio_get_requires_parent_visibility(hierarchy):
+    amol_lead = hierarchy["amol"].post("/api/leads", json={"name": "Amol Audio Lead 2", "phone": "9990000023"}).json()
+    note = hierarchy["amol"].post(f"/api/leads/{amol_lead['id']}/notes", json={"transcript": "x"}).json()
+    hierarchy["amol"].post(
+        f"/api/leads/{amol_lead['id']}/notes/{note['id']}/audio",
+        files={"audio": ("note.wav", b"real-lead-recording", "audio/wav")},
+    )
+
+    resp = hierarchy["chirag"].get(f"/api/leads/{amol_lead['id']}/notes/{note['id']}/audio")
+    assert resp.status_code == 403
+
+    own = hierarchy["amol"].get(f"/api/leads/{amol_lead['id']}/notes/{note['id']}/audio")
+    assert own.status_code == 200
+    assert own.content == b"real-lead-recording"
+
+    manager = hierarchy["samiksha"].get(f"/api/leads/{amol_lead['id']}/notes/{note['id']}/audio")
+    assert manager.status_code == 200
+    assert manager.content == b"real-lead-recording"
+
+
+def test_lead_note_audio_get_404_when_no_recording(hierarchy):
+    amol_lead = hierarchy["amol"].post("/api/leads", json={"name": "Amol No Audio Lead", "phone": "9990000024"}).json()
+    note = hierarchy["amol"].post(f"/api/leads/{amol_lead['id']}/notes", json={"transcript": "no recording"}).json()
+
+    resp = hierarchy["amol"].get(f"/api/leads/{amol_lead['id']}/notes/{note['id']}/audio")
+    assert resp.status_code == 404
+
+
+def test_note_audio_mismatched_parent_and_note_id_404s(hierarchy):
+    """IDOR check: pairing a real note_id with the wrong parent contact_id in the URL must
+    404, not accidentally serve the recording via the mismatched parent's visibility."""
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Mismatch A", "phone": "9990000025"}).json()
+    nimita_contact = hierarchy["nimita"].post("/api/contacts", json={"name": "Nimita Mismatch B", "phone": "9990000026"}).json()
+    note = hierarchy["amol"].post(f"/api/contacts/{amol_contact['id']}/notes", json={"transcript": "x"}).json()
+    hierarchy["amol"].post(
+        f"/api/contacts/{amol_contact['id']}/notes/{note['id']}/audio",
+        files={"audio": ("note.wav", b"bytes", "audio/wav")},
+    )
+
+    # Admin can see nimita_contact, but note['id'] doesn't belong to it.
+    resp = hierarchy["nimita"].get(f"/api/contacts/{nimita_contact['id']}/notes/{note['id']}/audio")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Hardening pass 2: Company team-members
 # ---------------------------------------------------------------------------
 
