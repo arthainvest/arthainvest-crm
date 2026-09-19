@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "last_updated_utc": "2026-09-19T11:21:22Z",
+  "gate": "N-27",
+  "action": "automations_production_smoke_test",
+  "status": "closed",
+  "target_commit": "36ead2512ac2a46f704bd19a8f690775dffe3f7c",
+  "scope": {
+    "files": [
+      "backend/main.py",
+      "backend/tests/test_automations.py",
+      "backend/tests/test_automations_visibility_security.py"
+    ],
+    "description": "Automations feature (drip sequences/enrollments) access-control hardening: creator-only visibility, enroll-target IDOR closure, redaction, check-before-write on update/delete/stop."
+  },
+  "allowed": [
+    "read_repo_state",
+    "read_production_state"
+  ],
+  "forbidden": [
+    "jarvis",
+    "prospecting",
+    "commit",
+    "push",
+    "deploy",
+    "reset",
+    "rebase",
+    "stash",
+    "clean",
+    "code_changes"
+  ],
+  "tests": {
+    "dedicated": "25/25 (test_automations_visibility_security.py, verified 3 independent runs)",
+    "existing_regression": "25/25 (test_automations.py + test_automations_scheduler.py)",
+    "full_suite": "871/872 (1 failure diagnosed as a non-reproducible test-environment anomaly, unrelated to production code; failed to reproduce across 4 independent attempts including exact preceding-order replay)"
+  },
+  "production": {
+    "service": "arthainvest-crm (Render)",
+    "deployed_commit": "36ead2512ac2a46f704bd19a8f690775dffe3f7c",
+    "deploy_status": "Live",
+    "health": "ok",
+    "db": "ok",
+    "verified_utc": "2026-09-19T11:20:00Z"
+  },
+  "repo": {
+    "local_branch": "master",
+    "local_head": "bf726d62572843d7e4b1135162982280c896a669",
+    "origin_head": "36ead2512ac2a46f704bd19a8f690775dffe3f7c",
+    "note": "local master carries the same N-24 content as origin's 36ead25 under a different local commit hash (bf726d6), plus 5 unrelated JARVIS commits interleaved ahead of it. Pushes to origin/master use an isolated worktree/cherry-pick, never a direct push of local master, to avoid publishing JARVIS commits."
+  },
+  "protected_work": [
+    "jarvis/",
+    "prospecting/",
+    ".claude/settings.local.json"
+  ],
+  "next_gate": null
+}

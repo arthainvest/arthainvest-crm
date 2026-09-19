@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "last_updated_utc": "2026-09-19T11:21:22Z",
+  "proposed_by": null,
+  "gate": null,
+  "action": null,
+  "status": "proposed",
+  "target_commit": null,
+  "authorized_files": [],
+  "scope": {
+    "files": [],
+    "description": "No instruction is currently proposed. This file is initialized empty at Stage 1 creation time - it records a PROPOSAL only, and per the Stage 1 boundary (see README.md), a proposal here is never self-executing and never substitutes for live human authorization in chat."
+  },
+  "allowed": [],
+  "forbidden": [
+    "jarvis",
+    "prospecting"
+  ],
+  "tests": null,
+  "production": null,
+  "protected_work": [
+    "jarvis/",
+    "prospecting/",
+    ".claude/settings.local.json"
+  ],
+  "next_gate": null
+}
