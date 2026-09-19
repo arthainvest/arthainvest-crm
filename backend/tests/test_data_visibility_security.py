@@ -557,6 +557,60 @@ def test_note_audio_mismatched_parent_and_note_id_404s(hierarchy):
 
 
 # ---------------------------------------------------------------------------
+# N-30: GET /api/calls/{call_id}/recording previously checked "does a recording exist"
+# (404) BEFORE visibility (403) - an unauthorized caller's response code alone revealed
+# whether a given call had a recording uploaded. Visibility must be checked first, so an
+# unauthorized caller gets the same 403 regardless of whether the call has a recording.
+# ---------------------------------------------------------------------------
+
+def test_call_recording_unauthorized_403_regardless_of_recording_presence(hierarchy):
+    amol_call_no_recording = hierarchy["amol"].post("/api/calls", json={"name": "Amol Call No Rec"}).json()
+    amol_call_with_recording = hierarchy["amol"].post("/api/calls", json={"name": "Amol Call With Rec"}).json()
+    hierarchy["amol"].post(
+        f"/api/calls/{amol_call_with_recording['id']}/recording",
+        files={"file": ("call.wav", b"real-call-audio", "audio/wav")},
+    )
+
+    # Unauthorized peer must get the SAME status (403) whether or not a recording exists -
+    # the whole point of the fix is that this response code carries no existence signal.
+    no_rec_resp = hierarchy["chirag"].get(f"/api/calls/{amol_call_no_recording['id']}/recording")
+    with_rec_resp = hierarchy["chirag"].get(f"/api/calls/{amol_call_with_recording['id']}/recording")
+    assert no_rec_resp.status_code == 403
+    assert with_rec_resp.status_code == 403
+
+
+def test_call_recording_authorized_user_no_recording_404s(hierarchy):
+    amol_call = hierarchy["amol"].post("/api/calls", json={"name": "Amol Call No Rec 2"}).json()
+
+    resp = hierarchy["amol"].get(f"/api/calls/{amol_call['id']}/recording")
+    assert resp.status_code == 404
+
+
+def test_call_recording_authorized_user_can_download(hierarchy):
+    amol_call = hierarchy["amol"].post("/api/calls", json={"name": "Amol Call With Rec 2"}).json()
+    hierarchy["amol"].post(
+        f"/api/calls/{amol_call['id']}/recording",
+        files={"file": ("call.wav", b"authorized-download-bytes", "audio/wav")},
+    )
+
+    own = hierarchy["amol"].get(f"/api/calls/{amol_call['id']}/recording")
+    assert own.status_code == 200
+    assert own.content == b"authorized-download-bytes"
+
+    manager = hierarchy["samiksha"].get(f"/api/calls/{amol_call['id']}/recording")
+    assert manager.status_code == 200
+    assert manager.content == b"authorized-download-bytes"
+
+    admin = hierarchy["nimita"].get(f"/api/calls/{amol_call['id']}/recording")
+    assert admin.status_code == 200
+
+
+def test_call_recording_nonexistent_call_404s(hierarchy):
+    resp = hierarchy["amol"].get("/api/calls/999999999/recording")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Hardening pass 2: Company team-members
 # ---------------------------------------------------------------------------
 

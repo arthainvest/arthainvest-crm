@@ -5348,7 +5348,13 @@ async def upload_call_recording(call_id: int, token: str = Query(None), file: Up
 async def get_call_recording(call_id: int, token: str = Query(None)):
     """Streams a manually-uploaded recording's bytes back - auth-gated like every other
     protected route here, never a public/static path. Logging every access (not just upload)
-    is the audit trail the recording-privacy requirement calls for."""
+    is the audit trail the recording-privacy requirement calls for.
+
+    N-30: visibility is checked BEFORE looking at whether a recording exists, not after -
+    previously an unauthorized caller's response code (403 vs 404) revealed whether a given
+    call had a recording uploaded, an existence oracle. Same ordering as
+    get_note_audio/get_contact_document_content: the call itself must 404 if it doesn't exist,
+    then visibility is asserted, and only then is content-presence checked."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
@@ -5360,9 +5366,12 @@ async def get_call_recording(call_id: int, token: str = Query(None)):
         )
         row = cursor.fetchone()
 
-    if not row or row['recording_file_data'] is None:
-        raise HTTPException(status_code=404, detail="No recording uploaded for this call")
+    if not row:
+        raise HTTPException(status_code=404, detail="Call not found")
     assert_record_visible(scope, row, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
+
+    if row['recording_file_data'] is None:
+        raise HTTPException(status_code=404, detail="No recording uploaded for this call")
 
     print(f"[audit] call recording {call_id} downloaded by user_id={current_user['user_id']}")
     file_data = bytes(row['recording_file_data'])
