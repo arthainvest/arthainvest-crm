@@ -8129,10 +8129,21 @@ async def get_groups_for_entity(entity_type: str, entity_id: int, token: str = Q
 
 @app.get("/api/api-keys", response_model=list[ApiKeyResponse])
 async def get_api_keys(token: str = Query(None)):
-    get_current_user(token)
+    """N-28: creator-only visibility (no assignee column exists on api_keys, same as
+    Campaigns/Quotations/Automations) - previously any authenticated employee could see
+    every API key in the system, including ones created by other employees or admins."""
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM api_keys ORDER BY created_at DESC")
+        scope = get_visibility_scope(cursor, current_user)
+        query = "SELECT * FROM api_keys"
+        params = []
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["created_by"])
+            query += " WHERE " + clause
+            params = scope_params
+        query += " ORDER BY created_at DESC"
+        cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
 @app.post("/api/api-keys", response_model=ApiKeyCreateResponse)
@@ -8160,13 +8171,22 @@ async def create_api_key(payload: ApiKeyCreate, token: str = Query(None)):
 
 @app.delete("/api/api-keys/{key_id}")
 async def revoke_api_key(key_id: int, token: str = Query(None)):
-    get_current_user(token)
+    """N-28: previously updated unconditionally and only inferred existence from rowcount
+    afterward - any authenticated employee could revoke any other employee's or admin's key
+    with zero ownership check, silently breaking a live webhook integration. Now checks
+    existence and visibility BEFORE the write."""
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM api_keys WHERE id = ?", (key_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="API key not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
+
         cursor.execute("UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?", (key_id,))
         conn.commit()
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="API key not found")
     return {"message": "API key revoked"}
 
 @app.post("/api/public/leads", response_model=LeadResponse)
