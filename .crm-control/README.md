@@ -1,4 +1,4 @@
-# CRM Release Orchestrator — Stage 1 + Stage 2
+# CRM Release Orchestrator — Stage 1 + Stage 2 + Stage 7
 
 **Stage 1** is data only: three JSON files that record release/gate state so any party
 (human or AI) reading this repo can see the same facts.
@@ -6,9 +6,19 @@
 **Stage 2** (`guard.py`) adds one read-only script that compares the repo's actual current
 changes against a gate's explicit `authorized_files` list and reports PASS/BLOCK (full
 detail below). It reads files in this directory; it never writes to them and never takes
-any action beyond printing a report. **No Stage 3 automation exists, and none is
-authorized here** — nothing in this repo acts on a gate's behalf, and nothing here
-substitutes for live human authorization in chat.
+any action beyond printing a report.
+
+**Stage 7** (`refresh.py`) adds one more read-only script that keeps `state.json`'s
+`repo` block (local HEAD, `origin/master`, working-tree status) live-derived instead of a
+stale hand-written snapshot, while explicitly never re-deriving or guessing `production`
+facts — it only ever carries forward the last human-verified production commit, stamped
+with staleness metadata (see its own section below).
+
+**No Stage 3+ autonomous automation exists, and none is authorized here** — nothing in
+this repo acts on a gate's behalf, executes a gate, or grants authorization; nothing here
+substitutes for live human authorization in chat. (Stages are numbered 1, 2, 7 to match
+this engagement's actual gate history — Stages 3-6 were review/commit/push/verification
+gates on Stage 1+2's own package, not additional automation code.)
 
 ## Files
 
@@ -118,3 +128,40 @@ files — neither authorized nor protected — trigger `BLOCK`.
 *unauthorized* changes, not for whether the authorized ones are currently mid-edit.
 
 Tests: `.crm-control/tests/test_guard.py` (`pytest .crm-control/tests/test_guard.py`).
+
+## Stage 7 — State Refresh (`refresh.py`)
+
+Fixes the exact staleness Stage 6 found: `state.json`'s `repo` block (local HEAD,
+`origin/master`, working-tree status) was a hand-written snapshot that silently went out
+of date the moment a later gate changed the repo. `refresh.py` recomputes that block live,
+every time it runs, from read-only git only.
+
+**Production facts are handled completely differently — carried forward, never
+re-derived.** There is no public endpoint that reveals the deployed commit (`/api/health`
+returns status/DB only), so verifying it for real requires a human-driven Render dashboard
+check (as N-15/N-22/N-27 did). `refresh.py` never attempts this and never guesses: it
+copies whatever `production.deployed_commit`/`verified_utc` already exists in the prior
+record into four new, explicit fields —
+
+| Field | Meaning |
+|---|---|
+| `last_verified_production_commit` | The commit last confirmed live via a real human-driven check, or `null` if none exists yet. |
+| `production_commit_status` | `"carried_forward_not_rechecked"`, or `"never_verified"` when nothing exists to carry forward. |
+| `production_commit_verified_at` | When that verification happened. |
+| `production_commit_verified_stage` | Which gate performed it (e.g. `"N-27"`). |
+
+If a viewer needs to know whether production has changed since, these fields tell them
+exactly how stale the number is — they do not imply the check was just redone.
+
+**Usage:**
+```
+python refresh.py [--repo PATH] [--control-dir PATH] [--apply]
+```
+Without `--apply`, it only prints a preview (`state`/`report` JSON to stdout) and writes
+nothing — `--apply` is required to actually overwrite `state.json`/`report.json`. It
+reuses `guard.py`'s own read-only git allowlist (`guard._run_git`) rather than
+reimplementing one, so there is exactly one place in this whole package that decides which
+git subcommands are ever allowed to run. It performs no network access itself — reading
+`origin/master` returns whatever a separate, explicit `git fetch` last retrieved.
+
+Tests: `.crm-control/tests/test_refresh.py`.

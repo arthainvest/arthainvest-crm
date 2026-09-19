@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated_utc": "2026-09-19T11:21:22Z",
+  "last_updated_utc": "2026-09-19T11:47:26Z",
   "gate": "N-27",
   "action": "automations_production_smoke_test",
   "status": "closed",
@@ -40,13 +40,37 @@
     "deploy_status": "Live",
     "health": "ok",
     "db": "ok",
-    "verified_utc": "2026-09-19T11:20:00Z"
+    "verified_utc": "2026-09-19T11:20:00Z",
+    "last_verified_production_commit": "36ead2512ac2a46f704bd19a8f690775dffe3f7c",
+    "production_commit_status": "carried_forward_not_rechecked",
+    "production_commit_verified_at": "2026-09-19T11:20:00Z",
+    "production_commit_verified_stage": "N-27"
   },
   "repo": {
     "local_branch": "master",
-    "local_head": "bf726d62572843d7e4b1135162982280c896a669",
-    "origin_head": "36ead2512ac2a46f704bd19a8f690775dffe3f7c",
-    "note": "local master carries the same N-24 content as origin's 36ead25 under a different local commit hash (bf726d6), plus 5 unrelated JARVIS commits interleaved ahead of it. Pushes to origin/master use an isolated worktree/cherry-pick, never a direct push of local master, to avoid publishing JARVIS commits."
+    "local_head": "0bd6132a2cdb7a36b7ed54bafde9ba31e878afe1",
+    "origin_head": "1df724695da109f9777964161526cfd51dd53cfc",
+    "working_tree": {
+      "modified_tracked": [
+        ".claude/settings.local.json",
+        "prospecting/01_Client_Gap_Matrix.xlsx",
+        "prospecting/02_Master_Prospect_DB.xlsx",
+        "prospecting/03_Pipeline_CRM.xlsx",
+        "prospecting/07_Loan_Prospects.xlsx",
+        "prospecting/09_Dashboard.html",
+        "prospecting/11_ICP_Lists.xlsx",
+        "prospecting/14_Warm_Network.xlsx",
+        "prospecting/outbox/F_loan_balance_transfer.csv"
+      ],
+      "staged": [],
+      "untracked": [
+        ".crm-control/refresh.py",
+        ".crm-control/tests/test_refresh.py",
+        "Zips & Bundles/bajaj letters hitesh (2).zip",
+        "Zips & Bundles/bajaj letters hitesh.zip"
+      ]
+    },
+    "note": "Live-derived at refresh time via read-only git only (no fetch performed by this script - origin_head reflects the last explicit `git fetch`). working_tree lists are exactly what guard.py's own read-only helpers see."
   },
   "protected_work": [
     "jarvis/",

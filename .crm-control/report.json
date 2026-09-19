@@ -1,43 +1,49 @@
 {
   "schema_version": "1.0",
   "executed_by": "claude-code",
-  "timestamp_utc": "2026-09-19T11:20:00Z",
-  "gate": "N-27",
-  "action": "automations_production_smoke_test",
+  "timestamp_utc": "2026-09-19T11:47:26Z",
+  "gate": "STAGE-7",
+  "action": "state_refresh",
   "status": "passed",
-  "target_commit": "36ead2512ac2a46f704bd19a8f690775dffe3f7c",
+  "target_commit": null,
   "scope": {
-    "files": [],
-    "description": "Read-only production verification via synthetic throwaway accounts/entities created and fully deleted through the live API. No repo files touched by this gate."
+    "files": [
+      ".crm-control/state.json",
+      ".crm-control/report.json"
+    ],
+    "description": "Read-only refresh: live-derived repo facts (local HEAD, origin/master, working-tree state); production facts carried forward from the last verified record with explicit staleness metadata, never re-derived or guessed."
   },
   "allowed": [
-    "read_production_state",
-    "create_and_delete_synthetic_test_data_via_live_api"
+    "read_repo_state"
   ],
   "forbidden": [
     "jarvis",
     "prospecting",
-    "real_customer_data",
-    "external_message_sends",
-    "code_changes",
     "commit",
     "push",
-    "deploy"
+    "deploy",
+    "reset",
+    "rebase",
+    "stash",
+    "clean",
+    "checkout",
+    "merge",
+    "code_changes",
+    "production_reverification",
+    "authorization_inference"
   ],
-  "tests": {
-    "checks_run": 24,
-    "checks_passed": 24,
-    "checks_failed": 0,
-    "note": "List-filter-bypass check marked N/A: GET /api/automations takes no filter query params, so no such surface exists on this endpoint."
-  },
+  "tests": null,
   "production": {
     "service": "arthainvest-crm (Render)",
     "deployed_commit": "36ead2512ac2a46f704bd19a8f690775dffe3f7c",
     "deploy_status": "Live",
     "health": "ok",
     "db": "ok",
-    "real_external_actions": 0,
-    "residual_synthetic_records": 0
+    "verified_utc": "2026-09-19T11:20:00Z",
+    "last_verified_production_commit": "36ead2512ac2a46f704bd19a8f690775dffe3f7c",
+    "production_commit_status": "carried_forward_not_rechecked",
+    "production_commit_verified_at": "2026-09-19T11:20:00Z",
+    "production_commit_verified_stage": "N-27"
   },
   "protected_work": [
     "jarvis/",
