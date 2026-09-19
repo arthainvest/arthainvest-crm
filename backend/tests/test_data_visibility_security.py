@@ -611,6 +611,132 @@ def test_call_recording_nonexistent_call_404s(hierarchy):
 
 
 # ---------------------------------------------------------------------------
+# N-31: cross-entity linking on Calls previously checked target existence, not target
+# visibility - create_call/link_call_contact/link_call_company/dial_call could all reference
+# another employee's private Lead/Contact/Company merely because the id existed. Fixed to
+# match the already-proven link_task_contact pattern (dial_call gets a silent-drop variant
+# instead of a hard 403, since click-to-call must always log the attempt).
+# ---------------------------------------------------------------------------
+
+def test_create_call_rejects_invisible_lead(hierarchy):
+    amol_lead = hierarchy["amol"].post("/api/leads", json={"name": "Amol Private Lead", "phone": "9990000027"}).json()
+
+    resp = hierarchy["chirag"].post("/api/calls", json={"name": "Injected Call", "lead_id": amol_lead["id"]})
+    assert resp.status_code == 403
+
+
+def test_create_call_rejects_invisible_contact(hierarchy):
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Private Contact", "phone": "9990000028"}).json()
+
+    resp = hierarchy["chirag"].post("/api/calls", json={"name": "Injected Call", "contact_id": amol_contact["id"]})
+    assert resp.status_code == 403
+
+
+def test_create_call_accepts_visible_lead(hierarchy):
+    chirag_lead = hierarchy["chirag"].post("/api/leads", json={"name": "Chirag Own Lead", "phone": "9990000029"}).json()
+
+    resp = hierarchy["chirag"].post("/api/calls", json={"name": "Legit Call", "lead_id": chirag_lead["id"]})
+    assert resp.status_code == 200
+    assert resp.json()["lead_id"] == chirag_lead["id"]
+
+
+def test_create_call_nonexistent_lead_404s(hierarchy):
+    resp = hierarchy["chirag"].post("/api/calls", json={"name": "Bad Lead Call", "lead_id": 999999999})
+    assert resp.status_code == 404
+
+
+def test_link_call_contact_rejects_invisible_contact_with_no_mutation(hierarchy):
+    chirag_call = hierarchy["chirag"].post("/api/calls", json={"name": "Chirag Own Call"}).json()
+    amol_contact = hierarchy["amol"].post("/api/contacts", json={"name": "Amol Link Target", "phone": "9990000030"}).json()
+
+    resp = hierarchy["chirag"].put(f"/api/calls/{chirag_call['id']}/contact", json={"contact_id": amol_contact["id"]})
+    assert resp.status_code == 403
+
+    unchanged = hierarchy["chirag"].get("/api/calls").json()
+    still = next(c for c in unchanged if c["id"] == chirag_call["id"])
+    assert still["contact_id"] is None
+
+
+def test_link_call_contact_accepts_visible_contact(hierarchy):
+    chirag_call = hierarchy["chirag"].post("/api/calls", json={"name": "Chirag Own Call 2"}).json()
+    chirag_contact = hierarchy["chirag"].post("/api/contacts", json={"name": "Chirag Own Contact", "phone": "9990000031"}).json()
+
+    resp = hierarchy["chirag"].put(f"/api/calls/{chirag_call['id']}/contact", json={"contact_id": chirag_contact["id"]})
+    assert resp.status_code == 200
+    assert resp.json()["contact_id"] == chirag_contact["id"]
+
+
+def test_link_call_contact_nonexistent_contact_404s(hierarchy):
+    chirag_call = hierarchy["chirag"].post("/api/calls", json={"name": "Chirag Own Call 3"}).json()
+    resp = hierarchy["chirag"].put(f"/api/calls/{chirag_call['id']}/contact", json={"contact_id": 999999999})
+    assert resp.status_code == 404
+
+
+def test_link_call_company_rejects_invisible_company_with_no_mutation(hierarchy):
+    chirag_call = hierarchy["chirag"].post("/api/calls", json={"name": "Chirag Own Call 4"}).json()
+    amol_company = hierarchy["amol"].post("/api/companies", json={"name": "Amol Only Employer 2"}).json()
+    amol_contact = hierarchy["amol"].post(
+        "/api/contacts", json={"name": "Amol Employer Contact", "phone": "9990000032", "company_id": amol_company["id"]}
+    ).json()
+    _assign(hierarchy["nimita"], f"/api/contacts/{amol_contact['id']}/assign", hierarchy["amol_tm_id"])
+
+    resp = hierarchy["chirag"].put(f"/api/calls/{chirag_call['id']}/company", json={"company_id": amol_company["id"]})
+    assert resp.status_code == 403
+
+    unchanged = hierarchy["chirag"].get("/api/calls").json()
+    still = next(c for c in unchanged if c["id"] == chirag_call["id"])
+    assert still["company_id"] is None
+
+
+def test_link_call_company_accepts_visible_company(hierarchy):
+    chirag_call = hierarchy["chirag"].post("/api/calls", json={"name": "Chirag Own Call 5"}).json()
+    chirag_company = hierarchy["chirag"].post("/api/companies", json={"name": "Chirag Own Employer"}).json()
+    chirag_contact = hierarchy["chirag"].post(
+        "/api/contacts", json={"name": "Chirag Employer Contact", "phone": "9990000033", "company_id": chirag_company["id"]}
+    ).json()
+
+    resp = hierarchy["chirag"].put(f"/api/calls/{chirag_call['id']}/company", json={"company_id": chirag_company["id"]})
+    assert resp.status_code == 200
+    assert resp.json()["company_id"] == chirag_company["id"]
+
+
+def test_link_call_company_nonexistent_company_404s(hierarchy):
+    chirag_call = hierarchy["chirag"].post("/api/calls", json={"name": "Chirag Own Call 6"}).json()
+    resp = hierarchy["chirag"].put(f"/api/calls/{chirag_call['id']}/company", json={"company_id": 999999999})
+    assert resp.status_code == 404
+
+
+def test_dial_with_invisible_lead_does_not_leak_name_or_link(hierarchy):
+    """The dial path never rejects the attempt (click-to-call must always log), but an
+    invisible target's name must never surface and the call must not be cross-referenced to
+    it - the call logs against the raw phone number instead, exactly as if lead_id were never
+    passed at all."""
+    amol_lead = hierarchy["amol"].post("/api/leads", json={"name": "Amol Secret Dial Target", "phone": "9990000034"}).json()
+
+    resp = hierarchy["chirag"].post("/api/calls/dial", json={"to": "9990000034", "lead_id": amol_lead["id"]})
+    assert resp.status_code == 200
+    call_id = resp.json()["call_id"]
+    assert call_id is not None
+
+    logged = next(c for c in hierarchy["chirag"].get("/api/calls").json() if c["id"] == call_id)
+    assert logged["lead_id"] is None
+    assert logged["name"] == "9990000034"
+    assert logged["name"] != "Amol Secret Dial Target"
+
+
+def test_dial_with_visible_lead_still_links_and_names_it(hierarchy):
+    chirag_lead = hierarchy["chirag"].post("/api/leads", json={"name": "Chirag Dial Target", "phone": "9990000035"}).json()
+
+    resp = hierarchy["chirag"].post("/api/calls/dial", json={"to": "9990000035", "lead_id": chirag_lead["id"]})
+    assert resp.status_code == 200
+    call_id = resp.json()["call_id"]
+
+    logged = next(c for c in hierarchy["chirag"].get("/api/calls").json() if c["id"] == call_id)
+    assert logged["lead_id"] == chirag_lead["id"]
+    assert logged["name"] == "Chirag Dial Target"
+
+
+# ---------------------------------------------------------------------------
 # Hardening pass 2: Company team-members
 # ---------------------------------------------------------------------------
 

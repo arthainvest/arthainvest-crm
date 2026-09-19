@@ -5198,12 +5198,30 @@ async def get_calls(token: str = Query(None), team_member_id: int = Query(None))
 
 @app.post("/api/calls", response_model=CallResponse)
 async def create_call(call: CallCreate, token: str = Query(None)):
-    """Log a new call"""
+    """Log a new call. N-31: lead_id/contact_id must be visible to the caller before the call
+    is linked to them - same pattern as link_task_contact - otherwise a caller could reference
+    another employee's private Lead/Contact merely because it exists, not because they can see
+    it. Checked before the INSERT, matching every other check-then-write route here."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
         cursor = conn.cursor()
         scope = get_visibility_scope(cursor, current_user)
+
+        if call.lead_id is not None:
+            cursor.execute("SELECT created_by, assigned_team_member_id FROM leads WHERE id = ?", (call.lead_id,))
+            lead_owner = cursor.fetchone()
+            if not lead_owner:
+                raise HTTPException(status_code=404, detail="Lead not found")
+            assert_record_visible(scope, lead_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
+        if call.contact_id is not None:
+            cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (call.contact_id,))
+            contact_owner = cursor.fetchone()
+            if not contact_owner:
+                raise HTTPException(status_code=404, detail="Contact not found")
+            assert_record_visible(scope, contact_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
+
         cursor.execute(
             """
             INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id)
@@ -5416,7 +5434,9 @@ async def delete_call(call_id: int, token: str = Query(None)):
 
 @app.put("/api/calls/{call_id}/contact", response_model=CallResponse)
 async def link_call_contact(call_id: int, link: CallContactAssign, token: str = Query(None)):
-    """Link (or unlink, if contact_id is null) a call to a Contact."""
+    """Link (or unlink, if contact_id is null) a call to a Contact. N-31: the target contact
+    must be visible to the caller before linking, not merely exist - same
+    link_task_contact pattern, checked before the UPDATE."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
@@ -5429,9 +5449,11 @@ async def link_call_contact(call_id: int, link: CallContactAssign, token: str = 
         assert_record_visible(scope, owner_row, user_id_cols=["created_by"], team_member_id_cols=["team_member_id"])
 
         if link.contact_id is not None:
-            cursor.execute("SELECT 1 FROM contacts WHERE id = ?", (link.contact_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT created_by, assigned_team_member_id FROM contacts WHERE id = ?", (link.contact_id,))
+            contact_owner = cursor.fetchone()
+            if not contact_owner:
                 raise HTTPException(status_code=404, detail="Contact not found")
+            assert_record_visible(scope, contact_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"])
 
         cursor.execute(
             "UPDATE calls SET contact_id = ? WHERE id = ?",
@@ -5468,7 +5490,10 @@ async def get_contact_calls(contact_id: int, token: str = Query(None)):
 
 @app.put("/api/calls/{call_id}/company", response_model=CallResponse)
 async def link_call_company(call_id: int, link: CallCompanyAssign, token: str = Query(None)):
-    """Link (or unlink, if company_id is null) a call to a Company."""
+    """Link (or unlink, if company_id is null) a call to a Company. N-31: the target company
+    must be visible to the caller before linking, not merely exist - same intent as
+    link_task_contact, using is_company_visible since Companies have no plain owner column
+    (visibility is EXISTS-through-linked-Contact/Deal instead)."""
     current_user = get_current_user(token)
 
     with get_db() as conn:
@@ -5484,6 +5509,8 @@ async def link_call_company(call_id: int, link: CallCompanyAssign, token: str = 
             cursor.execute("SELECT 1 FROM companies WHERE id = ?", (link.company_id,))
             if not cursor.fetchone():
                 raise HTTPException(status_code=404, detail="Company not found")
+            if not is_company_visible(cursor, scope, link.company_id):
+                raise HTTPException(status_code=403, detail="You don't have access to this record")
 
         cursor.execute(
             "UPDATE calls SET company_id = ? WHERE id = ?",
@@ -5535,6 +5562,7 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
 
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
         cursor.execute(
             "SELECT id, phone, calling_enabled, active FROM team_members WHERE user_id = ?",
             (current_user['user_id'],)
@@ -5550,7 +5578,7 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
 
     provider = calling_providers.get_cloud_calling_provider()
     if provider is None:
-        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
+        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id, scope)
         return DialResponse(
             configured=False,
             message="No calling provider (Exotel or Twilio) is configured on this server.",
@@ -5567,14 +5595,14 @@ async def dial_call(dial: DialRequest, token: str = Query(None)):
 
     provider_name = "Exotel" if provider.name == "exotel" else "Twilio"
     if not agent_number:
-        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
+        call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id, scope)
         return DialResponse(
             configured=False,
             message=f"Add your personal calling number in the Team page first - {provider_name} calls you there, then connects you to the customer.",
             call_id=call_id
         )
 
-    call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id)
+    call_id = _auto_log_dial(dial, current_user['user_id'], team_member_id, scope)
     result = provider.place_call(agent_number, dial.to, call_id)
 
     if result.ok and result.call_sid and provider.name == "exotel":
@@ -5640,27 +5668,40 @@ async def exotel_status_webhook(request: Request):
 
     return {"ok": True}
 
-def _auto_log_dial(dial, user_id, team_member_id=None):
+def _auto_log_dial(dial, user_id, team_member_id=None, scope=None):
     """Every click-to-call creates a `status='initiated'` row immediately - before the rep even
     talks to the customer, and regardless of whether a real telephony provider bridges the
     call or the frontend just falls back to a plain tel: link. complete_call fills in what
     actually happened on this SAME row later. Logging unconditionally (not just when a
     provider is configured) is what makes Calls-by-Employee's Attempted count, and the
-    Activity timeline, reflect every real dial attempt."""
+    Activity timeline, reflect every real dial attempt.
+
+    N-31: dial.lead_id/dial.contact_id must be visible to the caller (via `scope`, None meaning
+    admin/unrestricted like everywhere else) before its name is looked up or the call is linked
+    to it - unlike create_call/link_call_contact this never rejects the dial itself (click-to-
+    call must always succeed and log the attempt), so an invisible target is silently treated
+    as absent: the call still logs against dial.to, just without the name or the FK link, so
+    nothing about the target leaks and nothing gets cross-referenced without authorization."""
     with get_db() as conn:
         cursor = conn.cursor()
 
         name = dial.to
+        lead_id = dial.lead_id
+        contact_id = dial.contact_id
         if dial.lead_id:
-            cursor.execute("SELECT name FROM leads WHERE id = ?", (dial.lead_id,))
+            cursor.execute("SELECT name, created_by, assigned_team_member_id FROM leads WHERE id = ?", (dial.lead_id,))
             row = cursor.fetchone()
-            if row:
+            if row and is_record_visible(scope, row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"]):
                 name = row['name']
+            else:
+                lead_id = None
         elif dial.contact_id:
-            cursor.execute("SELECT name FROM contacts WHERE id = ?", (dial.contact_id,))
+            cursor.execute("SELECT name, created_by, assigned_team_member_id FROM contacts WHERE id = ?", (dial.contact_id,))
             row = cursor.fetchone()
-            if row:
+            if row and is_record_visible(scope, row, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"]):
                 name = row['name']
+            else:
+                contact_id = None
 
         if team_member_id is None:
             cursor.execute("SELECT id FROM team_members WHERE user_id = ?", (user_id,))
@@ -5672,7 +5713,7 @@ def _auto_log_dial(dial, user_id, team_member_id=None):
             INSERT INTO calls (name, phone, duration_seconds, type, outcome, call_date, created_by, team_member_id, lead_id, contact_id, status)
             VALUES (?, ?, 0, 'Outbound', NULL, {db_compat.sql_today()}, ?, ?, ?, ?, 'initiated')
             """,
-            (name, dial.to, user_id, team_member_id, dial.lead_id, dial.contact_id)
+            (name, dial.to, user_id, team_member_id, lead_id, contact_id)
         )
         conn.commit()
         return cursor.lastrowid
