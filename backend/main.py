@@ -8228,10 +8228,20 @@ def _group_member_entities(cursor, group_id):
 
 @app.get("/api/automations", response_model=list[AutomationResponse])
 async def get_automations(token: str = Query(None)):
-    get_current_user(token)
+    """N-24: creator-only visibility (no assignee column exists on automations, same as
+    Campaigns/Quotations)."""
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM automations ORDER BY created_at DESC")
+        scope = get_visibility_scope(cursor, current_user)
+        query = "SELECT * FROM automations"
+        params = []
+        if scope is not None:
+            clause, scope_params = scope_filter_sql(scope, user_id_cols=["created_by"])
+            query += " WHERE " + clause
+            params = scope_params
+        query += " ORDER BY created_at DESC"
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         return [_automation_row_to_response(cursor, r) for r in rows]
 
@@ -8257,12 +8267,17 @@ async def create_automation(automation: AutomationCreate, token: str = Query(Non
 
 @app.put("/api/automations/{automation_id}", response_model=AutomationResponse)
 async def update_automation(automation_id: int, automation: AutomationUpdate, token: str = Query(None)):
-    get_current_user(token)
+    """N-24: previously checked existence only, never ownership - any authenticated employee
+    could rename/pause/replace-steps on any other employee's automation."""
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM automations WHERE id = ?", (automation_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM automations WHERE id = ?", (automation_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Automation not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
 
         updates, values = [], []
         if automation.name is not None:
@@ -8291,12 +8306,17 @@ async def update_automation(automation_id: int, automation: AutomationUpdate, to
 
 @app.delete("/api/automations/{automation_id}")
 async def delete_automation(automation_id: int, token: str = Query(None)):
-    get_current_user(token)
+    """N-24: previously checked existence only, never ownership."""
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM automations WHERE id = ?", (automation_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM automations WHERE id = ?", (automation_id,))
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Automation not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
+
         cursor.execute("DELETE FROM automation_enrollments WHERE automation_id = ?", (automation_id,))
         cursor.execute("DELETE FROM automation_steps WHERE automation_id = ?", (automation_id,))
         cursor.execute("DELETE FROM automations WHERE id = ?", (automation_id,))
@@ -8306,15 +8326,31 @@ async def delete_automation(automation_id: int, token: str = Query(None)):
 @app.get("/api/automations/{automation_id}/enrollments", response_model=list[AutomationEnrollmentResponse])
 async def get_automation_enrollments(automation_id: int, token: str = Query(None)):
     """Who's currently running through this automation, and where they're up to - the
-    'who's in this drip sequence' view for the Automations screen."""
-    get_current_user(token)
+    'who's in this drip sequence' view for the Automations screen.
+
+    N-24: the automation's own visibility is checked first (previously not checked at all -
+    any employee could view any other employee's enrollment list, including the linked Lead/
+    Contact's name and phone). entity_name is additionally redacted when the underlying Lead/
+    Contact is not itself visible to the caller, defense-in-depth for enrollments that predate
+    this fix or were created via the group path."""
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM automations WHERE id = ?", (automation_id,))
+        automation_row = cursor.fetchone()
+        if not automation_row:
+            raise HTTPException(status_code=404, detail="Automation not found")
+        assert_record_visible(scope, automation_row, user_id_cols=["created_by"])
+
         cursor.execute("SELECT COUNT(*) as n FROM automation_steps WHERE automation_id = ?", (automation_id,))
         total_steps = cursor.fetchone()['n']
 
         cursor.execute(
-            """SELECT ae.*, l.name as lead_name, l.phone as lead_phone, c.name as contact_name, c.phone as contact_phone
+            """SELECT ae.*, l.name as lead_name, l.phone as lead_phone,
+                      l.created_by as _lead_created_by, l.assigned_team_member_id as _lead_assigned_team_member_id,
+                      c.name as contact_name, c.phone as contact_phone,
+                      c.created_by as _contact_created_by, c.assigned_team_member_id as _contact_assigned_team_member_id
                FROM automation_enrollments ae
                LEFT JOIN leads l ON ae.entity_type = 'lead' AND l.id = ae.entity_id
                LEFT JOIN contacts c ON ae.entity_type = 'contact' AND c.id = ae.entity_id
@@ -8326,21 +8362,47 @@ async def get_automation_enrollments(automation_id: int, token: str = Query(None
         for row in cursor.fetchall():
             e = dict(row)
             e['total_steps'] = total_steps
+            if e.get('entity_type') == 'lead':
+                redact_if_not_visible(scope, e, ["lead_name", "lead_phone"], user_id_col="_lead_created_by", team_member_id_col="_lead_assigned_team_member_id")
+            else:
+                redact_if_not_visible(scope, e, ["contact_name", "contact_phone"], user_id_col="_contact_created_by", team_member_id_col="_contact_assigned_team_member_id")
             name = e.pop('lead_name', None) or e.pop('contact_name', None)
             phone = e.pop('lead_phone', None) or e.pop('contact_phone', None)
             e['entity_name'] = name or phone
+            for k in ("_lead_created_by", "_lead_assigned_team_member_id", "_contact_created_by", "_contact_assigned_team_member_id"):
+                e.pop(k, None)
             enrollments.append(e)
     return enrollments
 
 @app.post("/api/automations/{automation_id}/enroll")
 async def enroll_entity(automation_id: int, payload: AutomationEnrollRequest, token: str = Query(None)):
     """Start a single lead/contact on this automation now (its first step fires as soon as
-    a scheduler processes it, honoring that step's wait_minutes)."""
-    get_current_user(token)
+    a scheduler processes it, honoring that step's wait_minutes).
+
+    N-24: authorization checked before any mutation - the automation must be visible to the
+    caller, AND the target Lead/Contact must itself be visible to the caller before being
+    enrolled. This is the same IDOR class already closed for Campaigns (N-11) and Dial Queue
+    (N-19): enrollment is the actual trigger point for a real outbound message once the
+    scheduler processes it, so an invisible target must never be enrollable regardless of
+    whether the caller can see the automation itself."""
+    current_user = get_current_user(token)
     if payload.entity_type not in ('contact', 'lead'):
         raise HTTPException(status_code=400, detail="entity_type must be 'contact' or 'lead'")
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM automations WHERE id = ?", (automation_id,))
+        automation_row = cursor.fetchone()
+        if not automation_row:
+            raise HTTPException(status_code=404, detail="Automation not found")
+        assert_record_visible(scope, automation_row, user_id_cols=["created_by"])
+
+        table = "leads" if payload.entity_type == "lead" else "contacts"
+        cursor.execute(f"SELECT created_by, assigned_team_member_id FROM {table} WHERE id = ?", (payload.entity_id,))
+        target_owner = cursor.fetchone()
+        if not target_owner or not is_record_visible(scope, target_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"]):
+            raise HTTPException(status_code=403, detail="You don't have access to this record")
+
         cursor.execute("SELECT wait_minutes FROM automation_steps WHERE automation_id = ? ORDER BY step_order LIMIT 1", (automation_id,))
         first_step = cursor.fetchone()
         if not first_step:
@@ -8361,10 +8423,25 @@ async def enroll_entity(automation_id: int, payload: AutomationEnrollRequest, to
 @app.post("/api/automations/{automation_id}/enroll-group/{group_id}")
 async def enroll_group(automation_id: int, group_id: int, token: str = Query(None)):
     """Enroll every lead/contact in a group at once - the broadcast/drip-campaign entry point
-    (e.g. 'start the Diwali sequence for the SIP Clients group')."""
-    get_current_user(token)
+    (e.g. 'start the Diwali sequence for the SIP Clients group').
+
+    N-24: automation visibility checked first. `groups`/`entity_groups` have no owner column
+    of their own (a shared team-wide taxonomy, not a per-employee entity - no existing
+    visibility precedent to reuse, and none invented here), so the real risk - enrolling
+    someone the caller can't see - is closed the same way as enroll_entity: each member's own
+    Lead/Contact visibility is checked individually, and an invisible member is silently
+    skipped (folded into the existing "already enrolled" skip accounting) rather than
+    enrolled."""
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute("SELECT created_by FROM automations WHERE id = ?", (automation_id,))
+        automation_row = cursor.fetchone()
+        if not automation_row:
+            raise HTTPException(status_code=404, detail="Automation not found")
+        assert_record_visible(scope, automation_row, user_id_cols=["created_by"])
+
         cursor.execute("SELECT wait_minutes FROM automation_steps WHERE automation_id = ? ORDER BY step_order LIMIT 1", (automation_id,))
         first_step = cursor.fetchone()
         if not first_step:
@@ -8374,6 +8451,11 @@ async def enroll_group(automation_id: int, group_id: int, token: str = Query(Non
         members = _group_member_entities(cursor, group_id)
         enrolled = 0
         for member in members:
+            table = "leads" if member['entity_type'] == "lead" else "contacts"
+            cursor.execute(f"SELECT created_by, assigned_team_member_id FROM {table} WHERE id = ?", (member['entity_id'],))
+            member_owner = cursor.fetchone()
+            if not member_owner or not is_record_visible(scope, member_owner, user_id_cols=["created_by"], team_member_id_cols=["assigned_team_member_id"]):
+                continue  # not visible to the caller - silently excluded, same as "already enrolled"
             try:
                 cursor.execute(
                     """INSERT INTO automation_enrollments (automation_id, entity_type, entity_id, current_step, status, next_run_at)
@@ -8389,12 +8471,24 @@ async def enroll_group(automation_id: int, group_id: int, token: str = Query(Non
 
 @app.post("/api/automations/enrollments/{enrollment_id}/stop")
 async def stop_enrollment(enrollment_id: int, token: str = Query(None)):
-    get_current_user(token)
+    """N-24: previously checked existence only, never ownership - any authenticated employee
+    could stop any other employee's automation enrollment. Ownership is resolved via the
+    parent automation's created_by, since enrollments have no owner column of their own."""
+    current_user = get_current_user(token)
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM automation_enrollments WHERE id = ?", (enrollment_id,))
-        if not cursor.fetchone():
+        scope = get_visibility_scope(cursor, current_user)
+        cursor.execute(
+            """SELECT automations.created_by FROM automation_enrollments
+               JOIN automations ON automations.id = automation_enrollments.automation_id
+               WHERE automation_enrollments.id = ?""",
+            (enrollment_id,)
+        )
+        owner_row = cursor.fetchone()
+        if not owner_row:
             raise HTTPException(status_code=404, detail="Enrollment not found")
+        assert_record_visible(scope, owner_row, user_id_cols=["created_by"])
+
         cursor.execute("UPDATE automation_enrollments SET status = 'stopped', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (enrollment_id,))
         conn.commit()
     return {"message": "Enrollment stopped"}

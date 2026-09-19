@@ -214,10 +214,11 @@ def test_deleting_automation_also_clears_its_enrollments(auth_client):
     resp = auth_client.delete(f"/api/automations/{automation['id']}")
     assert resp.status_code == 200
     # The automation is gone, so its enrollments endpoint 404s along with it (not a leftover
-    # active enrollment nobody can see or stop anymore).
+    # active enrollment nobody can see or stop anymore). N-24: the enrollments endpoint now
+    # checks the parent automation exists (and is visible) before listing anything, matching
+    # every other entity's "list a nonexistent parent's children" convention elsewhere.
     resp2 = auth_client.get(f"/api/automations/{automation['id']}/enrollments")
-    assert resp2.status_code == 200
-    assert resp2.json() == []
+    assert resp2.status_code == 404
 
 
 def test_automations_require_auth(client):
